@@ -29,6 +29,10 @@
 
 import crypto from 'node:crypto';
 import type { FlaInspectionIR } from '../../shared/fla-import-api';
+import type {
+  FlaStaticTextGraphicFraming,
+  FlaStaticTextRenderItem,
+} from '../../shared/fla-static-text';
 import {
   buildRenderableTargetCatalog,
   buildSvgForRenderTarget,
@@ -67,11 +71,14 @@ export interface FlaStaticSnapshotRasterizeInput {
   width: number;
   height: number;
   pixelCount: number;
+  staticTexts?: readonly FlaStaticTextRenderItem[];
+  graphicFraming?: FlaStaticTextGraphicFraming;
+  returnResolvedSvg?: boolean;
 }
 
 export class FlaStaticSnapshotRasterizerError extends Error {
   constructor(
-    readonly code: 'RENDER_CANCELLED' | 'RENDER_TIMEOUT' | 'RENDER_FAILED' | 'RENDERER_CRASH',
+    readonly code: 'RENDER_CANCELLED' | 'RENDER_TIMEOUT' | 'RENDER_FAILED' | 'RENDERER_CRASH' | 'BUDGET_EXCEEDED',
     message: string,
   ) {
     super(message);
@@ -84,6 +91,8 @@ export interface FlaStaticSnapshotRasterizeOutput {
   width: number;
   height: number;
   pixelCount: number;
+  sourceViewport?: { x: number; y: number; width: number; height: number };
+  resolvedSvg?: string;
 }
 
 export interface FlaStaticSnapshotRasterizer {
@@ -498,7 +507,9 @@ export class FlaStaticSnapshotRenderSession {
       return active.settledPromise;
     }
 
-    if (svgResult.composition.shapeCount === 0 && svgResult.composition.bitmapInstanceCount === 0) {
+    if (svgResult.composition.shapeCount === 0 &&
+        svgResult.composition.bitmapInstanceCount === 0 &&
+        !svgResult.staticTexts?.length) {
       this.settleActive(active, this.previewError('TARGET_UNSUPPORTED', '此源帧没有可见内容，请选择其它帧。', requestId));
       return active.settledPromise;
     }
@@ -523,6 +534,8 @@ export class FlaStaticSnapshotRenderSession {
         width: svgResult.width,
         height: svgResult.height,
         pixelCount: svgResult.pixelCount,
+        ...(svgResult.staticTexts?.length ? { staticTexts: svgResult.staticTexts } : {}),
+        ...(svgResult.graphicFraming ? { graphicFraming: svgResult.graphicFraming } : {}),
       })
       .then(
         (raster) => {
@@ -558,6 +571,7 @@ export class FlaStaticSnapshotRenderSession {
             bytes: raster.pngBytes,
             ...(svgResult.maskWarning ? { maskWarning: svgResult.maskWarning } : {}),
             ...(svgResult.ikPoseWarning ? { ikPoseWarning: svgResult.ikPoseWarning } : {}),
+            ...(svgResult.projectionWarning ? { projectionWarning: svgResult.projectionWarning } : {}),
             sha256,
             wallClockMs: active.startedAt
               ? Math.max(0, Date.now() - new Date(active.startedAt).getTime())

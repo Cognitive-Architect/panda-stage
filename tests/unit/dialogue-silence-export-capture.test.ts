@@ -697,6 +697,34 @@ afterEach(() => {
 });
 
 describe('Issue #1220: pending dialogue silence capture for export', () => {
+  it('F08: object projection preserves the Shot’s head motion, silence, manual cues, and duplicate-speaker ambiguity', () => {
+    const setup = buildTalkingProject();
+    const withHead = new CharacterService().setAdaptivePartsHeadMotionBinding(
+      setup.project, setup.characterId, [PART_FACE_ID],
+    );
+    const project = upsertMouthCueEventAtTime(withHead, setup.shotId, setup.layerId, 'open', 550);
+    const shot = project.shots.find(({ id }) => id === setup.shotId)!;
+    const silence = { [AUDIO_ASSET_1]: { sha256: HASH_B, intervals: [[500, 900]] } } satisfies
+      NonNullable<ExportPreparationCandidate['dialogueSilence']>;
+    const selectedAt = (timeMs: number, context = shot) => evaluateExportShotAtTime(
+      project, context, timeMs, undefined, silence, setup.layerId,
+    ).layers[0]!;
+    const speaking = selectedAt(250);
+    const inShot = evaluateExportShotAtTime(project, shot, 250, undefined, silence)
+      .layers.find(({ id }) => id === setup.layerId);
+    expect(speaking).toEqual(inShot);
+    expect(speaking.headGroupTransform).toBeDefined();
+    expect(speaking.talkingAnimationElapsedMs).toBe(150);
+    expect(selectedAt(450).talkingAnimationElapsedMs).toBe('rest');
+    expect(selectedAt(600).mouthOpen).toBe(true);
+
+    const duplicate = { ...shot.layers.find(({ id }) => id === setup.layerId)!,
+      id: 'd3000000-0000-4000-8000-000000000099' };
+    const ambiguous = selectedAt(250, { ...shot, layers: [...shot.layers, duplicate] });
+    expect(ambiguous.headGroupTransform).toBeUndefined();
+    expect(ambiguous.talkingAnimationElapsedMs).toBeUndefined();
+  });
+
   it('reuses pending silence analysis on immediate export in EditorShell and maintains Stage/Preview/Export parity', async () => {
     const setup = buildTalkingProject();
     const projectRoot = 'C:/temp/issue1220-immediate.pandastage';

@@ -14,6 +14,19 @@ import {
 } from '../../shared/fla-asset-commit-api';
 import { IPC_CHANNELS } from '../../shared/ipc/channels';
 import { FlaImportService } from '../services/FlaImportService';
+import type { FlaSoundService } from '../services/FlaSoundService';
+import type { FlaEmbeddedVideoService } from '../services/FlaEmbeddedVideoService';
+import { AssetImportResponseSchema } from '../../shared/asset-import-api';
+import {
+  FlaSoundCancelRequestSchema,
+  FlaSoundImportRequestSchema,
+  FlaSoundPreviewRequestSchema,
+  FlaSoundPreviewResponseSchema,
+  FlaSoundTimelineImportRequestSchema,
+  FlaSoundTimelineImportResponseSchema,
+} from '../../shared/fla-sound-api';
+import { FlaVideoImportResponseSchema } from '../../shared/fla-video-api';
+import { assetImportFailure } from './register-asset-import-ipc-handlers';
 import {
   FlaAssetCommitService,
   FlaAssetCommitServiceError,
@@ -23,6 +36,8 @@ export interface FlaImportIpcDependencies {
   getMainWindow: () => BrowserWindow | null;
   flaImportService: FlaImportService;
   flaAssetCommitService: FlaAssetCommitService;
+  flaSoundService?: FlaSoundService;
+  flaEmbeddedVideoService?: Pick<FlaEmbeddedVideoService, 'importFromFlaSessionRequest'>;
   selectFlaSource: (window: BrowserWindow) => Promise<string | null>;
   onInspectionStarting?: () => void;
 }
@@ -179,6 +194,46 @@ export function registerFlaImportIpcHandlers(
       }
     },
   );
+  const sound = dependencies.flaSoundService;
+  if (sound) {
+    ipcMain.handle(IPC_CHANNELS.FLA_SOUND_PREVIEW, async (event, rawRequest: unknown) => {
+      assertTrustedSender(event, dependencies.getMainWindow());
+      const request = FlaSoundPreviewRequestSchema.parse(rawRequest);
+      return FlaSoundPreviewResponseSchema.parse(await sound.preview(request));
+    });
+    ipcMain.handle(IPC_CHANNELS.FLA_SOUND_CANCEL, (event, rawRequest: unknown) => {
+      assertTrustedSender(event, dependencies.getMainWindow());
+      const { sessionId, requestId } = FlaSoundCancelRequestSchema.parse(rawRequest);
+      return FlaCancelResponseSchema.parse({ accepted: sound.cancelPreview(sessionId, requestId) });
+    });
+    ipcMain.handle(IPC_CHANNELS.FLA_SOUND_IMPORT, async (event, rawRequest: unknown) => {
+      assertTrustedSender(event, dependencies.getMainWindow());
+      const request = FlaSoundImportRequestSchema.parse(rawRequest);
+      try {
+        return AssetImportResponseSchema.parse(await sound.import(request));
+      } catch (error) {
+        return assetImportFailure(error, request.projectRoot);
+      }
+    });
+    ipcMain.handle(IPC_CHANNELS.FLA_SOUND_IMPORT_TIMELINE, async (event, rawRequest: unknown) => {
+      assertTrustedSender(event, dependencies.getMainWindow());
+      const request = FlaSoundTimelineImportRequestSchema.parse(rawRequest);
+      try {
+        return FlaSoundTimelineImportResponseSchema.parse(await sound.importSceneTimeline(request));
+      } catch (error) {
+        return FlaSoundTimelineImportResponseSchema.parse(assetImportFailure(error, request.projectRoot));
+      }
+    });
+  }
+  const embeddedVideo = dependencies.flaEmbeddedVideoService;
+  if (embeddedVideo) {
+    ipcMain.handle(IPC_CHANNELS.FLA_VIDEO_IMPORT, async (event, rawRequest: unknown) => {
+      assertTrustedSender(event, dependencies.getMainWindow());
+      return FlaVideoImportResponseSchema.parse(
+        await embeddedVideo.importFromFlaSessionRequest(rawRequest),
+      );
+    });
+  }
   ipcMain.on(IPC_CHANNELS.FLA_WORKER_READY, onReady);
   ipcMain.on(IPC_CHANNELS.FLA_WORKER_PROGRESS, onProgress);
   ipcMain.on(IPC_CHANNELS.FLA_WORKER_RESULT, onResult);
@@ -189,6 +244,15 @@ export function registerFlaImportIpcHandlers(
     ipcMain.removeHandler(IPC_CHANNELS.FLA_CANCEL);
     ipcMain.removeHandler(IPC_CHANNELS.FLA_PREVIEW_RASTER);
     ipcMain.removeHandler(IPC_CHANNELS.FLA_COMMIT_SELECTED);
+    if (sound) {
+      ipcMain.removeHandler(IPC_CHANNELS.FLA_SOUND_PREVIEW);
+      ipcMain.removeHandler(IPC_CHANNELS.FLA_SOUND_CANCEL);
+      ipcMain.removeHandler(IPC_CHANNELS.FLA_SOUND_IMPORT);
+      ipcMain.removeHandler(IPC_CHANNELS.FLA_SOUND_IMPORT_TIMELINE);
+    }
+    if (embeddedVideo) {
+      ipcMain.removeHandler(IPC_CHANNELS.FLA_VIDEO_IMPORT);
+    }
     ipcMain.removeListener(IPC_CHANNELS.FLA_WORKER_READY, onReady);
     ipcMain.removeListener(IPC_CHANNELS.FLA_WORKER_PROGRESS, onProgress);
     ipcMain.removeListener(IPC_CHANNELS.FLA_WORKER_RESULT, onResult);

@@ -106,7 +106,7 @@ export interface SnapshotImportReceipt {
 
 type FocusedSnapshotPreview =
   | { key: string; status: 'loading' }
-  | { key: string; status: 'ready'; url: string; width: number; height: number }
+  | { key: string; status: 'ready'; url: string; width: number; height: number; projectionWarning?: string }
   | { key: string; status: 'error'; message: string };
 
 export function FlaStaticSnapshotReview({
@@ -522,6 +522,7 @@ export function FlaStaticSnapshotReview({
                   url: fullSizeUrl,
                   width: outcome.response.width,
                   height: outcome.response.height,
+                  projectionWarning: outcome.response.projectionWarning,
                 });
               }
               setCandidatePreviewAndProgress(index, entry, {
@@ -690,6 +691,7 @@ export function FlaStaticSnapshotReview({
         url,
         width: response.width,
         height: response.height,
+        projectionWarning: response.projectionWarning,
       });
     })().catch((error: unknown) => {
       if (disposed || focusedCandidateIdentityKeyRef.current !== identityKey) return;
@@ -1080,6 +1082,9 @@ export function FlaStaticSnapshotReview({
               {!effectiveFocusedCandidateKey ? '无可预览素材' : focusedStatus?.status === 'blank' ? '空白状态' : focusedStatus?.status === 'unsupported' ? '暂不可导入' : focusedPreviewForEntry?.status === 'ready' ? '可导入' : focusedStatus?.status === 'supported' ? '正在加载清晰预览' : phase === 'scanning' ? '正在检查' : '等待检查'}
             </output>
           </header>
+          {focusedPreviewForEntry?.status === 'ready' && focusedPreviewForEntry.projectionWarning ? (
+            <p role="status">跳过了无法投影的图层。{focusedPreviewForEntry.projectionWarning}</p>
+          ) : null}
           <div className="fla-snapshot-preview-stage" data-preview-state={previewAreaState} data-testid="fla-snapshot-preview-area">
             {focusedPreviewForEntry?.status !== 'loading' && (focusedPreviewForEntry?.status === 'error' || focusedStatus?.status === 'error') ? (
               <FlaPreviewFailure

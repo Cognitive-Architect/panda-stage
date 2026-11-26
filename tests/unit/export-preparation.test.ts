@@ -47,6 +47,8 @@ import {
   type ExportPreparationRequest,
 } from '../../src/shared/export-preparation-types';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
+import { evaluateExportShotAtTime } from '../../src/export-renderer/evaluateExportShotAtTime';
+import { planPngSequenceFrames } from '../../src/shared/export-types';
 import {
   buildProject,
   buildProjectWithAnimation,
@@ -318,6 +320,44 @@ afterEach(async () => {
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
+});
+
+it('F08: prepares and draws the selected character’s dialogue mouth at 100ms', async () => {
+  const media = new Map<string, Uint8Array>();
+  const base = projectWithMedia(media);
+  const audioId = randomUUID();
+  const clipId = randomUUID();
+  const project = ProjectSchema.parse({
+    ...base,
+    assets: [...base.assets, { id: audioId, kind: 'audio', name: 'Line', relativePath: 'assets/line.wav',
+      mimeType: 'audio/wav', durationMs: 600, sha256: 'a'.repeat(64) }],
+    characters: base.characters.map((character) => ({ ...character, mouthOpenAssetId: IDS.assetChar2 })),
+    shots: base.shots.map((shot) => ({
+      ...shot,
+      audioClips: [{ id: clipId, role: 'dialogue', name: 'Line', assetId: audioId,
+        startMs: 0, endMs: 600, offsetMs: 0, volume: 1 }],
+      dialogues: shot.dialogues.map((line) => ({ ...line, audioClipId: clipId, startMs: 0, endMs: 600 })),
+    })),
+  });
+  const fixture = await harness({ project, media });
+  const options = { shotId: IDS.shot, layerId: IDS.layerChar, transparent: true, spriteSheet: true } as const;
+  const selected = await fixture.service.selectOutput({
+    projectRoot: fixture.projectRoot, projectId: project.id, projectName: project.name,
+    openInstanceId: OPEN_INSTANCE_ID, pngSequence: options,
+  }, path.join(fixture.outputDirectory, 'speaker-atlas'));
+  if (selected.status !== 'selected') throw new Error(JSON.stringify(selected));
+  const prepared = await fixture.service.prepare(requestFor(fixture, selected.selectionId));
+  if (prepared.status !== 'PREPARATION_READY') throw new Error(JSON.stringify(prepared));
+  expect(prepared.candidate.mediaManifest.map(({ assetId }) => assetId).sort()).toEqual([IDS.assetChar, IDS.assetChar2]);
+  const schedule = planPngSequenceFrames(prepared.candidate.project, options);
+  const visual = evaluateExportShotAtTime(project, schedule.shot, 100, undefined, undefined, schedule.selectedLayer?.id);
+  const model = buildStageRenderModel(project, visual, {
+    [IDS.assetChar]: 'blob:closed', [IDS.assetChar2]: 'blob:open',
+  });
+  expect(visual.backgroundLayerId).toBeNull();
+  expect(visual.layers.map(({ id }) => id)).toEqual([IDS.layerChar]);
+  expect(visual.layers[0]?.mouthOverrideAssetId).toBe(IDS.assetChar2);
+  expect(model.layers.map(({ assetId }) => assetId)).toEqual([IDS.assetChar2]);
 });
 
 it('prepares export with a missing Adaptive Parts expression file and includes it again after repair', async () => {

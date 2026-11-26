@@ -1,4 +1,13 @@
+import { layerAttachmentTargetKey, resolveLayerAttachmentLocalMatrix } from '../layer-attachment';
+import { layerAttachmentWorldMatrix } from '../layer-parent-space';
+import { projectShotDialogueVisual } from '../selectors/temporalRender';
+import type { LayerAttachmentTarget, LayerParentKey, LayerParentKeyDepthMode } from '../models';
+import { resolveTimelineFrameTime } from '../timeline/frame-grid';
+import type { FlaInstanceColor } from '../../shared/fla-instance-color';
+import { FlaGraphicInstanceTextOverridesSchema } from '../models/flaGraphicInstanceText';
 import {
+  LAYER_DEPTH_MAX,
+  LAYER_DEPTH_MIN,
   LAYER_MAX_SCALE,
   LAYER_MIN_SCALE,
   PROJECT_HEIGHT,
@@ -39,7 +48,7 @@ import {
   type Shot,
   type TimelineEvent,
 } from '../models';
-import type { AffineMatrix2D } from '../../shared/affine-matrix';
+import { invertAffineMatrix, multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine-matrix';
 import { NameSchema } from '../models/common';
 import { AnimationSourceRangeSchema, type AnimationSourceRange } from '../models/animationSourceRange';
 import { ReusableAnimationSegmentSchema, type ReusableAnimationSegment } from '../models/reusableAnimationSegment';
@@ -91,6 +100,7 @@ import {
   type LayerBasePose,
 } from '../layer-animation';
 import {
+  type EvaluatedLayer,
   evaluateLayerPreTrackState,
   evaluateShotAtTime,
 } from '../evaluate-shot-at-time';
@@ -102,6 +112,53 @@ import {
 } from '../timeline/frame-grid';
 import type { AnimationKey, LayerAnimationClip } from '../models/animationCore';
 import { PositionProjectService } from './PositionProjectService';
+import { evaluatedLayerWorldMatrix, parentKeyEditCreatesCycle, validLayerParentTargets } from '../layer-parent-space';
+
+import { remapLayerMotionOwner, syncLayerAnimationClipBasis } from '../layer-animation';
+
+function clampLayerDepth(depth: number): number {
+  return Math.max(LAYER_DEPTH_MIN, Math.min(LAYER_DEPTH_MAX, depth));
+}
+
+function preservedDetachedDepth(
+  layer: Pick<Layer, 'depth' | 'depthKeys'>,
+  pose: Pick<EvaluatedLayer, 'effectiveDepth'> | undefined,
+): number | undefined {
+  if (layer.depthKeys?.length || layer.depth !== undefined) return layer.depth;
+  const inherited = pose?.effectiveDepth;
+  if (inherited === undefined || !Number.isFinite(inherited)) return undefined;
+  return clampLayerDepth(inherited);
+}
+
+function frozenParentKeyDepth(
+  layer: Pick<Layer, 'depth' | 'depthKeys'>,
+  pose: Pick<EvaluatedLayer, 'effectiveDepth'> | undefined,
+  forceZeroWhenPreserving = false,
+): number | undefined {
+  if (layer.depthKeys?.length) return undefined;
+  const effective = pose?.effectiveDepth;
+  if (effective === undefined || !Number.isFinite(effective)) {
+    return forceZeroWhenPreserving && layer.depth === undefined ? 0 : undefined;
+  }
+  if (layer.depth !== undefined && Math.abs(effective - layer.depth) <= 1e-6) {
+    return undefined;
+  }
+  return clampLayerDepth(effective);
+}
+
+function frozenDetachedKeyCameraSpace(
+  layer: Pick<Layer, 'cameraSpace'>,
+  pose: Pick<EvaluatedLayer, 'effectiveCameraSpace'> | undefined,
+): 'world' | 'screen' | undefined {
+  if (pose?.effectiveCameraSpace === 'screen') return 'screen';
+  if (layer.cameraSpace === 'screen') return 'world';
+  return undefined;
+}
+
+export interface SetParentKeyOptions {
+  readonly target?: LayerAttachmentTarget;
+  readonly depthMode?: LayerParentKeyDepthMode;
+}
 
 interface BakedGraphicSample {
   readonly frame: number;
@@ -515,6 +572,11 @@ export class LayerService {
     );
   }
 
+  createControl(project: Project, shotId: string): CreateLayerResult {
+    return this.appendLayer(project, this.shot(project, shotId), '控制层', { kind: 'control' },
+      { x: PROJECT_WIDTH / 2, y: PROJECT_HEIGHT / 2 }, 1, false);
+  }
+
   createFromAnimation(
     project: Project,
     shotId: string,
@@ -603,6 +665,17 @@ export class LayerService {
     };
   }
 
+  restoreFlaOccurrenceColor(project: Project, shotId: string, layerId: string, instanceColor: FlaInstanceColor): Project {
+    const shot = this.shot(project, shotId);
+    const layers = shot.layers.map((layer) => {
+      if (layer.id !== layerId || layer.source.kind !== 'animation') return layer;
+      const { flaOccurrence } = layer.source;
+      if (!flaOccurrence || flaOccurrence.instanceColor) return layer;
+      return { ...layer, source: { ...layer.source, flaOccurrence: { ...flaOccurrence, instanceColor } } };
+    });
+    return this.replaceShot(project, { ...shot, layers });
+  }
+
   saveAnimationSegment(project: Project, input: SaveAnimationSegmentInput): Project {
     const animation = project.animations.find((entry) => entry.id === input.animationId);
     if (!animation) throw new LayerServiceError('ANIMATION_NOT_FOUND', '请选择存在的源动画。');
@@ -680,9 +753,20 @@ export class LayerService {
       );
     }
     if (shot.backgroundLayerId === layer.id) {
-      if (layer.locked) return project;
+      if (layer.locked && !layer.parentLayerId && !layer.parentSpaceOffset && !layer.parentKeys?.length && !layer.layerMotionTracks && layer.cameraSpace !== 'screen') return project;
       const layers = [...shot.layers];
-      layers[layerIndex] = { ...layer, locked: true, zIndex: 0 };
+      const { parentKeys: _clearedParentKeys, ...layerWithoutParentKeys } = layer;
+      void _clearedParentKeys;
+      layers[layerIndex] = {
+        ...layerWithoutParentKeys,
+        parentLayerId: undefined,
+        parentAttachment: undefined,
+        parentSpaceOffset: undefined,
+        layerMotionTracks: undefined,
+        cameraSpace: undefined,
+        locked: true,
+        zIndex: 0,
+      };
       return this.replaceShot(project, {
         ...shot,
         layers: this.normalizeLayerOrder(
@@ -747,6 +831,7 @@ export class LayerService {
     ];
     const changed =
       backgroundIndex !== 0 ||
+      Boolean(background.parentLayerId || background.parentSpaceOffset || background.parentKeys?.length || background.layerMotionTracks || background.cameraSpace === 'screen') ||
       background.x !== filledBackground.x ||
       background.y !== filledBackground.y ||
       background.scaleX !== filledBackground.scaleX ||
@@ -937,6 +1022,47 @@ export class LayerService {
     delete nextLayer.flaGraphicInstanceTransformOverrides;
     if (nextOverrides) {
       nextLayer.flaGraphicInstanceTransformOverrides = nextOverrides;
+    }
+    const layers = [...shot.layers];
+    layers[layerIndex] = nextLayer;
+    return this.replaceShot(project, { ...shot, layers });
+  }
+
+  updateFlaGraphicInstanceText(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    characters: string,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layerIndex = this.layerIndex(shot, layerId);
+    const layer = shot.layers[layerIndex]!;
+    this.assertEditable(shot, layer);
+    const source = layer.source;
+    if (source.kind !== 'animation') return project;
+    const definition = project.animations.find(({ id }) => id === source.animationId);
+    if (!definition || !('kind' in definition) || definition.kind !== 'fla-graphic' || !definition.structure) return project;
+    const node = findFlaGraphicStructureNodeAtPath(definition.structure, frameOrdinal, nodePath);
+    if (node?.type !== 'opaque' || node.opaqueKind !== 'text' || !node.editableText) return project;
+
+    const frameKey = String(frameOrdinal);
+    const pathKey = flaGraphicInstanceNodePathKey(nodePath);
+    const original = node.editableText.runs[0].characters;
+    const overrides = { ...layer.flaGraphicInstanceTextOverrides };
+    const frameOverrides = { ...overrides[frameKey] };
+    if ((frameOverrides[pathKey] ?? original) === characters) return project;
+    if (characters === original) delete frameOverrides[pathKey];
+    else frameOverrides[pathKey] = characters;
+    if (Object.keys(frameOverrides).length) overrides[frameKey] = frameOverrides;
+    else delete overrides[frameKey];
+    const nextLayer = { ...layer };
+    delete nextLayer.flaGraphicInstanceTextOverrides;
+    if (Object.keys(overrides).length) {
+      const validated = FlaGraphicInstanceTextOverridesSchema.safeParse(overrides);
+      if (!validated.success) throw new Error('替换文字超出支持范围。');
+      nextLayer.flaGraphicInstanceTextOverrides = validated.data;
     }
     const layers = [...shot.layers];
     layers[layerIndex] = nextLayer;
@@ -1820,19 +1946,334 @@ export class LayerService {
     });
   }
 
+  updateLayerAppearance(project: Project, shotId: string, layerId: string, changes: Partial<Pick<Layer, 'opacity' | 'flipX'>>): Project {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    this.assertEditable(shot, layer);
+    return this.replaceShot(project, { ...shot, layers: shot.layers.map((entry) =>
+      entry.id === layerId ? { ...entry, ...changes } : entry) });
+  }
+
+  setCameraAttachment(project: Project, shotId: string, layerId: string, attached: boolean): Project {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    this.assertContentLayer(shot, layer);
+    this.assertEditable(shot, layer);
+    if (layer.parentLayerId || layer.parentKeys?.some((key) => key.parentLayerId !== null)) {
+      throw new Error('请先解除父级绑定，再切换相机附着。');
+    }
+    if ((layer.cameraSpace === 'screen') === attached) return project;
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((entry) => entry.id === layerId
+        ? { ...entry, cameraSpace: attached ? 'screen' : undefined }
+        : entry),
+    });
+  }
+
+  private buildParentKeyAtBoundary(
+    project: Project,
+    evalShot: Shot,
+    child: Layer,
+    timeMs: number,
+    parentId: string | null,
+    options?: SetParentKeyOptions,
+  ): LayerParentKey {
+    const poses = projectShotDialogueVisual(project, evalShot, evaluateShotAtTime(evalShot, timeMs, project)).layers;
+    const childPose = poses.find(({ id }) => id === child.id);
+    const oldSpace = childPose?.parentSpace;
+    const oldCameraSpace = childPose?.effectiveCameraSpace ?? 'world';
+    if (parentId === null) {
+      const preservedDepth = frozenParentKeyDepth(child, childPose, false);
+      const preservedSpace = frozenDetachedKeyCameraSpace(child, childPose);
+      return {
+        timeMs,
+        parentLayerId: null,
+        ...(oldSpace ? { parentSpaceOffset: oldSpace } : {}),
+        depthMode: 'preserve',
+        ...(preservedDepth !== undefined ? { depth: preservedDepth } : {}),
+        ...(preservedSpace ? { cameraSpace: preservedSpace } : {}),
+      };
+    }
+    const parentPose = poses.find(({ id }) => id === parentId);
+    const owner = evalShot.layers.find(({ id }) => id === parentId);
+    if (!parentPose || !owner) {
+      throw new LayerServiceError('LAYER_NOT_FOUND', `找不到图层：${parentId}`);
+    }
+    const newCameraSpace = parentPose.effectiveCameraSpace ?? 'world';
+    if (oldCameraSpace !== newCameraSpace) {
+      throw new Error('不支持直接跨世界空间与屏幕空间交接，请先解除绑定并切换相机附着后再绑定。');
+    }
+    const target = options?.target;
+    const targetLocal = target ? resolveLayerAttachmentLocalMatrix(project, owner, parentPose, target) : undefined;
+    if (target && !targetLocal) throw new Error('当前帧没有可用的挂接姿态。');
+    const world = targetLocal
+      ? layerAttachmentWorldMatrix(parentPose, targetLocal, parentPose.parentSpace)
+      : evaluatedLayerWorldMatrix(parentPose);
+    const parentInverse = !parentPose.parentSpaceUnavailable ? invertAffineMatrix(world) : undefined;
+    if (!parentInverse) throw new Error('父级图层的当前变换无法反算。请调整父级姿态后重试。');
+    const offset = oldSpace ? multiplyAffineMatrices(parentInverse, oldSpace) : parentInverse;
+    const oldDepth = childPose?.effectiveDepth ?? 0;
+    const newDepth = parentPose.effectiveDepth ?? 0;
+    const depthsDiffer = Math.abs(oldDepth - newDepth) > 1e-6;
+    const depthMode: LayerParentKeyDepthMode = options?.depthMode ?? (depthsDiffer ? 'preserve' : 'inherit');
+    const preservedDepth = depthMode === 'preserve' ? frozenParentKeyDepth(child, childPose, depthsDiffer) : undefined;
+    return {
+      timeMs,
+      parentLayerId: parentId,
+      ...(target && targetLocal ? { parentAttachment: { target, ownerLocalFallback: targetLocal } } : {}),
+      parentSpaceOffset: offset,
+      depthMode,
+      ...(preservedDepth !== undefined ? { depth: preservedDepth } : {}),
+    };
+  }
+
+  setParent(project: Project, shotId: string, childId: string, parentId: string | null, timeMs: number, target?: LayerAttachmentTarget): Project {
+    const shot = this.shot(project, shotId);
+    const child = shot.layers[this.layerIndex(shot, childId)]!;
+    this.assertContentLayer(shot, child);
+    this.assertEditable(shot, child);
+    const previousTarget = child.parentAttachment?.target;
+    if ((child.parentLayerId ?? null) === parentId &&
+      (previousTarget && layerAttachmentTargetKey(previousTarget)) === (target && layerAttachmentTargetKey(target))) return project;
+    const baseEndMs = child.parentKeys?.[0]?.timeMs ?? Infinity;
+    if (parentId && !validLayerParentTargets(shot, childId, 0, baseEndMs).some(({ id }) => id === parentId)) {
+      throw new Error('请选择同一镜头内不会形成循环的父级图层。');
+    }
+    const evalShot: Shot = child.parentKeys?.length
+      ? { ...shot, layers: shot.layers.map((layer) => (layer.id === childId ? { ...layer, parentKeys: undefined } : layer)) }
+      : shot;
+    const poses = projectShotDialogueVisual(project, evalShot, evaluateShotAtTime(evalShot, timeMs, project)).layers;
+    const childPose = poses.find(({ id }) => id === childId);
+    const oldSpace = childPose?.parentSpace;
+    const parent = poses.find(({ id }) => id === parentId);
+    const owner = parent && evalShot.layers.find(({ id }) => id === parent.id);
+    const targetLocal = owner && parent && target ? resolveLayerAttachmentLocalMatrix(project, owner, parent, target) : undefined;
+    if (target && !targetLocal) throw new Error('当前帧没有可用的挂接姿态。');
+    const world = parent && (targetLocal
+      ? layerAttachmentWorldMatrix(parent, targetLocal, parent.parentSpace)
+      : evaluatedLayerWorldMatrix(parent));
+    const parentInverse = world && !parent?.parentSpaceUnavailable && invertAffineMatrix(world);
+    if (parent && !parentInverse) throw new Error('父级图层的当前变换无法反算。请调整父级姿态后重试。');
+    const offset = parentInverse && oldSpace ? multiplyAffineMatrices(parentInverse, oldSpace) : parentInverse || oldSpace;
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((layer) => layer.id === childId ? {
+        ...layer, parentLayerId: parentId ?? undefined, parentSpaceOffset: offset,
+        cameraSpace: parentId ? undefined : childPose?.effectiveCameraSpace,
+        depth: parentId ? layer.depth : preservedDetachedDepth(layer, childPose),
+        parentAttachment: target && targetLocal ? { target, ownerLocalFallback: targetLocal } : undefined,
+      } : layer),
+    });
+  }
+
+  setParentKey(
+    project: Project,
+    shotId: string,
+    childId: string,
+    requestedTimeMs: number,
+    parentId: string | null,
+    options?: SetParentKeyOptions,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const child = shot.layers[this.layerIndex(shot, childId)]!;
+    this.assertContentLayer(shot, child);
+    this.assertEditable(shot, child);
+    const timeMs = resolveTimelineFrameTime(requestedTimeMs, shot.durationMs);
+    const existingKeys = child.parentKeys ?? [];
+    const nextKeyTime = existingKeys.find((key) => key.timeMs > timeMs)?.timeMs ?? Infinity;
+    if (parentId !== null && !validLayerParentTargets(shot, childId, timeMs, nextKeyTime).some(({ id }) => id === parentId)) {
+      throw new Error('请选择同一镜头内不会形成循环的父级图层。');
+    }
+    const nextKey = this.buildParentKeyAtBoundary(project, shot, child, timeMs, parentId, options);
+    const parentKeys = [
+      ...existingKeys.filter((key) => key.timeMs !== timeMs),
+      nextKey,
+    ].sort((left, right) => left.timeMs - right.timeMs);
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((layer) => (layer.id === childId ? { ...layer, parentKeys } : layer)),
+    });
+  }
+
+  moveParentKey(
+    project: Project,
+    shotId: string,
+    childId: string,
+    fromTimeMs: number,
+    requestedToTimeMs: number,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const child = shot.layers[this.layerIndex(shot, childId)]!;
+    this.assertContentLayer(shot, child);
+    this.assertEditable(shot, child);
+    const existingKeys = child.parentKeys ?? [];
+    const moving = existingKeys.find((key) => key.timeMs === fromTimeMs);
+    if (!moving) return project;
+    if (!Number.isFinite(requestedToTimeMs) || requestedToTimeMs < 0 || requestedToTimeMs > shot.durationMs) {
+      throw new Error('请输入镜头时长范围内的交接时间。');
+    }
+    const toTimeMs = resolveTimelineFrameTime(requestedToTimeMs, shot.durationMs);
+    if (toTimeMs === fromTimeMs) return project;
+    const others = existingKeys.filter((key) => key.timeMs !== fromTimeMs);
+    if (others.some((key) => key.timeMs === toTimeMs)) {
+      throw new Error('目标帧已存在父级切换关键帧。');
+    }
+    const candidateKeys = [...others, { ...moving, timeMs: toTimeMs }].sort((left, right) => left.timeMs - right.timeMs);
+    const ranges = [fromTimeMs, toTimeMs].map((startMs) => ({
+      startMs,
+      endMs: others.find((key) => key.timeMs > startMs)?.timeMs ?? Infinity,
+    }));
+    if (parentKeyEditCreatesCycle(shot, child, { ...child, parentKeys: candidateKeys }, ranges)) {
+      throw new Error('移动交接帧会让图层在同一时间互为父级，形成循环。请选择其他时间。');
+    }
+    const shotWithoutMoving: Shot = {
+      ...shot,
+      layers: shot.layers.map((layer) =>
+        layer.id === childId ? { ...layer, parentKeys: others.length ? others : undefined } : layer,
+      ),
+    };
+    const movedKey = this.buildParentKeyAtBoundary(
+      project,
+      shotWithoutMoving,
+      child,
+      toTimeMs,
+      moving.parentLayerId,
+      { target: moving.parentAttachment?.target, depthMode: moving.depthMode },
+    );
+    const parentKeys = candidateKeys.map((key) => key.timeMs === toTimeMs ? movedKey : key);
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((layer) => (layer.id === childId ? { ...layer, parentKeys } : layer)),
+    });
+  }
+
+  removeParentKey(
+    project: Project,
+    shotId: string,
+    childId: string,
+    timeMs: number,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const child = shot.layers[this.layerIndex(shot, childId)]!;
+    this.assertContentLayer(shot, child);
+    this.assertEditable(shot, child);
+    const existingKeys = child.parentKeys ?? [];
+    if (!existingKeys.some((key) => key.timeMs === timeMs)) return project;
+    const remaining = existingKeys.filter((key) => key.timeMs !== timeMs);
+    const endMs = remaining.find((key) => key.timeMs > timeMs)?.timeMs ?? Infinity;
+    if (parentKeyEditCreatesCycle(shot, child, { ...child, parentKeys: remaining }, [{ startMs: timeMs, endMs }])) {
+      throw new Error('删除交接帧会让图层在同一时间互为父级，形成循环。');
+    }
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((layer) => {
+        if (layer.id !== childId) return layer;
+        if (remaining.length) return { ...layer, parentKeys: remaining };
+        const { parentKeys: _removedParentKeys, ...rest } = layer;
+        void _removedParentKeys;
+        return rest;
+      }),
+    });
+  }
+
+  realignParentKey(
+    project: Project,
+    shotId: string,
+    childId: string,
+    timeMs: number,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const child = shot.layers[this.layerIndex(shot, childId)]!;
+    this.assertContentLayer(shot, child);
+    this.assertEditable(shot, child);
+    const existingKeys = child.parentKeys ?? [];
+    const targetKey = existingKeys.find((key) => key.timeMs === timeMs);
+    if (!targetKey) return project;
+    const others = existingKeys.filter((key) => key.timeMs !== timeMs);
+    const shotWithoutTarget: Shot = {
+      ...shot,
+      layers: shot.layers.map((layer) =>
+        layer.id === childId ? { ...layer, parentKeys: others.length ? others : undefined } : layer,
+      ),
+    };
+    const realigned = this.buildParentKeyAtBoundary(
+      project,
+      shotWithoutTarget,
+      child,
+      timeMs,
+      targetKey.parentLayerId,
+      { target: targetKey.parentAttachment?.target, depthMode: targetKey.depthMode },
+    );
+    const parentKeys = existingKeys.map((key) => (key.timeMs === timeMs ? realigned : key));
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((layer) => (layer.id === childId ? { ...layer, parentKeys } : layer)),
+    });
+  }
+
   deleteLayer(
     project: Project,
     shotId: string,
     layerId: string,
+    timeMs = 0,
   ): Project {
     const shot = this.shot(project, shotId);
     const layerIndex = this.layerIndex(shot, layerId);
     const layer = shot.layers[layerIndex]!;
     this.assertContentLayer(shot, layer);
     this.assertEditable(shot, layer);
-    const remaining = shot.layers.filter(
-      (candidate) => candidate.id !== layer.id,
-    );
+    const poseCache = new Map<number, Map<string, EvaluatedLayer>>();
+    const poseAt = (evalTimeMs: number, targetLayerId: string): EvaluatedLayer | undefined => {
+      let atTime = poseCache.get(evalTimeMs);
+      if (!atTime) {
+        atTime = new Map(
+          projectShotDialogueVisual(project, shot, evaluateShotAtTime(shot, evalTimeMs, project)).layers.map(
+            (pose) => [pose.id, pose],
+          ),
+        );
+        poseCache.set(evalTimeMs, atTime);
+      }
+      return atTime.get(targetLayerId);
+    };
+    const remaining = shot.layers.filter((candidate) => candidate.id !== layer.id).map((candidate) => {
+      const baseRefsDeleted = candidate.parentLayerId === layerId;
+      const keysRefDeleted = Boolean(candidate.parentKeys?.some((key) => key.parentLayerId === layerId));
+      if (!baseRefsDeleted && !keysRefDeleted) return candidate;
+      let nextCandidate = candidate;
+      if (baseRefsDeleted) {
+        const baseIsActive = !candidate.parentKeys?.length || timeMs < candidate.parentKeys[0]!.timeMs;
+        const basePose = poseAt(baseIsActive ? timeMs : 0, candidate.id);
+        nextCandidate = {
+          ...nextCandidate,
+          parentLayerId: undefined,
+          parentAttachment: undefined,
+          parentSpaceOffset: basePose?.parentSpace,
+          cameraSpace: basePose?.effectiveCameraSpace,
+          depth: preservedDetachedDepth(candidate, basePose),
+        };
+      }
+      if (keysRefDeleted && candidate.parentKeys) {
+        const nextKeys: LayerParentKey[] = candidate.parentKeys.map((key, index) => {
+          if (key.parentLayerId !== layerId) return key;
+          const nextTime = candidate.parentKeys![index + 1]?.timeMs ?? Infinity;
+          const isCurrentSegment = timeMs >= key.timeMs && timeMs < nextTime;
+          const segPose = poseAt(isCurrentSegment ? timeMs : key.timeMs, candidate.id);
+          const preservedDepth = frozenParentKeyDepth(nextCandidate, segPose, false);
+          const preservedSpace = frozenDetachedKeyCameraSpace(nextCandidate, segPose);
+          return {
+            timeMs: key.timeMs,
+            parentLayerId: null,
+            ...(segPose?.parentSpace ? { parentSpaceOffset: segPose.parentSpace } : {}),
+            depthMode: 'preserve',
+            ...(preservedDepth !== undefined ? { depth: preservedDepth } : {}),
+            ...(preservedSpace ? { cameraSpace: preservedSpace } : {}),
+          };
+        });
+        nextCandidate = { ...nextCandidate, parentKeys: nextKeys };
+      }
+      return nextCandidate;
+    });
     const remainingShot = { ...shot, layers: remaining };
     return this.replaceShot(project, {
       ...remainingShot,
@@ -1863,35 +2304,65 @@ export class LayerService {
         '只能复制动画图层。',
       );
     }
+    return this.duplicateLayer(project, shotId, layerId);
+  }
+
+  duplicateLayer(project: Project, shotId: string, layerId: string, destinationShotId = shotId, timeMs = 0, sourceProject = project): CreateLayerResult {
+    const shot = this.shot(sourceProject, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
     this.assertContentLayer(shot, layer);
     this.assertEditable(shot, layer);
+    const destination = this.shot(project, destinationShotId);
+    const sameShot = shot.id === destination.id;
+    const keepParent = sameShot && destination.layers.some(({ id }) => id === layer.parentLayerId);
+    const hasParenting = Boolean(layer.parentLayerId || layer.parentKeys?.length);
+    const detachedPose = (!sameShot && hasParenting) || (!keepParent && layer.parentLayerId)
+      ? projectShotDialogueVisual(sourceProject, shot, evaluateShotAtTime(shot, timeMs, sourceProject))
+        .layers.find(({ id }) => id === layerId)
+      : undefined;
+    const copiedSpace = detachedPose?.parentSpace ?? layer.parentSpaceOffset;
+    const copiedDepth = detachedPose && !sameShot && layer.parentKeys?.length && !layer.depthKeys?.length
+      ? detachedPose.effectiveDepth ?? 0
+      : preservedDetachedDepth(layer, detachedPose);
+    const copiedParentKeys = sameShot && layer.parentKeys?.length
+      ? layer.parentKeys
+          .filter((key) => key.parentLayerId === null || destination.layers.some(({ id }) => id === key.parentLayerId))
+          .map((key) => structuredClone(key))
+      : undefined;
 
     const usedIds = this.projectIds(project);
     const offsetPosition = clampLayerPosition({
       x: layer.x + 24,
       y: layer.y + 24,
     });
-    const position =
+    const position = !sameShot ? { x: layer.x, y: layer.y } :
       offsetPosition.x === layer.x && offsetPosition.y === layer.y
         ? clampLayerPosition({ x: layer.x - 24, y: layer.y - 24 })
         : offsetPosition;
-    const sourceEvents = shot.timelineEvents.filter(
-      (event) => event.layerId === layer.id,
+    const sourceEvents = shot.timelineEvents.filter((event) =>
+      event.layerId === layer.id && (event.type !== 'mouth-pose' || !event.dialogueId ||
+        (sameShot && destination.dialogues.some(({ id }) => id === event.dialogueId))));
+    const { parentKeys: _parentKeys, animationTimeLink: _timeLink, ...layerBase } = layer;
+    void _parentKeys;
+    void _timeLink;
+    const copySource: Layer = {
+      ...layerBase,
+      parentLayerId: keepParent ? layer.parentLayerId : undefined,
+      parentAttachment: keepParent ? layer.parentAttachment : undefined,
+      ...(copiedParentKeys?.length ? { parentKeys: copiedParentKeys } : {}),
+      ...(sameShot && layer.animationTimeLink ? { animationTimeLink: { ...layer.animationTimeLink } } : {}),
+      parentSpaceOffset: copiedSpace,
+      cameraSpace: detachedPose ? detachedPose.effectiveCameraSpace : layer.cameraSpace,
+      depth: copiedDepth,
+    };
+    const { layer: duplicate, events: duplicatedEvents } = this.buildDuplicatedAnimationLayer(
+      copySource, sourceEvents, usedIds, position, Math.max(-1, ...destination.layers.map(({ zIndex }) => zIndex)) + 1,
+      suffixedLayerName(layer.name, ' 副本'),
     );
-    const zIndex = Math.max(-1, ...shot.layers.map((item) => item.zIndex)) + 1;
-    const { layer: duplicate, events: duplicatedEvents } =
-      this.buildDuplicatedAnimationLayer(
-        layer,
-        sourceEvents,
-        usedIds,
-        position,
-        zIndex,
-        suffixedLayerName(layer.name, ' 副本'),
-      );
     const nextShot = {
-      ...shot,
-      layers: [...shot.layers, duplicate],
-      timelineEvents: [...shot.timelineEvents, ...duplicatedEvents],
+      ...destination,
+      layers: [...destination.layers, duplicate],
+      timelineEvents: [...destination.timelineEvents, ...duplicatedEvents],
     };
     return {
       project: this.replaceShot(project, nextShot),
@@ -3441,21 +3912,9 @@ export class LayerService {
             ),
           }
         : {}),
-      ...(layer.animationClip?.version === 2
-        ? {
-            animationClip: duplicateLayerAnimationClip(
-              layer.animationClip,
-              duplicateId,
-              {
-                x: position.x,
-                y: position.y,
-                scaleX: layer.scaleX,
-                scaleY: layer.scaleY,
-                rotationDeg,
-              },
-            ),
-          }
-        : {}),
+      ...structuredClone(remapLayerMotionOwner(layer, duplicateId)),
+      ...(layer.flaGraphicInstanceTextOverrides
+        ? { flaGraphicInstanceTextOverrides: structuredClone(layer.flaGraphicInstanceTextOverrides) } : {}),
       id: duplicateId,
       name,
       x: position.x,
@@ -3463,6 +3922,10 @@ export class LayerService {
       rotationDeg,
       zIndex,
     };
+    const motionBasis = { x: position.x, y: position.y, rotationDeg, scaleX: layer.scaleX, scaleY: layer.scaleY };
+    if (duplicate.animationClip?.version === 2) {
+      duplicate.animationClip = syncLayerAnimationClipBasis(duplicate.animationClip, duplicateId, motionBasis);
+    }
     const events = this.cloneEventsPreservingOrder(
       sourceEvents,
       duplicate.id,
@@ -3562,8 +4025,15 @@ export class LayerService {
         '正式背景源尺寸无效，无法计算填满画布的几何。',
       );
     }
+    const { parentKeys: _clearedCoverParentKeys, ...layerWithoutParentKeys } = layer;
+    void _clearedCoverParentKeys;
     return {
-      ...layer,
+      ...layerWithoutParentKeys,
+      parentLayerId: undefined,
+      parentAttachment: undefined,
+      parentSpaceOffset: undefined,
+      layerMotionTracks: undefined,
+      cameraSpace: undefined,
       x: PROJECT_WIDTH / 2,
       y: PROJECT_HEIGHT / 2,
       scaleX: cover.scale,

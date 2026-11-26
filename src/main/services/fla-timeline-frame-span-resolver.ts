@@ -25,6 +25,8 @@ export interface FlaTimelineFrameSpanInput<T> {
 
 export interface FlaTimelineLayerSpanInput<T> {
   readonly visible: boolean;
+  /** Disabled camera metadata can extend the timeline without producing selectable layer spans. */
+  readonly timingOnly?: boolean;
   readonly frames: readonly FlaTimelineFrameSpanInput<T>[];
 }
 
@@ -132,6 +134,17 @@ function parseUnsignedInteger(value: unknown): number | null {
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
+function readFrameBounds(frame: Pick<FlaTimelineFrameSpanInput<unknown>, 'index' | 'duration'>) {
+  const index = parseUnsignedInteger(frame.index);
+  const duration = frame.duration === undefined ? 1 : parseUnsignedInteger(frame.duration);
+  if (index === null || duration === null || duration <= 0) return null;
+  return { index, duration, endExclusive: index + duration };
+}
+
+function isBoundedFrameEnd(endExclusive: number): boolean {
+  return Number.isSafeInteger(endExclusive) && endExclusive <= FLA_TIMELINE_FRAME_SPAN_LIMITS.maxFrameCount;
+}
+
 function parseTweenType(value: unknown): FlaTimelineTweenType | null {
   if (value === undefined) return 'none';
   if (typeof value !== 'string') return null;
@@ -175,6 +188,10 @@ export function buildFlaTimelineFrameSpanIndex<T>(
     if (!layer || typeof layer.visible !== 'boolean' || !Array.isArray(layer.frames)) {
       return failure('INVALID_TIMELINE', `Timeline layer ${layerIndex} is malformed`, { layerIndex });
     }
+    if (layer.timingOnly) {
+      normalizedLayers.push({ visible: false, spans: [] });
+      continue;
+    }
     if (layer.frames.length > FLA_TIMELINE_FRAME_SPAN_LIMITS.maxFrameSpanCount - totalSpanCount) {
       return failure(
         'FRAME_SPAN_BUDGET_EXCEEDED',
@@ -195,10 +212,9 @@ export function buildFlaTimelineFrameSpanIndex<T>(
         );
       }
 
-      const index = parseUnsignedInteger(frame.index);
-      const duration = frame.duration === undefined ? 1 : parseUnsignedInteger(frame.duration);
+      const bounds = readFrameBounds(frame);
       const tweenType = parseTweenType(frame.tweenType);
-      if (index === null || duration === null || duration <= 0 || tweenType === null) {
+      if (!bounds || tweenType === null) {
         return failure(
           'INVALID_FRAME_SPAN',
           `Timeline layer ${layerIndex} has invalid DOMFrame span metadata at source position ${sourceIndex}`,
@@ -206,9 +222,7 @@ export function buildFlaTimelineFrameSpanIndex<T>(
         );
       }
 
-      const endExclusive = index + duration;
-      if (!Number.isSafeInteger(endExclusive) ||
-          endExclusive > FLA_TIMELINE_FRAME_SPAN_LIMITS.maxFrameCount) {
+      if (!isBoundedFrameEnd(bounds.endExclusive)) {
         return failure(
           'FRAME_COUNT_LIMIT_EXCEEDED',
           `Timeline layer ${layerIndex} has a DOMFrame span beyond the ${FLA_TIMELINE_FRAME_SPAN_LIMITS.maxFrameCount}-frame limit`,
@@ -216,8 +230,8 @@ export function buildFlaTimelineFrameSpanIndex<T>(
         );
       }
 
-      spans.push({ index, duration, endExclusive, tweenType, sourceFrame: frame.sourceFrame });
-      frameCount = Math.max(frameCount, endExclusive);
+      spans.push({ ...bounds, tweenType, sourceFrame: frame.sourceFrame });
+      frameCount = Math.max(frameCount, bounds.endExclusive);
     }
 
     spans.sort((left, right) => left.index - right.index);
@@ -236,13 +250,29 @@ export function buildFlaTimelineFrameSpanIndex<T>(
     normalizedLayers.push({ visible: layer.visible, spans });
   }
 
+  // Count only bounded time metadata from disabled cameras. Authoring-only
+  // inputs use the remaining budget after the display layers are indexed.
+  for (const layer of layers) {
+    if (totalSpanCount >= FLA_TIMELINE_FRAME_SPAN_LIMITS.maxFrameSpanCount) break;
+    if (!layer.timingOnly) continue;
+    const count = Math.min(layer.frames.length, FLA_TIMELINE_FRAME_SPAN_LIMITS.maxFrameSpanCount - totalSpanCount);
+    for (let sourceIndex = 0; sourceIndex < count; sourceIndex += 1) {
+      const frame = layer.frames[sourceIndex];
+      const bounds = frame && typeof frame === 'object' ? readFrameBounds(frame) : null;
+      if (bounds && isBoundedFrameEnd(bounds.endExclusive)) {
+        frameCount = Math.max(frameCount, bounds.endExclusive);
+      }
+    }
+    totalSpanCount += count;
+  }
+
   return {
     ok: true,
     index: { frameCount, layers: normalizedLayers },
   };
 }
 
-function findCoveringSpan<T>(
+export function findCoveringSpan<T>(
   spans: readonly FlaNormalizedFrameSpan<T>[],
   frameIndex: number,
 ): FlaNormalizedFrameSpan<T> | null {

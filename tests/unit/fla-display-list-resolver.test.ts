@@ -159,7 +159,7 @@ describe('P0-C01 FLA display-list resolver', () => {
     const sceneChildren = displayList.layers[0]?.children ?? [];
     expect(sceneChildren.map((node) => node.kind === 'group'
       ? node.symbolLibraryItemName ?? node.groupId
-      : node.kind === 'shape' ? node.shapeId : node.libraryItemName)).toEqual([
+      : node.kind === 'shape' ? node.shapeId : node.kind === 'text' ? node.textId : node.libraryItemName)).toEqual([
       'scene-shape',
       'symbol-a',
       'scene-overlay.png',

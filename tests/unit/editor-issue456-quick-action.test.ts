@@ -64,6 +64,14 @@ describe('Issue #456 Quick Action Drawer geometry contract', () => {
     );
   });
 
+  it('uses the selected export format for the idle action name and tooltip', () => {
+    const bar = source('src/renderer/shell/CompactProjectBar.tsx');
+    expect(bar).toContain("exportPreferences?.format ?? 'mp4'");
+    expect(bar).toMatch(/mp4: '导出视频',[\s\S]*?'png-sequence': '导出 PNG 序列',[\s\S]*?'sprite-sheet': '导出精灵图'/u);
+    const button = bar.slice(bar.lastIndexOf('aria-label={', bar.indexOf('data-testid="quick-action-export"')));
+    expect(button.split('data-testid="quick-action-export-settings"')[0]?.match(/: exportLabel/gu)).toHaveLength(2);
+  });
+
   it('attaches a live dual-size Electron geometry gate', () => {
     expect(gate).toContain('1366, 768');
     expect(gate).toContain('1920, 1080');

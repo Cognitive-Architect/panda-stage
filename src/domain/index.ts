@@ -2,6 +2,7 @@ export * from './constants';
 export * from './audio-contract';
 export * from './audio-motion';
 export * from './export-audio-mix-plan';
+export * from './fla-sound-timeline';
 export * from './assetDropPayload';
 export * from './geometry';
 export * from './migrations';
@@ -18,6 +19,11 @@ export * from './evaluate-fla-graphic';
 export * from './fla-graphic-subtree';
 export * from './fla-shape-vector';
 export * from './resolve-speaker-focus-camera';
+export * from './shot-camera';
+export * from './layer-depth';
+export * from './layer-attachment';
+export * from './layer-parent-space';
+export * from './animation-time-link';
 export {
   assertLayerClipFinalScalesInBounds,
   evaluateLayerPreTrackState,

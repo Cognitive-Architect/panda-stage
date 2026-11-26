@@ -2119,6 +2119,10 @@ export function EditorShell({
         projectName: initial.project.name,
         openInstanceId: initialInstanceId,
         ...(pngSequence ? { pngSequence } : {}),
+        ...(!pngSequence && (
+          initial.project.exportPreferences?.format === 'webm' ||
+          initial.project.exportPreferences?.format === 'gif'
+        ) ? { videoFormat: initial.project.exportPreferences.format } : {}),
       });
       if (selection.status === 'cancelled') {
         setExportTaskState(previousTask);
@@ -2296,6 +2300,8 @@ export function EditorShell({
         revision: captured.revision,
         dirty: captured.dirty,
         cameraMode,
+        ...(!pngSequence && captured.project.exportPreferences?.videoOutput
+          ? { videoOutput: captured.project.exportPreferences.videoOutput } : {}),
         ...(Object.keys(silenceAtCapture).length > 0 ? { dialogueSilence: silenceAtCapture } : {}),
         project: structuredClone(captured.project),
       });
@@ -2386,17 +2392,21 @@ export function EditorShell({
   const beginPreferredExport = (): void => {
     const snapshot = editorProjectStore.getSnapshot();
     const preferences = snapshot?.project.exportPreferences;
-    if (preferences?.format !== 'png-sequence') { void beginFormalExportFlow(); return; }
+    if (!preferences || preferences.format === 'mp4' || preferences.format === 'webm' || preferences.format === 'gif') { void beginFormalExportFlow(); return; }
+    const spriteSheet = preferences.format === 'sprite-sheet';
     const shotId = shotStore.getCurrentShotId();
     if (!shotId || preferences.rangeMode === 'range') { setExportOptionsOpen(true); return; }
-    void beginFormalExportFlow({ shotId, transparent: preferences.transparent });
+    void beginFormalExportFlow({ shotId, transparent: spriteSheet || preferences.transparent,
+      ...(spriteSheet ? { spriteSheet: true } : {}) });
   };
 
   const confirmExportOptions = (preferences: ExportPreferences, pngSequence?: PngSequenceOptions): void => {
     const snapshot = editorProjectStore.getSnapshot();
     if (!snapshot) return;
     const previous = snapshot.project.exportPreferences ?? DEFAULT_EXPORT_PREFERENCES;
-    if (previous.format !== preferences.format || previous.rangeMode !== preferences.rangeMode || previous.transparent !== preferences.transparent) {
+    if (previous.format !== preferences.format || previous.rangeMode !== preferences.rangeMode || previous.transparent !== preferences.transparent ||
+        previous.videoOutput?.width !== preferences.videoOutput?.width || previous.videoOutput?.fps !== preferences.videoOutput?.fps ||
+        previous.gifLoop !== preferences.gifLoop) {
       editorProjectStore.updateProject({ ...snapshot.project, exportPreferences: preferences }, '更新导出设置');
     }
     setExportOptionsOpen(false);
@@ -2522,6 +2532,11 @@ export function EditorShell({
         openInstanceId: task.openInstanceId,
         snapshotId: task.snapshotId,
         ...(task.pngSequence ? { pngSequence: task.pngSequence } : {}),
+        ...(!task.pngSequence && /\.webm$/iu.test(task.fileName ?? '')
+          ? { videoFormat: 'webm' as const }
+          : !task.pngSequence && /\.gif$/iu.test(task.fileName ?? '')
+            ? { videoFormat: 'gif' as const }
+            : {}),
       });
       if (selection.status === 'cancelled') {
         setExportTaskState(task);
@@ -2587,7 +2602,7 @@ export function EditorShell({
         const current = exportTaskRef.current;
         setExportTaskState({
           ...current,
-          message: current.pngSequence ? '无法打开 PNG 序列输出目录。' :
+          message: current.pngSequence?.spriteSheet ? '无法打开精灵图输出目录。' : current.pngSequence ? '无法打开 PNG 序列输出目录。' :
             '\u65e0\u6cd5\u663e\u793a\u89c6\u9891\u6587\u4ef6\u3002\u8bf7\u9009\u62e9\u5176\u4ed6\u4f4d\u7f6e\u540e\u91cd\u65b0\u5bfc\u51fa\u3002',
         });
       }
@@ -3185,6 +3200,7 @@ export function EditorShell({
             key={`${openInstanceId}:${currentShotId}`}
             project={projectSnapshot.project}
             shot={projectSnapshot.project.shots.find(({ id }) => id === currentShotId)}
+            selectedLayerId={selectionStore.getSelectedLayerId()}
             initial={projectSnapshot.project.exportPreferences ?? DEFAULT_EXPORT_PREFERENCES}
             playheadMs={timelineUiStore.getSnapshot().currentTimeMs}
             onCancel={() => setExportOptionsOpen(false)} onExport={confirmExportOptions}

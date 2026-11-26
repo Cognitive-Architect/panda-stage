@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import {
   FlaStructureIRSchema,
   FLA_IMPORT_LIMITS,
@@ -25,6 +28,8 @@ import {
   startIssue762Profile,
 } from '../../shared/issue762-performance-profile';
 import type { FlaAssetCommitSession } from './FlaAssetCommitService';
+import { readFlaEmbeddedVideo } from './fla-native-video';
+import type { FFmpegAdapter } from './FFmpegAdapter';
 import {
   FlaPreflightError,
   preflightFlaBytes,
@@ -52,6 +57,7 @@ interface ActiveInspection {
 
 type InspectionSession = Extract<FlaInspectionResponse, { ok: true }> & {
   workerSource: FlaWorkerStartRequest['source'];
+  archiveEntries: FlaPreflightResult['entries'];
   mediaLoad?: Promise<AnimationImportIR['media']>;
   hydratedMedia: Map<string, Promise<FlaBitmapMedia>>;
   hydratedBytes: number;
@@ -283,6 +289,7 @@ export class FlaImportService {
       this.sessions.set(sessionId, {
         ...response,
         workerSource: request.source,
+        archiveEntries: preflight.entries,
         hydratedMedia: new Map(),
         hydratedBytes: 0,
       });
@@ -339,6 +346,57 @@ export class FlaImportService {
       sourceBytes: session.workerSource.bytes,
       loadMedia: () => this.loadMedia(session),
       hydrateMedia: (mediaId) => this.hydrateMedia(session, mediaId),
+    };
+  }
+
+  getSoundSource(sessionId: string, soundId: string) {
+    const session = this.sessions.get(sessionId);
+    const sound = session?.ir.sounds?.find(({ id }) => id === soundId);
+    return session && sound ? { sound, bytes: session.workerSource.bytes, entries: session.archiveEntries } : null;
+  }
+
+  async prepareEmbeddedVideo(
+    sessionId: string,
+    videoName: string,
+    adapter: Pick<FFmpegAdapter, 'probeFlaNativeVideo'>,
+    signal: AbortSignal,
+  ) {
+    signal.throwIfAborted();
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+    const media = readFlaEmbeddedVideo(session.workerSource.bytes, session.archiveEntries, videoName);
+    if (!media) return null;
+
+    const controller = new AbortController();
+    const unsubscribe = this.onSessionReleased((releasedId) => {
+      if (releasedId === sessionId) controller.abort();
+    });
+    const preparationSignal = AbortSignal.any([signal, controller.signal]);
+    let directory: string | undefined;
+    try {
+      directory = await mkdtemp(path.join(tmpdir(), 'panda-stage-fla-video-'));
+      const target = path.join(directory, media.mimeType === 'video/mp4' ? 'source.mp4' : 'source.mov');
+      await writeFile(target, media.bytes, { flag: 'wx', signal: preparationSignal });
+      const metadata = await adapter.probeFlaNativeVideo(target, preparationSignal);
+      preparationSignal.throwIfAborted();
+      return {
+        ...media,
+        metadata,
+        sourceSha256: session.trace?.originalSourceSha256 ?? session.ir.source.sha256,
+      };
+    } finally {
+      unsubscribe();
+      if (directory) await rm(directory, { recursive: true, force: true });
+    }
+  }
+
+  getSoundTimelineSession(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+    return {
+      ir: session.ir,
+      bytes: session.workerSource.bytes,
+      entries: session.archiveEntries,
     };
   }
 

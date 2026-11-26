@@ -1,3 +1,4 @@
+import { applyLayerParenting } from '../layer-parent-space';
 import type {
   EvaluatedHeadGroupTransform,
   EvaluatedLayer,
@@ -9,6 +10,7 @@ import { isCharacterTalkingSourceAvailable, listCharacterTalkingSources, resolve
 import type { AudioClip, ImageAsset, Project, Shot } from '../models';
 import { isFlaGraphicDefinition } from '../models/animation';
 import { evaluateFlaGraphicVisual } from '../evaluate-fla-graphic';
+import { parseFlaVideoFrameAssetKey } from '../../shared/fla-video-clock';
 import {
   evaluateLayerPreTrackState,
   evaluateShotAtTime,
@@ -166,18 +168,64 @@ export function listShotRuntimeImageAssets(
     ];
     for (const resource of resources) {
       const asset = assetIndex.get(resource.assetId);
-      if (asset?.kind === 'image') assets.set(asset.id, asset);
+      if (asset?.kind === 'image') {
+        assets.set(asset.id, asset);
+        continue;
+      }
+      const videoFrame = parseFlaVideoFrameAssetKey(resource.assetId);
+      if (videoFrame) {
+        const videoAsset = assetIndex.get(videoFrame.assetId);
+        if (videoAsset?.kind === 'video') {
+          assets.set(resource.assetId, {
+            id: resource.assetId,
+            kind: 'image',
+            name: videoAsset.name,
+            relativePath: videoAsset.relativePath,
+            mimeType: 'image/png',
+            ...(videoAsset.sha256 ? { sha256: videoAsset.sha256 } : {}),
+            width: videoAsset.width,
+            height: videoAsset.height,
+            usage: 'uncategorized',
+            keywords: [],
+          });
+        }
+      }
     }
   }
 
   return [...assets.values()];
 }
 
-/** The Graphic assets actually needed at the editor's current scrub position. */
+/** The Graphic and Video frame assets actually needed at the editor's current scrub position. */
 export function listShotGraphicImageAssetsAtTime(project: Project, shot: Shot, timeMs: number): ImageAsset[] {
   const graphics = new Map(project.animations.filter(isFlaGraphicDefinition).map((entry) => [entry.id, entry]));
   const needed = new Set<string>();
+  const syntheticVideoFrames = new Map<string, ImageAsset>();
   for (const layer of shot.layers) {
+    if (layer.source.kind === 'video') {
+      const evaluated = evaluateLayerPreTrackState(shot, layer, timeMs, project);
+      if (!evaluated.visible || !evaluated.assetId) continue;
+      const videoFrame = parseFlaVideoFrameAssetKey(evaluated.assetId);
+      if (!videoFrame) continue;
+      const videoAsset = project.assets.find(
+        (candidate) => candidate.id === videoFrame.assetId && candidate.kind === 'video',
+      );
+      if (videoAsset?.kind === 'video') {
+        syntheticVideoFrames.set(evaluated.assetId, {
+          id: evaluated.assetId,
+          kind: 'image',
+          name: videoAsset.name,
+          relativePath: videoAsset.relativePath,
+          mimeType: 'image/png',
+          ...(videoAsset.sha256 ? { sha256: videoAsset.sha256 } : {}),
+          width: videoAsset.width,
+          height: videoAsset.height,
+          usage: 'uncategorized',
+          keywords: [],
+        });
+      }
+      continue;
+    }
     const definition = layer.source.kind === 'animation' ? graphics.get(layer.source.animationId) : undefined;
     if (!definition) continue;
     const evaluated = evaluateLayerPreTrackState(shot, layer, timeMs, project);
@@ -190,10 +238,14 @@ export function listShotGraphicImageAssetsAtTime(project: Project, shot: Shot, t
       mode: 'instance',
       instanceTransformOverrides: layer.flaGraphicInstanceTransformOverrides,
       instanceShapeOverrides: layer.flaGraphicInstanceShapeOverrides,
+      instanceTextOverrides: layer.flaGraphicInstanceTextOverrides,
     });
     for (const assetId of visual?.resourceAssetIds ?? []) needed.add(assetId);
   }
-  return project.assets.filter((asset): asset is ImageAsset => asset.kind === 'image' && needed.has(asset.id));
+  return [
+    ...project.assets.filter((asset): asset is ImageAsset => asset.kind === 'image' && needed.has(asset.id)),
+    ...syntheticVideoFrames.values(),
+  ];
 }
 
 /** Shared speaker targeting. A null entry means multiple visible occurrences. */
@@ -520,10 +572,9 @@ export function projectShotDialogueVisual(
     activeDialogueId,
     dialogueSilence,
   );
-  return projectShotHeadMotion(
-    project,
-    shot,
-    withMouth,
-    activeDialogueId,
-  );
+  const withHead = projectShotHeadMotion(project, shot, withMouth, activeDialogueId);
+  return shot.layers.some(({ parentAttachment }) => parentAttachment) &&
+      withHead.layers.some(({ headGroupTransform }) => headGroupTransform)
+    ? { ...withHead, layers: applyLayerParenting(project, shot, withHead.layers, withHead.timeMs) }
+    : withHead;
 }

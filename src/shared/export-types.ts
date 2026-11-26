@@ -1,11 +1,13 @@
 import { z } from 'zod';
-import type { Project } from '../domain';
+import type { Layer, Project, Shot } from '../domain';
 import { mapProjectTime } from '../domain/selectors/projectTime';
 import { projectDurationMs } from '../domain/selectors/projectDuration';
 import { exportFrameTimeMs } from '../domain/timeline/frame-grid';
 import { ExportPreparationCameraModeSchema, type PngSequenceOptions } from './export-preparation-types';
 import { DialogueSilenceSchema } from './dialogue-silence';
 import { ExportAudioClipInputSchema } from './audio-mix-types';
+import { ExportOutputFpsSchema, ExportRenderSettingsSchema } from './export-output-profile';
+import { EXPORT_VIDEO_FRAME_CACHE_LIMIT } from './export-video-frame-cache';
 
 export const EXPORT_FPS = 24 as const;
 export const MAX_PENDING_FRAMES = 3 as const;
@@ -51,14 +53,28 @@ export const ExportLoadFormalMediaSchema = z
   })
   .strict();
 
+const ExportVideoFrameKeySchema = z.string().regex(/^[0-9a-f-]{36}#frame:\d+$/iu);
+export const ExportVideoFrameMediaSchema = z
+  .object({
+    assetId: ExportVideoFrameKeySchema,
+    mimeType: z.literal('image/png'),
+    bytes: z.instanceof(Uint8Array).refine(
+      (bytes) => bytes.byteLength > 0 && bytes.byteLength <= 64 * 1024 * 1024,
+      'Formal export video frame exceeds its single-frame byte budget.',
+    ),
+  })
+  .strict();
+
 export const ExportLoadFormalRequestSchema = z
   .object({
     jobId: JobIdSchema,
     project: z.unknown(),
     cameraMode: ExportPreparationCameraModeSchema,
+    renderSettings: ExportRenderSettingsSchema.optional(),
     solidClear: z.literal(true).optional(),
+    outputLayerId: z.uuid().optional(),
     dialogueSilence: DialogueSilenceSchema.optional(),
-    media: z.array(ExportLoadFormalMediaSchema).max(512),
+    media: z.array(ExportLoadFormalMediaSchema).max(2_048),
   })
   .strict()
   .superRefine((request, context) => {
@@ -93,6 +109,8 @@ export const ExportRenderFrameRequestSchema = z
     timeMs: FrameTimeSchema,
     shotId: z.uuid().optional(),
     shotLocalTimeMs: FrameTimeSchema.optional(),
+    videoFrames: z.array(ExportVideoFrameMediaSchema).max(EXPORT_VIDEO_FRAME_CACHE_LIMIT).optional(),
+    videoFrameCacheTouches: z.array(ExportVideoFrameKeySchema).max(EXPORT_VIDEO_FRAME_CACHE_LIMIT).optional(),
   })
   .strict()
   .superRefine((frame, context) => {
@@ -101,6 +119,21 @@ export const ExportRenderFrameRequestSchema = z
         code: 'custom',
         message: 'Shot identity and Shot-local time must be supplied together.',
       });
+    }
+    const keys = [...(frame.videoFrameCacheTouches ?? []), ...(frame.videoFrames ?? []).map(({ assetId }) => assetId)];
+    if ((keys.length > 0 && frame.shotId === undefined) || keys.length > EXPORT_VIDEO_FRAME_CACHE_LIMIT ||
+        new Set(keys).size !== keys.length) {
+      context.addIssue({ code: 'custom', message: 'Invalid formal video frame cache update.' });
+    }
+    if (frame.videoFrames) {
+      const totalBytes = frame.videoFrames.reduce((sum, item) => sum + item.bytes.byteLength, 0);
+      if (totalBytes > 64 * 1024 * 1024) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Per-frame video payload exceeds 64 MiB budget.',
+          path: ['videoFrames'],
+        });
+      }
     }
   });
 
@@ -111,14 +144,18 @@ export const ExportFrameReadySchema = z
     timeMs: FrameTimeSchema,
     shotId: z.uuid().optional(),
     shotLocalTimeMs: FrameTimeSchema.optional(),
-    width: z.literal(1_920),
-    height: z.literal(1_080),
+    width: z.union([z.literal(1_920), z.literal(1_280)]),
+    height: z.union([z.literal(1_080), z.literal(720)]),
     pngBytes: z
       .instanceof(Uint8Array)
       .refine((bytes) => bytes.byteLength > 8, 'PNG payload is empty.'),
   })
   .strict()
   .superRefine((frame, context) => {
+    if (!((frame.width === 1920 && frame.height === 1080) ||
+        (frame.shotId && frame.width === 1280 && frame.height === 720))) {
+      context.addIssue({ code: 'custom', message: 'Frame does not match a supported export resolution.', path: ['width'] });
+    }
     if ((frame.shotId === undefined) !== (frame.shotLocalTimeMs === undefined)) {
       context.addIssue({
         code: 'custom',
@@ -232,6 +269,7 @@ export const ExportJobUpdateSchema = z
     cleanupError: z.string().trim().min(1).max(2_000).nullable().optional(),
     outputPath: FileSystemPathSchema.optional(),
     incomplete: z.boolean().optional(),
+    diagnostics: z.array(z.string().trim().min(1).max(500)).max(32).optional(),
   })
   .strict();
 
@@ -288,9 +326,9 @@ export interface ProjectFrameScheduleEntry extends FrameScheduleEntry {
   shotLocalTimeMs: number;
 }
 
-export function frameTimeMs(frameIndex: number, fps = EXPORT_FPS): number {
+export function frameTimeMs(frameIndex: number, fps: number = EXPORT_FPS): number {
   const parsedFrameIndex = FrameIndexSchema.parse(frameIndex);
-  const parsedFps = z.literal(EXPORT_FPS).parse(fps);
+  const parsedFps = ExportOutputFpsSchema.parse(fps);
   return exportFrameTimeMs(parsedFrameIndex, parsedFps);
 }
 
@@ -312,10 +350,10 @@ export function createFrameSchedule(
   }));
 }
 
-export function formalFrameCount(durationMs: number, fps = EXPORT_FPS): number {
+export function formalFrameCount(durationMs: number, fps: number = EXPORT_FPS): number {
   const parsedDuration = FormalDurationSchema.parse(durationMs);
-  const parsedFps = z.literal(EXPORT_FPS).parse(fps);
-  const count = Math.ceil((parsedDuration / 1_000) * parsedFps);
+  const parsedFps = ExportOutputFpsSchema.parse(fps);
+  const count = Math.ceil(parsedDuration * parsedFps / 1_000);
   if (!Number.isSafeInteger(count) || count > MAX_FORMAL_EXPORT_FRAMES) {
     throw new Error('Formal export duration exceeds the frame budget.');
   }
@@ -324,7 +362,7 @@ export function formalFrameCount(durationMs: number, fps = EXPORT_FPS): number {
 
 export function* iterateFormalFrameSchedule(
   durationMs: number,
-  fps = EXPORT_FPS,
+  fps: number = EXPORT_FPS,
 ): Generator<FrameScheduleEntry> {
   const count = formalFrameCount(durationMs, fps);
   for (let frameIndex = 0; frameIndex < count; frameIndex += 1) {
@@ -343,7 +381,7 @@ export function* iterateFormalFrameSchedule(
  */
 export function* iterateFormalProjectFrameSchedule(
   project: Project,
-  fps = EXPORT_FPS,
+  fps: number = EXPORT_FPS,
 ): Generator<ProjectFrameScheduleEntry> {
   const durationMs = projectDurationMs(project);
   const count = formalFrameCount(durationMs, fps);
@@ -365,10 +403,176 @@ export function* iterateFormalProjectFrameSchedule(
   }
 }
 
+export const SPRITE_SHEET_MAX_DIMENSION = 8_192 as const;
+export const SPRITE_SHEET_MAX_PIXELS = 32 * 1024 * 1024;
+
+export interface SpriteSheetGrid {
+  columns: number;
+  rows: number;
+  width: number;
+  height: number;
+}
+
+export interface SpriteSheetPagePlan extends SpriteSheetGrid {
+  pageIndex: number;
+  frameStart: number;
+  frameCount: number;
+  imageName: string;
+}
+
+export interface SpriteSheetPlan {
+  totalFrames: number;
+  frameWidth: number;
+  frameHeight: number;
+  maxFramesPerPage: number;
+  maxDimension: number;
+  maxPixels: number;
+  pages: SpriteSheetPagePlan[];
+}
+
+export function formatSpriteSheetPageImageName(pageIndex: number, pageCount: number): string {
+  if (pageCount <= 1) return 'sprite-sheet.png';
+  return `sprite-sheet-${String(pageIndex).padStart(3, '0')}.png`;
+}
+
+export function formatSpriteSheetFrameName(frameIndex: number): string {
+  const parsedFrameIndex = FrameIndexSchema.parse(frameIndex);
+  return `frame_${String(parsedFrameIndex).padStart(FRAME_FILE_DIGITS, '0')}`;
+}
+
 /** Shot-local formal frame samples in a half-open interval, with contiguous output names. */
+export function planSpriteSheetGrid(
+  frameCount: number,
+  frameWidth: number,
+  frameHeight: number,
+  limits?: { maxDimension?: number; maxPixels?: number },
+): SpriteSheetGrid {
+  const maxDimension = limits?.maxDimension ?? SPRITE_SHEET_MAX_DIMENSION;
+  const maxPixels = limits?.maxPixels ?? SPRITE_SHEET_MAX_PIXELS;
+  if (![frameCount, frameWidth, frameHeight, maxDimension, maxPixels].every((value) => Number.isSafeInteger(value) && value > 0)) {
+    throw new Error('没有可排入精灵图的有效帧。');
+  }
+  let best: SpriteSheetGrid | undefined;
+  let bestAspect = Infinity;
+  for (let columns = 1; columns <= Math.min(frameCount, Math.floor(maxDimension / frameWidth)); columns += 1) {
+    const rows = Math.ceil(frameCount / columns);
+    const width = frameWidth * columns;
+    const height = frameHeight * rows;
+    if (height > maxDimension || width * height > maxPixels) continue;
+    const aspect = Math.max(width, height) / Math.min(width, height);
+    if (aspect < bestAspect) {
+      bestAspect = aspect;
+      best = { columns, rows, width, height };
+    }
+  }
+  if (!best) throw new Error('这些帧超出单张精灵图的容量。请缩短导出时间段，或改用 PNG 序列。');
+  return best;
+}
+
+/**
+ * Plans single- or multi-page sprite sheet capacity from actual cell dimensions
+ * and page budgets (maxDimension and maxPixels), without hardcoding page size.
+ */
+export function planSpriteSheetPages(
+  frameCount: number,
+  frameWidth: number,
+  frameHeight: number,
+  limits?: { maxDimension?: number; maxPixels?: number },
+): SpriteSheetPlan {
+  const maxDimension = limits?.maxDimension ?? SPRITE_SHEET_MAX_DIMENSION;
+  const maxPixels = limits?.maxPixels ?? SPRITE_SHEET_MAX_PIXELS;
+  if (![frameCount, frameWidth, frameHeight, maxDimension, maxPixels].every((value) => Number.isSafeInteger(value) && value > 0)) {
+    throw new Error('没有可排入精灵图的有效帧。');
+  }
+  const maxCols = Math.floor(maxDimension / frameWidth);
+  const maxRows = Math.floor(maxDimension / frameHeight);
+  const cellPixels = frameWidth * frameHeight;
+  let maxFramesPerPage = 0;
+  for (let cols = 1; cols <= maxCols; cols += 1) {
+    const rows = Math.min(maxRows, Math.floor(maxPixels / (cols * cellPixels)));
+    if (rows <= 0) continue;
+    const capacity = cols * rows;
+    if (capacity > maxFramesPerPage) {
+      maxFramesPerPage = capacity;
+    }
+  }
+  if (maxFramesPerPage <= 0) {
+    throw new Error('单帧尺寸超出精灵图页容量限制，无法排入精灵图。');
+  }
+  const pageCount = Math.ceil(frameCount / maxFramesPerPage);
+  const pages: SpriteSheetPagePlan[] = [];
+  for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+    const frameStart = pageIndex * maxFramesPerPage;
+    const pageFrameCount = Math.min(maxFramesPerPage, frameCount - frameStart);
+    const grid = planSpriteSheetGrid(pageFrameCount, frameWidth, frameHeight, { maxDimension, maxPixels });
+    pages.push({
+      pageIndex,
+      frameStart,
+      frameCount: pageFrameCount,
+      ...grid,
+      imageName: formatSpriteSheetPageImageName(pageIndex, pageCount),
+    });
+  }
+  return {
+    totalFrames: frameCount,
+    frameWidth,
+    frameHeight,
+    maxFramesPerPage,
+    maxDimension,
+    maxPixels,
+    pages,
+  };
+}
+
+/**
+ * Isolates a single visible object Layer (Graphic / animation / character / asset)
+ * inside its owning Shot for transparent sprite-sheet export, preserving source clock,
+ * instance transform/color/effects and Shot-local time range while excluding background
+ * and all unrelated layers.
+ */
+export function scopeShotForLayerExport(shot: Shot, layerId: string): { shot: Shot; layer: Layer } {
+  const layer = shot.layers.find((entry) => entry.id === layerId);
+  if (!layer || layer.source.kind === 'control') {
+    throw new Error('请选择当前镜头中可导出的对象图层。');
+  }
+  if (!layer.visible) {
+    throw new Error('当前选中对象处于隐藏状态，请先显示后再导出。');
+  }
+  return {
+    layer,
+    shot: {
+      ...shot,
+      backgroundLayerId: null,
+      layers: [layer],
+      dialogues: [],
+      audioClips: [],
+    },
+  };
+}
+
+/**
+ * Computes a stable normalized stage-space anchor for an isolated Layer export.
+ */
+export function computeLayerExportAnchor(
+  layer: Layer,
+  stageWidth: number,
+  stageHeight: number,
+): { x: number; y: number } {
+  if (stageWidth <= 0 || stageHeight <= 0) return { x: 0.5, y: 0.5 };
+  const rawX = layer.x / stageWidth;
+  const rawY = layer.y / stageHeight;
+  const clamp01 = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 10_000) / 10_000;
+  return {
+    x: Number.isFinite(rawX) ? clamp01(rawX) : 0.5,
+    y: Number.isFinite(rawY) ? clamp01(rawY) : 0.5,
+  };
+}
+
 export function planPngSequenceFrames(project: Project, settings: PngSequenceOptions) {
-  const shot = project.shots.find(({ id }) => id === settings.shotId);
-  if (!shot) throw new Error('请选择一个可导出的镜头。');
+  const baseShot = project.shots.find(({ id }) => id === settings.shotId);
+  if (!baseShot) throw new Error('请选择一个可导出的镜头。');
+  const scoped = settings.layerId ? scopeShotForLayerExport(baseShot, settings.layerId) : null;
+  const shot = baseShot;
   const startMs = settings.range?.startMs ?? 0;
   const endMs = settings.range?.endMs ?? shot.durationMs;
   if (startMs < 0 || endMs > shot.durationMs || startMs >= endMs) throw new Error('PNG 时间段须在当前镜头范围内。');
@@ -378,7 +582,10 @@ export function planPngSequenceFrames(project: Project, settings: PngSequenceOpt
   if (totalFrames <= 0) throw new Error('该时间段内没有可导出的帧。');
   return {
     totalFrames,
+    firstFrameIndex: first,
     shot,
+    outputShot: scoped?.shot ?? shot,
+    selectedLayer: scoped?.layer,
     *frames(): Generator<ProjectFrameScheduleEntry> {
       for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
         const timeMs = frameTimeMs(first + frameIndex);

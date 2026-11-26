@@ -9,7 +9,7 @@ import type {
   Shot,
 } from '../models';
 import { evaluateShotAtTime, type EvaluatedLayer, type EvaluatedShot } from '../evaluate-shot-at-time';
-import { resolveImageAsset, resolveLayerImageAsset } from './canvasLayers';
+import { resolveRuntimeImageAsset, resolveLayerImageAsset } from './canvasLayers';
 import {
   resolveCharacterActionRenderTransform,
   resolveLayerVisualParts,
@@ -39,7 +39,7 @@ export function buildEditorStageRenderModel(
   evaluatedShot?: EvaluatedShot,
   visualOverrides?: ReadonlyMap<string, LayerVisualParts | null>,
 ): EditorStageRenderModel {
-  if (!evaluatedShot && shot.layers.some(layer => layer.animationClip)) {
+  if (!evaluatedShot && shot.layers.some(layer => layer.animationClip || layer.parentLayerId || layer.parentKeys?.length || layer.parentSpaceOffset)) {
     evaluatedShot = evaluateShotAtTime(shot, 0, project);
   }
   const evaluatedById = new Map(
@@ -77,7 +77,7 @@ export function buildEditorStageRenderModel(
       // composite Character is never reduced to this one asset.
       const primaryPart = visual.parts[0];
       const asset = primaryPart?.assetId
-        ? resolveImageAsset(project, primaryPart.assetId)
+        ? resolveRuntimeImageAsset(project, primaryPart.assetId)
         : baseAsset;
       const compatibilityAsset =
         asset ??

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import { promises as fs } from 'node:fs';
-import { basename } from 'node:path';
+import { constants, promises as fs, type BigIntStats } from 'node:fs';
+import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
+import JSZip from 'jszip';
 import { inflateRawSync } from 'node:zlib';
 import {
   FLA_IMPORT_LIMITS,
@@ -131,7 +132,7 @@ function locateEndOfCentralDirectory(bytes: Uint8Array): number {
   fail('MALFORMED_ARCHIVE', 'ZIP end-of-central-directory record is missing');
 }
 
-function readEntryData(bytes: Uint8Array, entry: FlaArchiveEntry): Uint8Array {
+function readEntryData(bytes: Uint8Array, entry: FlaArchiveEntry, maximum: number = FLA_IMPORT_LIMITS.maxXmlBytes): Uint8Array {
   if (!isWithin(bytes, entry.dataOffset, entry.compressedSize)) {
     fail('MALFORMED_ARCHIVE', `ZIP entry data exceeds the source boundary: ${entry.name}`);
   }
@@ -147,7 +148,7 @@ function readEntryData(bytes: Uint8Array, entry: FlaArchiveEntry): Uint8Array {
     try {
       return new Uint8Array(
         inflateRawSync(compressed, {
-          maxOutputLength: FLA_IMPORT_LIMITS.maxXmlBytes + 1,
+          maxOutputLength: maximum + 1,
         }),
       );
     } catch (error) {
@@ -161,6 +162,17 @@ function readEntryData(bytes: Uint8Array, entry: FlaArchiveEntry): Uint8Array {
     'MALFORMED_ARCHIVE',
     `Unsupported or unsafe ZIP compression method for ${entry.name}`,
   );
+}
+
+export function readSelectedFlaArchiveEntry(bytes: Uint8Array, entry: FlaArchiveEntry, maximum: number): Uint8Array {
+  if (entry.uncompressedSize > maximum || entry.compressedSize > maximum) {
+    fail('MEDIA_LIMIT_EXCEEDED', 'The selected embedded media exceeds the import byte limit.');
+  }
+  const data = readEntryData(bytes, entry, maximum);
+  if (data.byteLength !== entry.uncompressedSize) {
+    fail('MALFORMED_ARCHIVE', 'The selected embedded media has an incorrect stored length.');
+  }
+  return data;
 }
 
 function rejectExternalXmlMarkup(markup: string, entryName: string): void {
@@ -196,7 +208,7 @@ function decodeXmlCharacterReferences(value: string): string {
   });
 }
 
-function enforceXmlDepth(text: string, entryName: string): void {
+function enforceXmlDepth(text: string, entryName: string, folderReferences = false): void {
   let depth = 0;
   let rootCount = 0;
   const stack: string[] = [];
@@ -230,6 +242,18 @@ function enforceXmlDepth(text: string, entryName: string): void {
         else namespaces.set(change.prefix, change.previousValue);
       }
       continue;
+    }
+
+    if (folderReferences) {
+      const attributes = /\s([A-Za-z_][\w.:-]*)\s*=\s*(["'])([\s\S]*?)\2/gu;
+      for (const [, key, , value] of token.matchAll(attributes)) {
+        if (!key || !/^(?:href|bitmapDataHRef|soundDataHRef)$/iu.test(key)) continue;
+        const ref = decodeXmlCharacterReferences(value ?? '').replaceAll('\\', '/').trim();
+        if (/^(?:\/|[a-z][a-z\d+.-]*:)/iu.test(ref) || ref.includes('\0') ||
+            ref.split('/').includes('..')) {
+          fail('MALFORMED_XFL', 'The XFL contains a media or library reference outside the project folder.');
+        }
+      }
     }
 
     const namespaceChanges: Array<{ prefix: string; previousValue?: string }> = [];
@@ -461,6 +485,171 @@ export async function preflightFlaSource(
   return preflightFlaBytes(source.bytes, source.basename, source.sourcePath);
 }
 
+type XflFolderEntry = {
+  readonly diskPath: string;
+  readonly name: string;
+  readonly stat: BigIntStats;
+};
+
+function sameXflEntry(before: BigIntStats, after: BigIntStats): boolean {
+  return before.dev === after.dev && before.ino === after.ino && before.mode === after.mode &&
+    before.size === after.size && before.mtimeNs === after.mtimeNs && before.ctimeNs === after.ctimeNs;
+}
+
+function verifyXflEntry(before: BigIntStats, after: BigIntStats): void {
+  if (!sameXflEntry(before, after)) {
+    fail('MALFORMED_XFL', 'The XFL project changed while opening. Open the folder again.');
+  }
+}
+
+async function readXflEntry(entry: XflFolderEntry, root: string, signal?: AbortSignal): Promise<Buffer> {
+  signal?.throwIfAborted();
+  const canonicalPath = await fs.realpath(entry.diskPath);
+  const inside = relative(root, canonicalPath);
+  if (!inside || inside === '..' || inside.startsWith('..' + sep) || isAbsolute(inside) ||
+      relative(entry.diskPath, canonicalPath) !== '') {
+    fail('MALFORMED_XFL', 'XFL project files must be inside the selected folder.');
+  }
+  const flags = constants.O_RDONLY | (process.platform === 'win32' ? 0 : constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  const handle = await fs.open(entry.diskPath, flags);
+  try {
+    const stat = await handle.stat({ bigint: true });
+    if (!stat.isFile() || stat.nlink !== 1n) {
+      fail('MALFORMED_XFL', 'XFL project files must be ordinary files rather than links.');
+    }
+    verifyXflEntry(entry.stat, stat);
+    const bytes = Buffer.allocUnsafe(Number(stat.size));
+    let read = 0;
+    while (read < bytes.length) {
+      signal?.throwIfAborted();
+      const chunk = await handle.read(bytes, read, bytes.length - read, read);
+      if (chunk.bytesRead === 0) break;
+      read += chunk.bytesRead;
+    }
+    verifyXflEntry(entry.stat, await handle.stat({ bigint: true }));
+    if (read !== bytes.length) {
+      fail('MALFORMED_XFL', 'An XFL file changed while opening. Open the folder again.');
+    }
+    return bytes;
+  } finally {
+    await handle.close();
+  }
+}
+
+async function readXflFolder(
+  sourcePath: string,
+  stub: boolean,
+  signal?: AbortSignal,
+): Promise<FlaSourceBytes> {
+  try {
+    const selectedRoot = stub ? dirname(sourcePath) : sourcePath;
+    const selectedStat = await fs.lstat(selectedRoot, { bigint: true });
+    if (!selectedStat.isDirectory() || selectedStat.isSymbolicLink()) {
+      fail('MALFORMED_XFL', 'Select an XFL project folder directly.');
+    }
+    const root = await fs.realpath(selectedRoot);
+    verifyXflEntry(selectedStat, await fs.lstat(root, { bigint: true }));
+    if (stub) {
+      const name = basename(sourcePath);
+      const diskPath = join(root, name);
+      const stat = await fs.lstat(diskPath, { bigint: true });
+      if (!stat.isFile() || stat.size > 64n ||
+          (await readXflEntry({ name, diskPath, stat }, root, signal)).toString('utf8').trim() !== 'PROXY-CS5') {
+        fail('MALFORMED_XFL', 'Select a valid Animate .xfl stub next to DOMDocument.xml.');
+      }
+    }
+    const entries: XflFolderEntry[] = [];
+    const directories: Array<{ diskPath: string; stat: BigIntStats }> = [];
+    const names = new Set<string>();
+    let count = 0;
+    let estimatedZipBytes = 256;
+    let foundDocument = false;
+    const walk = async (diskPath: string, prefix: string, depth: number, stat: BigIntStats): Promise<void> => {
+      if (depth > FLA_IMPORT_LIMITS.maxRecursionDepth) {
+        fail('ARCHIVE_LIMIT_EXCEEDED', 'The XFL folder nesting exceeds the import limit.');
+      }
+      directories.push({ diskPath, stat });
+      const directory = await fs.opendir(diskPath);
+      for await (const item of directory) {
+        signal?.throwIfAborted();
+        if (++count > FLA_IMPORT_LIMITS.maxZipEntries) {
+          fail('ARCHIVE_LIMIT_EXCEEDED', 'The XFL folder contains too many entries.');
+        }
+        if (/[:\\]|[. ]$/u.test(item.name) ||
+            Array.from(item.name).some((character) => character.charCodeAt(0) < 32)) {
+          fail('MALFORMED_XFL', 'The XFL folder contains an invalid filename.');
+        }
+        const itemPath = join(diskPath, item.name);
+        const itemStat = await fs.lstat(itemPath, { bigint: true });
+        if (itemStat.isSymbolicLink() || (!itemStat.isDirectory() && (!itemStat.isFile() || itemStat.nlink !== 1n))) {
+          fail('MALFORMED_XFL', 'The XFL project contains a linked or special entry.');
+        }
+        const name = prefix + item.name;
+        const normalized = normalizedArchivePath(name);
+        if (names.has(normalized)) {
+          fail('MALFORMED_XFL', 'The XFL folder contains conflicting filenames.');
+        }
+        names.add(normalized);
+        if (itemStat.isDirectory()) {
+          if (relative(itemPath, await fs.realpath(itemPath)) !== '') {
+            fail('MALFORMED_XFL', 'The XFL project contains a redirected folder.');
+          }
+          await walk(itemPath, name + '/', depth + 1, itemStat);
+          continue;
+        }
+        const xml = extname(item.name).toLowerCase() === '.xml';
+        if (itemStat.size > BigInt(xml ? FLA_IMPORT_LIMITS.maxXmlBytes : FLA_IMPORT_LIMITS.maxSingleEntryBytes)) {
+          fail(xml ? 'XML_LIMIT_EXCEEDED' : 'ARCHIVE_LIMIT_EXCEEDED', 'An XFL project file exceeds the import limit.');
+        }
+        if (normalized.endsWith('/domdocument.xml')) {
+          fail('MALFORMED_XFL', 'Select a single XFL project folder containing DOMDocument.xml.');
+        }
+        if (normalized === 'domdocument.xml') foundDocument = true;
+        const archiveName = normalized === 'domdocument.xml' ? 'DOMDocument.xml' : name;
+        estimatedZipBytes += Number(itemStat.size) + 128 + 4 * Buffer.byteLength(archiveName, 'utf8');
+        if (estimatedZipBytes > FLA_IMPORT_LIMITS.maxSourceBytes) {
+          fail('ARCHIVE_LIMIT_EXCEEDED', 'The XFL project exceeds the source byte limit.');
+        }
+        entries.push({ name: archiveName, diskPath: itemPath, stat: itemStat });
+      }
+    };
+
+    await walk(root, '', 0, selectedStat);
+    if (!foundDocument) fail('MALFORMED_XFL', 'Choose the XFL project folder that contains DOMDocument.xml.');
+    const zip = new JSZip();
+    entries.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    for (const entry of entries) {
+      const bytes = await readXflEntry(entry, root, signal);
+      if (/\.xml$/iu.test(entry.name)) {
+        const text = bytes.toString('utf8');
+        if (text.trim()) enforceXmlDepth(text, entry.name, true);
+      }
+      zip.file(entry.name, bytes, { createFolders: false, date: new Date(1980, 0, 1) });
+    }
+    for (const entry of [...entries, ...directories]) {
+      signal?.throwIfAborted();
+      verifyXflEntry(entry.stat, await fs.lstat(entry.diskPath, { bigint: true }));
+    }
+
+    // The existing parser sees one immutable source snapshot. STORE avoids
+    // compressing all source media before structure-only inspection.
+    const bytes = await zip.generateAsync({
+      type: 'uint8array',
+      compression: 'STORE',
+      comment: sha256(Buffer.from(root, 'utf8')),
+    });
+    signal?.throwIfAborted();
+    if (bytes.byteLength > FLA_IMPORT_LIMITS.maxSourceBytes) {
+      fail('ARCHIVE_LIMIT_EXCEEDED', 'The XFL project exceeds the source byte limit.');
+    }
+    return { sourcePath, basename: (basename(root).slice(0, 256) || 'Animate') + '.xfl', byteLength: bytes.byteLength, sha256: sha256(bytes), bytes };
+  } catch (error) {
+    if (signal?.aborted) fail('USER_CANCELLED', 'XFL inspection was cancelled before parsing');
+    if (error instanceof FlaPreflightError) throw error;
+    fail('MALFORMED_XFL', 'The XFL project could not be read. Open the project folder again.');
+  }
+}
+
 /**
  * Read a bounded source once so Main can first run the existing strict
  * preflight and, only after a strict rejection, inspect the same immutable
@@ -476,6 +665,8 @@ export async function readFlaSourceBytes(
   } catch {
     fail('UNSUPPORTED_FLA_CONTAINER', 'The selected FLA source is not readable');
   }
+  const xflStub = extname(sourcePath).toLowerCase() === '.xfl';
+  if (stat.isDirectory() || xflStub) return readXflFolder(sourcePath, xflStub && !stat.isDirectory(), signal);
   if (!stat.isFile()) {
     fail('UNSUPPORTED_FLA_CONTAINER', 'The selected FLA source is not a file');
   }

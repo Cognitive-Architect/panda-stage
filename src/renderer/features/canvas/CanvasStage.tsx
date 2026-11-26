@@ -30,14 +30,20 @@ import {
   CHARACTER_PART_MIN_SCALE,
   characterNodeMotionScaleBounds,
   composeAnimatedCharacterPartTransform,
+  compareCameraDrawingLayers,
+  resolveLayerCameraTransform,
   createCharacterPartAnimationClip,
   evaluateAnimationClipAtTime,
   evaluateCompositeFacePoseAtTime,
+  evaluateManualCamera,
+  prepareShotCamera,
+  validLayerParentTargets,
   isValidFrameTime,
   type FlaShapeVertexTarget,
   type Layer,
 } from '../../../domain';
 import {
+  Group,
   Layer as KonvaLayer,
   Rect,
   Stage,
@@ -53,8 +59,10 @@ import {
   listShotGraphicImageAssetsAtTime,
   resolveFlaGraphicInternalAuthoringState,
   resolveImageAsset,
+  resolveRuntimeImageAsset,
   resolveCharacterArmAssemblyParts,
   resolveTimelineFrameTime,
+  resolveCharacterActionRootPatch,
   type ImageAsset,
   type Shot,
   type ViewportTransform,
@@ -74,6 +82,9 @@ import {
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { CanvasToolbar } from './CanvasToolbar';
+import { ShotCameraControls } from './ShotCameraControls';
+import { ShotCameraFrame } from './ShotCameraFrame';
+import { commitCameraFrame } from '../../stores/shotCameraEdits';
 import { CanvasViewport } from './CanvasViewport';
 import canvasEmptyStateArt from './assets/canvas-empty-state.png';
 import {
@@ -81,7 +92,9 @@ import {
   LayerTransformer,
   structuredChildTransformerScales,
 } from './LayerTransformer';
+import { ParentLayerTransformer } from './ParentLayerTransformer';
 import { SelectableLayer } from './SelectableLayer';
+import { StageLayerSpace } from '../../stage/StageLayerSpace';
 import { SubtitleRenderer } from '../subtitles/SubtitleRenderer';
 import {
   timelineUiStore,
@@ -265,7 +278,7 @@ function isCurrentCanvasAssetReady(
   imageState: CanvasImageState,
 ): boolean {
   if (!imageState.images.has(assetId)) return false;
-  const asset = resolveImageAsset(project, assetId);
+  const asset = resolveRuntimeImageAsset(project, assetId);
   if (!asset) return false;
   return (
     !asset.sha256 || imageState.sourceKeys.get(assetId) === asset.sha256
@@ -380,9 +393,6 @@ export function CanvasStage({
   const activeCurveMotion = !armAssembly && curveMotionDraft?.projectInstanceId === projectInstanceId &&
     curveMotionDraft?.revision === snapshot?.revision && curveMotionDraft?.shotId === currentShotId &&
     curveMotionDraft?.layerId === selectedLayerId ? curveMotionDraft : null;
-  const activeCurveDraft = !armAssembly && curveDraft?.projectInstanceId === projectInstanceId &&
-    curveDraft?.revision === snapshot?.revision && curveDraft?.shotId === currentShotId &&
-    curveDraft?.layerId === selectedLayerId ? curveDraft : null;
   const selectedCharacterNodeId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedCharacterNodeId);
   const selectedMotionPartId = adaptivePartIdForNodeId(selectedCharacterNodeId);
   const characterNodeSelected = selectedCharacterNodeId !== null && selectedCharacterNodeId !== 'root';
@@ -404,6 +414,27 @@ export function CanvasStage({
     snapshot?.project.shots.find(
       (candidate) => candidate.id === currentShotId,
     ) ?? null;
+  const [showCameraView, setShowCameraView] = useState(true);
+  const [cameraToolShotId, setCameraToolShotId] = useState<string | null>(null);
+  const hasManualCameraTrack = shot?.camera?.mode === 'manual' || shot?.camera?.mode === 'hybrid';
+  const cameraTool = !showCameraView && !armAssembly && hasManualCameraTrack && cameraToolShotId === shot.id;
+  const shotCameraPlan = useMemo(
+    () => snapshot && shot && (shot.camera?.mode === 'manual' || shot.camera?.mode === 'hybrid')
+      ? prepareShotCamera(snapshot.project, shot, 'speaker-focus')
+      : null,
+    [shot, snapshot],
+  );
+  const displayCamera = showCameraView && !armAssembly && shotCameraPlan
+    ? shotCameraPlan(timelineUi.currentTimeMs)
+    : undefined;
+  const cameraViewActive = Boolean(displayCamera);
+  const [parentPick, setParentPick] = useState<{ shotId: string; childId: string; instance: number | null } | null>(null);
+  const pickingParent = !cameraTool && !cameraViewActive && !armAssembly &&
+    parentPick?.shotId === shot?.id && parentPick?.instance === projectInstanceId &&
+    parentPick?.childId === selectedLayerId ? parentPick : null;
+  const activeCurveDraft = !cameraViewActive && !armAssembly && curveDraft?.projectInstanceId === projectInstanceId &&
+    curveDraft?.revision === snapshot?.revision && curveDraft?.shotId === currentShotId &&
+    curveDraft?.layerId === selectedLayerId ? curveDraft : null;
   const editContextKey = snapshot && shot && projectInstanceId !== null
     ? JSON.stringify([projectInstanceId, snapshot.project.id, snapshot.projectRoot, shot.id])
     : null;
@@ -431,7 +462,7 @@ export function CanvasStage({
     }));
   }, [projectInstanceId, shot, snapshot]);
   const flaGraphicEditActive = Boolean(
-    selectedFlaGraphicTarget &&
+    !cameraViewActive && !cameraTool && selectedFlaGraphicTarget &&
       flaGraphicEditScope?.targetKey === selectedFlaGraphicTarget.key,
   );
   const flaGraphicEditMode = flaGraphicEditActive
@@ -752,7 +783,7 @@ export function CanvasStage({
     exitOrPopFlaGraphicScope();
   }, [exitOrPopFlaGraphicScope, flaGraphicEditActive]);
   const activeOpacityPreview =
-    opacityPreview &&
+    !cameraViewActive && opacityPreview &&
     snapshot &&
     shot &&
     opacityPreview.projectInstanceId ===
@@ -778,7 +809,7 @@ export function CanvasStage({
       ? `${snapshot.project.id}:${snapshot.projectRoot}:${editorProjectStore.getProjectInstanceId()}:${shot.id}`
       : null;
   const continuityMode: EditorTemporalContinuityMode =
-    editorTemporalContinuityMode(timelineUi.currentTimeMs);
+    cameraViewActive ? 'temporal' : editorTemporalContinuityMode(timelineUi.currentTimeMs);
   const temporalContinuityRef = useRef(
     createEditorTemporalContinuityState(),
   );
@@ -859,6 +890,7 @@ export function CanvasStage({
       snapshot && shot
         ? buildEditorTemporalCanvasModel({
             activeDialogueId: activeCue?.id ?? null,
+            cameraViewActive,
             dialogueSilence,
             currentTimeMs: activeCurveDraft?.timeMs ?? timelineUi.currentTimeMs,
             previousVisuals: previousTemporalVisuals,
@@ -868,7 +900,7 @@ export function CanvasStage({
             readyResourceKeys: imageState.readyResourceKeys,
             missingAssetIds: imageState.missing,
             shot: activeCurveDraft?.project.shots.find(({ id }) => id === shot.id) ?? shot,
-            positionDraft: positionAuthoringSnapshot
+            positionDraft: !cameraViewActive && positionAuthoringSnapshot
               ? {
                   layerId: positionAuthoringSnapshot.layerId,
                   position: positionAuthoringSnapshot.draft,
@@ -879,6 +911,7 @@ export function CanvasStage({
     [
       activeCue?.id,
       activeCurveDraft,
+      cameraViewActive,
       dialogueSilence,
       imageState.images,
       imageState.readyResourceKeys,
@@ -926,6 +959,7 @@ export function CanvasStage({
   }, [imageState, snapshot]);
   const isStageLayerVisualReady = useCallback(
     (stageLayer: NonNullable<typeof stageModel>['layers'][number]): boolean => {
+      if (stageLayer.layer.source.kind === 'control') return true;
       if (!stageLayer.visual.parts.length) return false;
       const assetIds = visualAssetIds(stageLayer.visual, stageLayer.evaluated);
       const sourceKeys = temporalCanvasModel?.visualSourceKeysByLayer.get(
@@ -974,8 +1008,10 @@ export function CanvasStage({
     stageLayer: NonNullable<typeof stageModel>['layers'][number],
   ): boolean => {
     const currentTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
-    if (stageLayer.layer.source.kind !== 'animation') {
-      return currentTimeMs === 0;
+    if (cameraTool || pickingParent || stageLayer.evaluated.parentSpaceUnavailable) return false;
+    if (stageLayer.layer.source.kind !== 'animation' && !isSupportedLayerMotionLayer(snapshot?.project, shot, stageLayer.layer)) {
+      return currentTimeMs === 0 && (!cameraViewActive ||
+        (timelineUi.currentTimeMs === currentTimeMs && directEditingEnabledForStageLayer(stageLayer)));
     }
     const current = editorProjectStore.getSnapshot();
     const currentShot = current?.project.shots.find(
@@ -994,7 +1030,7 @@ export function CanvasStage({
       snapshot &&
         shot &&
         current &&
-        currentLayer?.source.kind === 'animation' &&
+        currentLayer &&
         !currentLayer.locked &&
         editorProjectStore.getProjectInstanceId() === projectInstanceId &&
         current.project.id === snapshot.project.id &&
@@ -1016,7 +1052,7 @@ export function CanvasStage({
               currentTimeMs,
             )) &&
         evaluated?.visible &&
-        evaluated.assetId === currentFrameAssetId &&
+        (currentLayer.source.kind !== 'animation' || evaluated.assetId === currentFrameAssetId) &&
         stageLayer.render.visible &&
         isStageLayerVisualReady(stageLayer),
     );
@@ -1024,8 +1060,13 @@ export function CanvasStage({
   const directEditingEnabledForStageLayer = (
     stageLayer: NonNullable<typeof stageModel>['layers'][number],
   ): boolean => {
-    if (stageLayer.layer.source.kind !== 'animation') {
-      return directEditingEnabled;
+    if (stageLayer.evaluated.parentSpaceUnavailable) return false;
+    if (stageLayer.layer.source.kind !== 'animation' && !isSupportedLayerMotionLayer(snapshot?.project, shot, stageLayer.layer)) {
+      if (!cameraViewActive) return directEditingEnabled;
+      return timelineUi.currentTimeMs === 0 && !stageLayer.layer.locked &&
+        !stageLayer.evaluated.characterAction && stageLayer.render.visible && isStageLayerVisualReady(stageLayer) &&
+        !shot?.timelineEvents.some((event) => event.layerId === stageLayer.layer.id &&
+          (event.type === 'move' || event.type === 'scale' || event.type === 'shake'));
     }
     const evaluated = shot && snapshot
       ? evaluateShotAtTime(
@@ -1038,7 +1079,7 @@ export function CanvasStage({
       snapshot &&
         shot &&
         evaluated?.visible &&
-        evaluated.assetId === stageLayer.visual.parts[0]?.assetId &&
+        (stageLayer.layer.source.kind !== 'animation' || evaluated.assetId === stageLayer.visual.parts[0]?.assetId) &&
         (isSupportedLayerMotionLayer(snapshot.project, shot, stageLayer.layer)
           ? isLayerMotionTransformEditableAtTime(
               snapshot.project,
@@ -1171,6 +1212,12 @@ export function CanvasStage({
     stageModel?.layers.find(
       ({ layer }) => layer.id === selectedLayerId,
     ) ?? null;
+  const selectedLayerProjection = selectedStageLayer
+    ? resolveLayerCameraTransform(selectedStageLayer.evaluated, displayCamera, PROJECT_WIDTH, PROJECT_HEIGHT)
+    : null;
+  const canPickParent = shot && selectedStageLayer && !selectedStageLayer.layer.locked &&
+    shot.backgroundLayerId !== selectedLayerId && !cameraViewActive && !cameraTool && !armAssembly &&
+    !flaGraphicEditActive && validLayerParentTargets(shot, selectedStageLayer.layer.id).length > 0;
   const motionContextKey = JSON.stringify([projectInstanceId, snapshot?.revision, currentShotId, selectedLayerId, selectedCharacterNodeId, timelineUi.currentTimeMs, timelineUi.characterMotionAutoKey]);
   const motionCanvasForLayer = (motionLayer: Layer, view: CharacterView | null): CharacterMotionCanvas | undefined => {
     if (!snapshot || !shot || !view?.nodes.some(isCharacterNodeMotionEditable) || positionAuthoringSession) {
@@ -1369,7 +1416,7 @@ export function CanvasStage({
       </div> : null}
       <CanvasViewport
         dropDisabled={!snapshot || !shot}
-        dropInteractionDisabled={temporalInspection || assemblingArm}
+        dropInteractionDisabled={temporalInspection || assemblingArm || Boolean(displayCamera) || cameraTool || Boolean(pickingParent)}
         animationDropTarget={
           snapshot && shot && projectInstanceId !== null
             ? {
@@ -1418,8 +1465,28 @@ export function CanvasStage({
         onViewportChromePointerDown={() => { if (!armAssembly) selectionStore.clear(); }}
         viewportOverlay={empty ? <CanvasEmptyState /> : null}
         viewportChrome={(
-          showToolbar || selectedFlaGraphicTarget ? (
+          showToolbar || shot || selectedFlaGraphicTarget ? (
             <CanvasToolbar
+              parentControl={canPickParent && shot && selectedLayerId ? (
+                <button type="button" data-ui-button data-ui-variant="secondary" data-canvas-interactive-chrome="true"
+                  style={{ pointerEvents: 'auto' }} aria-pressed={!!pickingParent}
+                  onKeyDown={(event) => { if (event.key === 'Escape') setParentPick(null); }}
+                  onClick={() => setParentPick(pickingParent ? null : { shotId: shot.id, childId: selectedLayerId, instance: projectInstanceId })}>
+                  在舞台选父级
+                </button>
+              ) : null}
+              cameraControl={shot && !armAssembly ? <ShotCameraControls
+                key={editContextKey}
+                shot={shot}
+                timeMs={timelineUi.currentTimeMs}
+                throughCamera={showCameraView}
+                cameraTool={cameraTool}
+                onViewChange={(enabled) => { setCameraToolShotId(null); setShowCameraView(enabled); }}
+                onToolChange={(enabled) => {
+                  setCameraToolShotId(enabled ? shot.id : null);
+                  if (enabled) setShowCameraView(false);
+                }}
+              /> : null}
               canEnterSelected={Boolean(
                 flaGraphicEditActive &&
                   selectedStructuredNodeReady &&
@@ -1522,9 +1589,14 @@ export function CanvasStage({
                 transformerVisible,
               )}
               data-testid="project-canvas-stage"
+              data-camera-view={displayCamera ? JSON.stringify(displayCamera) : ''}
+              data-camera-tool={cameraTool ? 'active' : undefined}
               id="project-canvas-stage"
               ref={canvasStageElementRef}
-              onKeyDownCapture={handleFlaGraphicEditKeyDownCapture}
+              onKeyDownCapture={(event) => {
+                if (event.key === 'Escape' && pickingParent) setParentPick(null);
+                else handleFlaGraphicEditKeyDownCapture(event);
+              }}
               onMouseDownCapture={(event) =>
                 event.currentTarget.focus({ preventScroll: true })
               }
@@ -1537,16 +1609,19 @@ export function CanvasStage({
               >
                 <KonvaLayer listening ref={configureEditorLayer}>
                   <Rect
-                    fill="#111914"
+                    fill={displayCamera ? 'black' : '#111914'}
                     height={PROJECT_HEIGHT}
                     listening
                     onClick={() => { if (!armAssembly) selectionStore.clear(); }}
                     onTap={() => { if (!armAssembly) selectionStore.clear(); }}
                     width={PROJECT_WIDTH}
                   />
+                  <Group listening={!cameraTool}>
                   {stageModel
-                    ? stageModel.layers.map((stageLayer) => {
+                    ? [...stageModel.layers].sort((a, b) => compareCameraDrawingLayers(a.evaluated, b.evaluated)).map((stageLayer) => {
                         const { layer, render, visual } = stageLayer;
+                        const projection = resolveLayerCameraTransform(stageLayer.evaluated, displayCamera, PROJECT_WIDTH, PROJECT_HEIGHT);
+                        if (!projection) return null;
                         const characterView = snapshot && !positionAuthoringSession && !render.isBackground
                           ? resolveCharacterView(snapshot.project, layer, visual)
                           : null;
@@ -1577,6 +1652,8 @@ export function CanvasStage({
                                   flaGraphicEditMode === 'definition'
                                     ? undefined
                                     : layer.flaGraphicInstanceShapeOverrides,
+                                instanceColor: visual?.flaGraphic?.instanceColor,
+                                instanceTextOverrides: layer.flaGraphicInstanceTextOverrides,
                                 draftMatrices: activeFlaGraphicEditDraftMatrices,
                                 layerLocked: layer.locked,
                                 scopeParentNodeRef: flaGraphicEditParentNodeRef,
@@ -1592,15 +1669,17 @@ export function CanvasStage({
                               }
                             : undefined;
                         return (
+                          <StageLayerSpace key={render.id} space={stageLayer.evaluated.parentSpace} projection={displayCamera ? projection : undefined}>
                           <SelectableLayer
-                            characterMotion={motionCanvasForLayer(layer, characterView)}
+                            characterMotion={displayCamera || cameraTool || pickingParent ? undefined : motionCanvasForLayer(layer, characterView)}
                             characterView={characterView}
                             selectedCharacterNodeId={selectedLayerId === layer.id ? selectedCharacterNodeId : null}
-                            directEditingEnabled={!armAssembly && directEditingEnabledForStageLayer(stageLayer)}
+                            directEditingEnabled={!armAssembly && !cameraTool && !pickingParent && directEditingEnabledForStageLayer(stageLayer)}
+                            inheritedSpace={Boolean(stageLayer.evaluated.parentSpace)}
+                            projected={cameraViewActive}
                             image={image}
                             images={currentReadyImages}
                             imagesByResourceKey={imageState.imagesByResourceKey}
-                            key={render.id}
                             layer={layer}
                             nodeRef={getLayerNodeRef(layer.id)}
                             flaGraphicEditProjection={editProjection}
@@ -1635,18 +1714,21 @@ export function CanvasStage({
                                   liveUi.currentTimeMs,
                                   current.project,
                                 ).layers.find((candidate) => candidate.id === layerId);
+                                const rootPosition = currentEvaluated && (currentEvaluated.parentSpace || cameraViewActive)
+                                  ? resolveCharacterActionRootPatch(currentEvaluated, position)
+                                  : position;
                                 const patch: { x?: number; y?: number } = {};
                                 if (
-                                  !currentEvaluated ||
-                                  Math.abs(position.x - currentEvaluated.x) > 1e-6
+                                  rootPosition.x !== undefined &&
+                                  (!currentEvaluated || Math.abs(rootPosition.x - currentEvaluated.x) > 1e-6)
                                 ) {
-                                  patch.x = position.x;
+                                  patch.x = rootPosition.x;
                                 }
                                 if (
-                                  !currentEvaluated ||
-                                  Math.abs(position.y - currentEvaluated.y) > 1e-6
+                                  rootPosition.y !== undefined &&
+                                  (!currentEvaluated || Math.abs(rootPosition.y - currentEvaluated.y) > 1e-6)
                                 ) {
-                                  patch.y = position.y;
+                                  patch.y = rootPosition.y;
                                 }
                                 if (Object.keys(patch).length > 0) {
                                   layerStore.applyMotionTransform(
@@ -1715,6 +1797,9 @@ export function CanvasStage({
                                       liveUi.currentTimeMs,
                                       current.project,
                                     ).layers.find((candidate) => candidate.id === layerId);
+                                    const root = currentEvaluated && cameraViewActive
+                                      ? resolveCharacterActionRootPatch(currentEvaluated, transform)
+                                      : transform;
                                     const patch: {
                                       x?: number;
                                       y?: number;
@@ -1723,28 +1808,28 @@ export function CanvasStage({
                                       rotationDeg?: number;
                                     } = {};
                                     if (
-                                      !currentEvaluated ||
-                                      Math.abs(transform.x - currentEvaluated.x) > 1e-5
+                                      root.x !== undefined &&
+                                      (!currentEvaluated || Math.abs(root.x - currentEvaluated.x) > 1e-5)
                                     ) {
-                                      patch.x = transform.x;
+                                      patch.x = root.x;
                                     }
                                     if (
-                                      !currentEvaluated ||
-                                      Math.abs(transform.y - currentEvaluated.y) > 1e-5
+                                      root.y !== undefined &&
+                                      (!currentEvaluated || Math.abs(root.y - currentEvaluated.y) > 1e-5)
                                     ) {
-                                      patch.y = transform.y;
+                                      patch.y = root.y;
                                     }
                                     if (
-                                      !currentEvaluated ||
-                                      Math.abs(transform.scaleX - currentEvaluated.scaleX) > 1e-5
+                                      root.scaleX !== undefined &&
+                                      (!currentEvaluated || Math.abs(root.scaleX - currentEvaluated.scaleX) > 1e-5)
                                     ) {
-                                      patch.scaleX = transform.scaleX;
+                                      patch.scaleX = root.scaleX;
                                     }
                                     if (
-                                      !currentEvaluated ||
-                                      Math.abs(transform.scaleY - currentEvaluated.scaleY) > 1e-5
+                                      root.scaleY !== undefined &&
+                                      (!currentEvaluated || Math.abs(root.scaleY - currentEvaluated.scaleY) > 1e-5)
                                     ) {
-                                      patch.scaleY = transform.scaleY;
+                                      patch.scaleY = root.scaleY;
                                     }
                                     if (
                                       !currentEvaluated ||
@@ -1783,6 +1868,15 @@ export function CanvasStage({
                             }}
                             onError={setInteractionStatus}
                             onSelect={(layerId, nodeId) => {
+                              if (pickingParent) {
+                                try {
+                                  layerStore.setParent(pickingParent.childId, layerId, timelineUiStore.getSnapshot().currentTimeMs);
+                                  setParentPick(null);
+                                } catch (error) {
+                                  setInteractionStatus(error instanceof Error ? error.message : '无法设置父级图层。');
+                                }
+                                return;
+                              }
                               if (armAssembly?.target.layerId === layerId) {
                                 pickArmPart(layerId, adaptivePartIdForNodeId(nodeId ?? null));
                                 return;
@@ -1813,6 +1907,7 @@ export function CanvasStage({
                                  : render
                              }
                             positionAuthoringSession={
+                               !displayCamera && !cameraTool && !stageLayer.evaluated.parentSpace &&
                                positionAuthoringSnapshot?.layerId === layer.id &&
                                selectedLayerId === layer.id
                                  ? positionAuthoringSession
@@ -1833,9 +1928,11 @@ export function CanvasStage({
                             }
                             visual={visual}
                           />
+                          </StageLayerSpace>
                         );
                       })
                     : null}
+                  </Group>
                   <SubtitleRenderer
                     style={activeSubtitleStyle}
                     text={activeCue?.text ?? null}
@@ -1847,8 +1944,32 @@ export function CanvasStage({
                   ref={configureEditorLayer}
                 >
                   {activeCurveMotion ? <CurveMotionStageOverlay draft={activeCurveMotion} scale={transform.scale} /> : null}
-                  {transformerVisible && selectedStageLayer ? (
-                    <LayerTransformer
+                  {!cameraTool && !pickingParent && transformerVisible && selectedStageLayer && selectedLayerProjection ? (
+                    selectedStageLayer.evaluated.parentSpace && !structuredTransformerVisible ? (
+                      <StageLayerSpace space={selectedStageLayer.evaluated.parentSpace} projection={displayCamera ? selectedLayerProjection : undefined}>
+                        <ParentLayerTransformer
+                          key={`${projectInstanceId}:${selectedStageLayer.layer.id}:${snapshot?.revision}:${timelineUi.currentTimeMs}`}
+                          nodeRef={getLayerNodeRef(selectedStageLayer.layer.id)}
+                          render={selectedStageLayer.render}
+                          rootScale={selectedStageLayer.evaluated}
+                          bounds={selectedStageLayer.visual.combinedLocalBounds}
+                          onCommit={(patch) => {
+                            if (!canCommitCanvasEdit(selectedStageLayer)) return;
+                            try {
+                              const live = timelineUiStore.getSnapshot();
+                              layerStore.applyMotionTransform(
+                                selectedStageLayer.layer.id,
+                                live.currentTimeMs,
+                                live.layerMotionAutoKey,
+                                resolveCharacterActionRootPatch(selectedStageLayer.evaluated, patch),
+                              );
+                            } catch (error) {
+                              setInteractionStatus(error instanceof Error ? error.message : '无法修改图层变换。');
+                            }
+                          }}
+                        />
+                      </StageLayerSpace>
+                    ) : <LayerTransformer
                       locked={
                         selectedStageLayer.layer.locked ||
                         (structuredTransformerVisible && !selectedStructuredNodeCanTransform)
@@ -1869,10 +1990,25 @@ export function CanvasStage({
                     />
                   ) : null}
                 </KonvaLayer>
+                {cameraTool && snapshot && shot ? (
+                  <KonvaLayer>
+                    <ShotCameraFrame
+                      key={`${projectInstanceId}:${shot.id}:${snapshot.revision}:${timelineUi.currentTimeMs}`}
+                      pose={evaluateManualCamera(shot, timelineUi.currentTimeMs)}
+                      onCommit={(pose) => {
+                        try {
+                          commitCameraFrame(snapshot, shot.id, timelineUi.currentTimeMs, pose);
+                        } catch {
+                          setInteractionStatus('无法修改相机。请重试。');
+                        }
+                      }}
+                    />
+                  </KonvaLayer>
+                ) : null}
               </Stage>
               {armAssembly && !waitingForArmVisual && !armVisualUnavailable ? <CharacterArmAssemblyOverlay assembly={armAssembly} scale={transform.scale}
                 update={next => setAssembly?.(current => current === armAssembly ? next : current)} /> : null}
-              {snapshot && shot && selectedLayerId && !armAssembly ? <CharacterArmHandle
+              {snapshot && shot && selectedLayerId && !armAssembly && !displayCamera && !cameraTool && !selectedStageLayer?.evaluated.parentSpace ? <CharacterArmHandle
                 key={JSON.stringify([projectInstanceId, shot.id, selectedLayerId, timelineUi.currentTimeMs, snapshot.revision])}
                 snapshot={snapshot}
                 address={{ shotId: shot.id, layerId: selectedLayerId,

@@ -17,6 +17,7 @@ import {
 } from '../../src/domain';
 import { ActionRecipeControls } from '../../src/renderer/features/actions/ActionRecipeControls';
 import { buildEditorTemporalCanvasModel } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
+import { LayerParentControl } from '../../src/renderer/features/properties/LayerParentControl';
 import { SelectableLayer } from '../../src/renderer/features/canvas/SelectableLayer';
 import {
   LayerTransformPanel,
@@ -182,6 +183,69 @@ describe('Issue #1144 Layer Motion Product Wiring', () => {
     timelineUiStore.setLayerMotionAutoKey(false);
     timelineUiStore.seek(0, 3_000);
     vi.restoreAllMocks();
+  });
+
+  it('moves a parent handoff to the playhead through the inspector and records one undoable edit', async () => {
+    const { project, graphicLayerId, secondGraphicLayerId } = createStandaloneGraphicProject({ secondGraphic: true });
+    const parentId = secondGraphicLayerId!;
+    editorProjectStore.open('D:/test-1385-handoff', project);
+    shotStore.select(IDS.shot);
+    function ParentHarness() {
+      const snapshot = useSyncExternalStore(editorProjectStore.subscribe, editorProjectStore.getSnapshot)!;
+      const shot = snapshot.project.shots[0]!;
+      return createElement(LayerParentControl, {
+        project: snapshot.project, shot, layer: shot.layers.find(({ id }) => id === graphicLayerId)!,
+      });
+    }
+    const projectNow = () => editorProjectStore.getSnapshot()!.project;
+    const graphic = () => projectNow().shots[0]!.layers.find(({ id }) => id === graphicLayerId)!;
+    await act(async () => root.render(createElement(ParentHarness)));
+    const target = container.querySelector<HTMLSelectElement>('select[aria-label="在此帧切换父级"]')!;
+    await act(async () => {
+      timelineUiStore.seek(250, 3_000);
+      target.value = parentId;
+      target.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await act(async () => Array.from(container.querySelectorAll('button')).find((button) => button.textContent === '在此帧绑定')!.click());
+    const original = graphic().parentKeys![0]!;
+    expect(original.timeMs).toBe(250);
+    const locate = Array.from(container.querySelectorAll('button')).find((button) => button.textContent?.startsWith('0.25s ·'))!;
+    await act(async () => timelineUiStore.seek(1_000, 3_000));
+    await act(async () => locate.click());
+    expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(250);
+
+    const motion = new LayerMotionService();
+    await act(async () => {
+      const animated = motion.applyTransform(projectNow(), { shotId: IDS.shot, layerId: parentId, timeMs: 0, autoKey: true }, { x: 300 });
+      editorProjectStore.updateProject(motion.applyTransform(animated, { shotId: IDS.shot, layerId: parentId, timeMs: 500, autoKey: true }, { x: 450 }), '测试父级运动');
+      timelineUiStore.seek(500, 3_000);
+    });
+    const move = () => container.querySelector<HTMLButtonElement>('button[title="移到播放头"]')!;
+    await act(async () => move().click());
+    const moved = graphic().parentKeys![0]!;
+    expect(moved).toMatchObject({ timeMs: 500, parentLayerId: parentId });
+    expect(moved.parentSpaceOffset).not.toEqual(original.parentSpaceOffset);
+    expect(timelineUiStore.getSnapshot().currentTimeMs).toBe(500);
+    await act(async () => { editorProjectStore.undo(); });
+    expect(graphic().parentKeys).toEqual([original]);
+    await act(async () => { editorProjectStore.redo(); });
+    expect(graphic().parentKeys).toEqual([moved]);
+    const reopened = migrateProject(JSON.parse(JSON.stringify(projectNow())));
+    expect(reopened.shots[0]!.layers.find(({ id }) => id === graphicLayerId)?.parentKeys)
+      .toEqual(JSON.parse(JSON.stringify([moved])));
+    await act(async () => {
+      layerStore.setParentKey(graphicLayerId, 750, null);
+      timelineUiStore.seek(750, 3_000);
+    });
+    const beforeConflict = projectNow();
+    await act(async () => move().click());
+    expect(projectNow()).toBe(beforeConflict);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('已存在');
+    await act(async () => {
+      const locked = new LayerService().setLocked(projectNow(), IDS.shot, graphicLayerId, true);
+      editorProjectStore.updateProject(locked, '测试锁定');
+    });
+    expect(move().disabled).toBe(true);
   });
 
   it('previews and applies consecutive custom motion steps at the recipe editor defaults', async () => {

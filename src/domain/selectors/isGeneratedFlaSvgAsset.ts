@@ -7,9 +7,12 @@ export function isGeneratedFlaSvgAsset(project: Project, asset: Asset): boolean 
   return asset.kind === 'image' && asset.mimeType === 'image/svg+xml' &&
     (Boolean(asset.flaGraphicFrame) || project.animations.some((animation) =>
       'kind' in animation && animation.kind === 'fla-graphic' && animation.structure &&
-      reconstructFlaGraphicStructure(animation.structure).some(({ node }) =>
-        node.type === 'opaque' && node.opaqueKind === 'shape' &&
-        node.fallbackScope === 'subtree' && node.fallbackAssetId === asset.id,
+      animation.structure.frames.some((frame) =>
+        reconstructFlaGraphicStructure(animation.structure!, frame.ordinal).some(({ node }) =>
+          node.type === 'opaque' &&
+          node.fallbackScope === 'subtree' &&
+          node.fallbackAssetId === asset.id,
+        ),
       ),
     ));
 }

@@ -1,9 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  evaluateFlaGraphicNodeCompositePlan,
   evaluateFlaGraphicVisual,
   FlaGraphicDefinitionSchema,
+  resolveFlaGraphicSymbolChildren,
 } from '../../src/domain';
 import { renderFlaGraphicCanvas } from '../../src/renderer/features/canvas/flaGraphicCanvasRenderer';
+import { adaptFlaXflDisplaySource } from '../../src/main/services/fla-static-snapshot-display-list-adapter';
+import { resolveFlaDisplayList } from '../../src/main/services/fla-display-list-resolver';
+import {
+  extractFlaGraphicMaskPathData,
+  extractFlaGraphicShapeCoverage,
+} from '../../src/main/services/fla-static-snapshot-svg-builder';
+import { captureFlaGraphicStructure } from '../../src/main/services/flaGraphicStructureCapture';
 import { buildProjectWithAnimation } from './domain/testProject';
 import { decomposeAffineMatrix } from '../../src/domain';
 
@@ -144,6 +153,39 @@ describe('shared FLA Graphic Canvas renderer', () => {
       expect(raster.rect.x + placement[4]!).toBeCloseTo(childMatrix.tx + 8 - 10, 6);
       expect(raster.rect.y + placement[5]!).toBeCloseTo(childMatrix.ty - 10, 6);
     }
+  });
+
+  it.each([true, false])('applies occurrence color once with structured frame = %s', (structured) => {
+    const base = buildProjectWithAnimation().animations[0]!;
+    const assetId = base.frames[0]!.assetId;
+    const definition = FlaGraphicDefinitionSchema.parse({
+      ...base, kind: 'fla-graphic', durationMs: 1000 / base.source.sourceFps,
+      source: { ...base.source, endFrameIndex: 0, canvas: { width: 20, height: 20 }, anchor: { x: 0, y: 0 } },
+      frames: [{ ...base.frames[0]!, ordinal: 0, sourceFrameIndex: 0, createdBySequenceImport: false,
+        offset: { x: 3, y: 4 }, sourceViewport: { x: 3, y: 4, width: 8, height: 8 } }],
+      ...(structured ? { structure: { version: 1, frames: [{ ordinal: 0, layers: [{ name: 'Part', nodes: [{
+        type: 'bitmap', id: 'bitmap', drawOrder: 0, localTransform: matrix(3, 4), bitmapRef: 'part.png', assetId,
+      }] }] }] } } : {}),
+    });
+    vi.stubGlobal('document', { createElement: () => new FakeCanvas() });
+    const images = new Map([[assetId, new FakeImage() as unknown as CanvasImageSource]]);
+    const baseInput = { definition, frameOrdinal: 0, mode: 'instance' as const };
+    const red = evaluateFlaGraphicVisual({ ...baseInput, instanceColor: {
+      opacity: 0.5, rgbTransform: { multiplier: 0.5, offset: 0, channelOffsets: [64, 0, 0] },
+    } })!;
+    const bright = evaluateFlaGraphicVisual({ ...baseInput, instanceColor: {
+      rgbTransform: { multiplier: 0.5, offset: 127.5 },
+    } })!;
+    const redRaster = renderFlaGraphicCanvas(red, images)!;
+    const brightRaster = renderFlaGraphicCanvas(bright, images)!;
+    expect(redRaster.rect).toEqual(structured
+      ? { x: -10, y: -10, width: 20, height: 20 }
+      : { x: -7, y: -6, width: 8, height: 8 });
+    expect((redRaster.canvas as unknown as FakeCanvas).context.writtenPixels).toEqual([114, 40, 30, 128]);
+    expect((brightRaster.canvas as unknown as FakeCanvas).context.writtenPixels).toEqual([178, 168, 158, 255]);
+    expect((redRaster.canvas as unknown as FakeCanvas).context.readCount).toBe(1);
+    expect(evaluateFlaGraphicVisual({ ...baseInput, mode: 'definition', instanceColor: red.instanceColor })?.instanceColor)
+      .toBeUndefined();
   });
 
   it('reports small drawable bounds separately from the authored Graphic canvas', () => {
@@ -295,5 +337,580 @@ describe('shared FLA Graphic Canvas renderer', () => {
     expect(maskCanvas.context.setTransforms).toContainEqual([1, 0, 0, 1, 7, 0]);
     expect(symbolCanvas.context.readCount).toBe(1);
     expect(symbolCanvas.context.writtenPixels).toEqual([60, 50, 40, 255]);
+  });
+
+  it.each([
+    { blendMode: 'multiply' as const, expectedOp: 'multiply' },
+    { blendMode: 'screen' as const, expectedOp: 'screen' },
+    { blendMode: 'add' as const, expectedOp: 'lighter' },
+  ])(
+    'composites $blendMode (-> $expectedOp) against out-of-group and in-group backdrops with opaque/semi-transparent overlays and R01 outer color isolation (#1296)',
+    ({ blendMode, expectedOp }) => {
+      const frameAssetId = 'b1000000-0000-4000-8000-000000000001';
+      const bgAssetId = '20000000-0000-4000-8000-000000000001';
+      const overlayAssetId = '20000000-0000-4000-8000-000000000002';
+      const makeDef = (options: {
+        withBackdrop: boolean;
+        opacity: number;
+        isolateParent: boolean;
+      }) =>
+        FlaGraphicDefinitionSchema.parse({
+          id: 'b0000000-0000-4000-8000-000000000001',
+          kind: 'fla-graphic',
+          name: `Blend-${blendMode}`,
+          source: {
+            basename: 'blend.fla',
+            sha256: 'c'.repeat(64),
+            renderTargetId: 'blend-target',
+            targetKind: 'graphic-symbol',
+            targetName: 'BlendHost',
+            startFrameIndex: 0,
+            endFrameIndex: 0,
+            sourceFps: 24,
+            canvas: { width: 20, height: 20 },
+            anchor: { x: 0, y: 0 },
+            documentCanvas: { width: 20, height: 20 },
+          },
+          durationMs: 1_000 / 24,
+          frames: [{
+            ordinal: 0,
+            sourceFrameIndex: 0,
+            assetId: frameAssetId,
+            sha256: 'd'.repeat(64),
+            sourceViewport: { x: 0, y: 0, width: 20, height: 20 },
+            offset: { x: 0, y: 0 },
+            startMs: 0,
+            durationMs: 1_000 / 24,
+            createdBySequenceImport: false,
+          }],
+          structure: {
+            version: 1,
+            frames: [{
+              ordinal: 0,
+              layers: [{
+                name: 'blend-layer',
+                nodes: [
+                  ...(options.withBackdrop
+                    ? [{
+                        type: 'bitmap' as const,
+                        id: 'backdrop',
+                        drawOrder: 0,
+                        localTransform: matrix(0, 0),
+                        bitmapRef: 'bg.png',
+                        assetId: bgAssetId,
+                      }]
+                    : []),
+                  {
+                    type: 'symbol' as const,
+                    id: 'parent-wrapper',
+                    drawOrder: options.withBackdrop ? 1 : 0,
+                    localTransform: matrix(0, 0),
+                    symbolRef: 'Wrapper',
+                    ...(options.isolateParent ? { opacity: 0.8 } : {}),
+                    children: [
+                      ...(options.isolateParent
+                        ? [{
+                            type: 'bitmap' as const,
+                            id: 'in-group-bg',
+                            drawOrder: 0,
+                            localTransform: matrix(0, 0),
+                            bitmapRef: 'bg.png',
+                            assetId: bgAssetId,
+                          }]
+                        : []),
+                      {
+                        type: 'symbol' as const,
+                        id: 'blended-overlay',
+                        drawOrder: options.isolateParent ? 1 : 0,
+                        localTransform: matrix(2, 2),
+                        symbolRef: 'Overlay',
+                        blendMode,
+                        opacity: options.opacity,
+                        children: [{
+                          type: 'bitmap' as const,
+                          id: 'overlay-bmp',
+                          drawOrder: 0,
+                          localTransform: matrix(0, 0),
+                          bitmapRef: 'overlay.png',
+                          assetId: overlayAssetId,
+                        }],
+                      },
+                    ],
+                  },
+                ],
+              }],
+            }],
+          },
+        });
+
+      const bgImage = new FakeImage() as unknown as CanvasImageSource;
+      const overlayImage = new FakeImage() as unknown as CanvasImageSource;
+      const imageMap = new Map([
+        [bgAssetId, bgImage],
+        [overlayAssetId, overlayImage],
+      ]);
+
+      // 1) Out-of-group backdrop + semi-transparent overlay + R01 outer instanceColor:
+      //    Plain parent wrapper is NOT isolated (needsComposite === false), so blended child
+      //    composites directly onto root output canvas with globalCompositeOperation = expectedOp!
+      const outCanvases: FakeCanvas[] = [];
+      vi.stubGlobal('document', {
+        createElement: () => {
+          const canvas = new FakeCanvas();
+          outCanvases.push(canvas);
+          return canvas;
+        },
+      });
+      const outVisual = evaluateFlaGraphicVisual({
+        definition: makeDef({ withBackdrop: true, opacity: 0.5, isolateParent: false }),
+        frameOrdinal: 0,
+        mode: 'instance',
+        instanceColor: { opacity: 0.75, rgbTransform: { multiplier: 0.5, offset: 20 } },
+      })!;
+      const parentNode = outVisual.layers![0]!.nodes[1]!;
+      const blendedNode = parentNode.children[0]!;
+      expect(evaluateFlaGraphicNodeCompositePlan(parentNode)).toMatchObject({
+        needsComposite: false,
+        blendMode: 'normal',
+        canvasCompositeOperation: 'source-over',
+      });
+      expect(evaluateFlaGraphicNodeCompositePlan(blendedNode)).toMatchObject({
+        needsComposite: true,
+        blendMode,
+        canvasCompositeOperation: expectedOp,
+        opacity: 0.5,
+      });
+
+      const outRendered = renderFlaGraphicCanvas(outVisual, imageMap)!;
+      const rootCanvas = outRendered.canvas as unknown as FakeCanvas;
+      // Only 2 canvases created: root output + blended overlay scratch (plain parent NOT isolated!).
+      expect(outCanvases).toHaveLength(2);
+      const overlayScratch = outCanvases[1]!;
+      expect(rootCanvas.context.draws).toHaveLength(2);
+      expect(rootCanvas.context.draws[0]).toMatchObject({
+        image: bgImage,
+        alpha: 1,
+        compositeOperation: 'source-over',
+      });
+      expect(rootCanvas.context.draws[1]).toMatchObject({
+        image: overlayScratch,
+        alpha: 0.5,
+        compositeOperation: expectedOp,
+      });
+      // R01 outer instanceColor applied ONCE to root output canvas, never to scratch.
+      expect(rootCanvas.context.readCount).toBe(1);
+      expect(overlayScratch.context.readCount).toBe(0);
+
+      // 2) In-group backdrop (isolated parent with opacity 0.8) + opaque overlay:
+      const inCanvases: FakeCanvas[] = [];
+      vi.stubGlobal('document', {
+        createElement: () => {
+          const canvas = new FakeCanvas();
+          inCanvases.push(canvas);
+          return canvas;
+        },
+      });
+      const inVisual = evaluateFlaGraphicVisual({
+        definition: makeDef({ withBackdrop: false, opacity: 1, isolateParent: true }),
+        frameOrdinal: 0,
+        mode: 'instance',
+      })!;
+      const inRendered = renderFlaGraphicCanvas(inVisual, imageMap)!;
+      const inRoot = inRendered.canvas as unknown as FakeCanvas;
+      // 3 canvases: root + isolated parent scratch + blended child scratch.
+      expect(inCanvases).toHaveLength(3);
+      const parentScratch = inCanvases[1]!;
+      const childScratch = inCanvases[2]!;
+      expect(parentScratch.context.draws[0]).toMatchObject({
+        image: bgImage,
+        compositeOperation: 'source-over',
+      });
+      expect(parentScratch.context.draws[1]).toMatchObject({
+        image: childScratch,
+        alpha: 1,
+        compositeOperation: expectedOp,
+      });
+      expect(inRoot.context.draws[0]).toMatchObject({
+        image: parentScratch,
+        alpha: 0.8,
+        compositeOperation: 'source-over',
+      });
+
+      // 3) Transparent background (no backdrop): overlay still composites onto empty canvas with expectedOp.
+      const transparentCanvases: FakeCanvas[] = [];
+      vi.stubGlobal('document', {
+        createElement: () => {
+          const canvas = new FakeCanvas();
+          transparentCanvases.push(canvas);
+          return canvas;
+        },
+      });
+      const transparentVisual = evaluateFlaGraphicVisual({
+        definition: makeDef({ withBackdrop: false, opacity: 1, isolateParent: false }),
+        frameOrdinal: 0,
+        mode: 'instance',
+      })!;
+      const transparentRendered = renderFlaGraphicCanvas(transparentVisual, imageMap)!;
+      const transparentRoot = transparentRendered.canvas as unknown as FakeCanvas;
+      expect(transparentRoot.context.draws).toHaveLength(1);
+      expect(transparentRoot.context.draws[0]).toMatchObject({
+        alpha: 1,
+        compositeOperation: expectedOp,
+      });
+    },
+  );
+
+  it('applies full 4-channel RGBA with positive alphaOffset only inside valid coverage without tinting canvas padding (E-F03)', () => {
+    const base = buildProjectWithAnimation().animations[0]!;
+    const assetId = base.frames[0]!.assetId;
+    const definition = FlaGraphicDefinitionSchema.parse({
+      ...base,
+      kind: 'fla-graphic',
+      durationMs: 1000 / base.source.sourceFps,
+      source: { ...base.source, endFrameIndex: 0, canvas: { width: 20, height: 20 }, anchor: { x: 0, y: 0 } },
+      frames: [{
+        ...base.frames[0]!, ordinal: 0, sourceFrameIndex: 0, createdBySequenceImport: false,
+        offset: { x: 0, y: 0 }, sourceViewport: { x: 0, y: 0, width: 20, height: 20 },
+      }],
+      structure: {
+        version: 1,
+        frames: [{
+          ordinal: 0,
+          layers: [{
+            name: 'BitmapLayer',
+            nodes: [{
+              type: 'symbol',
+              id: 'sym-rgba',
+              drawOrder: 0,
+              localTransform: matrix(2, 2),
+              symbolRef: 'Tile',
+              rgbaTransform: { multipliers: [2, 0.5, 1, 0.5], offsets: [-20, 30, 0, 100] },
+              children: [{
+                type: 'bitmap',
+                id: 'bmp',
+                drawOrder: 0,
+                localTransform: matrix(0, 0),
+                bitmapRef: 'tile.png',
+                assetId,
+              }],
+            }],
+          }],
+        }],
+      },
+    });
+    // Pixel 0: opaque [150, 80, 40, 255] inside bitmap
+    // Pixel 1: interior transparent bitmap texel [0, 0, 0, 0] with coverage alpha=255
+    // Pixel 2: semi-transparent edge [100, 60, 20, 128] inside bitmap
+    // Pixel 3: outside canvas padding [0, 0, 0, 0] with coverage alpha=0
+    const createdCanvases: Array<{ fillRects: number[][]; written: number[] }> = [];
+    let canvasOrdinal = 0;
+    vi.stubGlobal('document', {
+      createElement: () => {
+        const ordinal = canvasOrdinal++;
+        const state = { fillRects: [] as number[][], written: [] as number[] };
+        createdCanvases.push(state);
+        const ctx = {
+          globalAlpha: 1,
+          globalCompositeOperation: 'source-over',
+          fillStyle: '',
+          save() {},
+          restore() {},
+          setTransform() {},
+          clearRect() {},
+          drawImage() {},
+          fillRect(...args: number[]) { state.fillRects.push(args); },
+          getImageData() {
+            if (ordinal === 2) {
+              // Coverage canvas: pixels 0, 1, 2 are covered; pixel 3 is outer canvas padding
+              expect(ctx.fillStyle).toBe('#000000');
+              return { data: new Uint8ClampedArray([0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 0]) };
+            }
+            return { data: new Uint8ClampedArray([150, 80, 40, 255, 0, 0, 0, 0, 100, 60, 20, 128, 0, 0, 0, 0]) };
+          },
+          putImageData(img: { data: Uint8ClampedArray }) { state.written = Array.from(img.data); },
+        };
+        return { width: 0, height: 0, getContext: () => ctx };
+      },
+    });
+    const visual = evaluateFlaGraphicVisual({ definition, frameOrdinal: 0, mode: 'instance' })!;
+    renderFlaGraphicCanvas(visual, new Map([[assetId, new FakeImage() as unknown as CanvasImageSource]]));
+    // Canvas 0 = root, Canvas 1 = symbol scratch, Canvas 2 = symbol coverage scratch
+    expect(createdCanvases[2]!.fillRects).toEqual([[0, 0, 8, 8]]);
+    expect(createdCanvases[1]!.written).toEqual([
+      255, 70, 40, 228, // pixel 0: clamp(150*2-20)=255, 80*0.5+30=70, 40, round(255*0.5+100)=228
+      0, 30, 0, 100,    // pixel 1: interior transparent bitmap texel receives +100 alpha & +30 green
+      180, 60, 20, 164, // pixel 2: semi-transparent edge clamped cleanly
+      0, 0, 0, 0,       // pixel 3: outer canvas padding stays completely transparent (no tinted rect!)
+    ]);
+  });
+
+  it('restores positive alphaOffset strictly inside real XFL ordinary opaque shape geometry, excluding holes, mask exterior, and scratch padding (E-F09)', () => {
+    // Real XFL shape: 20x20 outer square [0..20, 0..20] with 8x8 interior hole [6..14, 6..14],
+    // filled with alpha="0" (0-alpha geometry), masked by [0..16, 0..20], NO vector edit overrides!
+    const ringSymbol = {
+      name: 'ZeroAlphaRing.xml',
+      xml: `<DOMSymbolItem name="ZeroAlphaRing" symbolType="graphic"><timeline><DOMTimeline name="ZeroAlphaRing"><layers>
+        <DOMLayer name="MaskLayer" layerType="mask"><frames><DOMFrame index="0"><elements>
+          <DOMShape>
+            <fills><FillStyle index="1"><SolidColor color="#000000"/></FillStyle></fills>
+            <edges><Edge fillStyle1="1" edges="!0 0|320 0|320 400|0 400|0 0"/></edges>
+          </DOMShape>
+        </elements></DOMFrame></frames></DOMLayer>
+        <DOMLayer name="RingLayer" parentLayerIndex="0"><frames><DOMFrame index="0"><elements>
+          <DOMShape>
+            <fills><FillStyle index="1"><SolidColor color="#112233" alpha="0"/></FillStyle></fills>
+            <edges>
+              <Edge fillStyle1="1" edges="!0 0|400 0|400 400|0 400|0 0"/>
+              <Edge fillStyle1="1" edges="!120 120|120 280|280 280|280 120|120 120"/>
+            </edges>
+          </DOMShape>
+        </elements></DOMFrame></frames></DOMLayer>
+      </layers></DOMTimeline></timeline></DOMSymbolItem>`,
+    };
+    const hostDoc = `<DOMDocument width="30" height="30" frameRate="24"><timelines><DOMTimeline name="Scene 1"><layers>
+      <DOMLayer name="Host"><frames><DOMFrame index="0"><elements>
+        <DOMSymbolInstance libraryItemName="ZeroAlphaRing" symbolType="graphic">
+          <matrix><Matrix tx="0" ty="0"/></matrix>
+          <color><Color redOffset="120" alphaOffset="180"/></color>
+        </DOMSymbolInstance>
+      </elements></DOMFrame></frames></DOMLayer>
+    </layers></DOMTimeline></timelines></DOMDocument>`;
+    const adapted = adaptFlaXflDisplaySource(hostDoc, [ringSymbol]);
+    if (!adapted.ok) throw new Error(adapted.message);
+    const scene = adapted.source.sceneTimelines[0]!;
+    const resolved = resolveFlaDisplayList({
+      root: { kind: 'scene', name: scene.name, frameContext: scene.frameContext },
+      symbols: adapted.source.symbols,
+    });
+    if (!resolved.ok) throw new Error(resolved.message);
+
+    // Collect real mask & shape coverage pathData from the XFL shape blocks:
+    const clipPathShapePathData = new Map<string, readonly string[]>();
+    for (const [shapeId, shapeBlock] of adapted.source.shapeBlocks) {
+      const maskPaths = extractFlaGraphicMaskPathData({
+        shapeBlock,
+        shapeId,
+        renderTargetId: 'rt-ef09',
+        frameIndex: 0,
+      });
+      if (maskPaths?.length) clipPathShapePathData.set(shapeId, maskPaths);
+    }
+
+    const base = buildProjectWithAnimation().animations[0]!;
+    const assetId = base.frames[0]!.assetId;
+    const captured = captureFlaGraphicStructure(resolved.displayList, {
+      fallbackAssetId: assetId,
+      resolveIsolatedShape: () => ({ scope: 'subtree', viewBox: { x: 0, y: 0, width: 20, height: 20 } }),
+      resolveShapeCoverage: (node) => {
+        const shapeBlock = adapted.source.shapeBlocks.get(node.shapeId);
+        return shapeBlock
+          ? extractFlaGraphicShapeCoverage({
+              shapeBlock,
+              shapeId: node.shapeId,
+              renderTargetId: 'rt-ef09',
+              frameIndex: 0,
+            })
+          : undefined;
+      },
+      clipPathShapePathData,
+    });
+
+    // Save/Reopen round-trip through formal Zod schema:
+    const definition = FlaGraphicDefinitionSchema.parse(JSON.parse(JSON.stringify({
+      ...base,
+      kind: 'fla-graphic',
+      durationMs: 1000 / base.source.sourceFps,
+      source: { ...base.source, endFrameIndex: 0, canvas: { width: 30, height: 30 }, anchor: { x: 0, y: 0 } },
+      frames: [{
+        ...base.frames[0]!, ordinal: 0, sourceFrameIndex: 0, createdBySequenceImport: false,
+        offset: { x: 0, y: 0 }, sourceViewport: { x: 0, y: 0, width: 30, height: 30 },
+      }],
+      structure: captured,
+    })));
+
+    const symNode = definition.structure!.frames[0]!.layers[0]!.nodes[0]!;
+    expect(symNode.type).toBe('symbol');
+    if (symNode.type !== 'symbol') throw new Error('expected symbol');
+    const shapeNode = resolveFlaGraphicSymbolChildren(symNode, definition.structure)[0]!;
+    expect(shapeNode.type).toBe('opaque');
+    if (shapeNode.type !== 'opaque') throw new Error('expected opaque shape');
+    expect(shapeNode.opaqueKind).toBe('shape');
+    expect(shapeNode.coveragePathData?.length).toBeGreaterThan(0);
+
+    // Real 2D software nonzero-winding rasterizer backing canvas operations (no mocked getImageData!):
+    const pointInNonzero = (px: number, py: number, rings: ReadonlyArray<ReadonlyArray<[number, number]>>): boolean => {
+      let winding = 0;
+      for (const ring of rings) {
+        for (let i = 0; i < ring.length; i += 1) {
+          const [x1, y1] = ring[i]!;
+          const [x2, y2] = ring[(i + 1) % ring.length]!;
+          if (y1 <= py) {
+            if (y2 > py && (x2 - x1) * (py - y1) - (px - x1) * (y2 - y1) > 0) winding += 1;
+          } else if (y2 <= py && (x2 - x1) * (py - y1) - (px - x1) * (y2 - y1) < 0) {
+            winding -= 1;
+          }
+        }
+      }
+      return winding !== 0;
+    };
+
+    const parsePathRings = (pathD: string): Array<Array<[number, number]>> => {
+      const tokens = pathD.match(/[MLZ]|[-+]?(?:\d+(?:\.\d*)?|\.\d+)/giu) ?? [];
+      const rings: Array<Array<[number, number]>> = [];
+      let current: Array<[number, number]> = [];
+      let idx = 0;
+      let cmd = '';
+      while (idx < tokens.length) {
+        const tok = tokens[idx]!;
+        if (/^[MLZ]$/iu.test(tok)) {
+          cmd = tok.toUpperCase();
+          idx += 1;
+          if (cmd === 'Z') {
+            if (current.length) rings.push(current);
+            current = [];
+          }
+          continue;
+        }
+        const x = Number(tokens[idx++]!);
+        const y = Number(tokens[idx++]!);
+        if (cmd === 'M') {
+          if (current.length) rings.push(current);
+          current = [[x, y]];
+          cmd = 'L';
+        } else if (cmd === 'L') {
+          current.push([x, y]);
+        }
+      }
+      if (current.length) rings.push(current);
+      return rings;
+    };
+
+    class SoftwarePath2D {
+      readonly rings: Array<Array<[number, number]>>;
+      constructor(d: string) { this.rings = parsePathRings(d); }
+    }
+    vi.stubGlobal('Path2D', SoftwarePath2D);
+
+    interface SwCanvas {
+      width: number;
+      height: number;
+      pixels: Uint8ClampedArray;
+      getContext: () => unknown;
+    }
+
+    vi.stubGlobal('document', {
+      createElement: () => {
+        const c: SwCanvas = {
+          width: 30,
+          height: 30,
+          pixels: new Uint8ClampedArray(30 * 30 * 4),
+          getContext: () => ctx,
+        };
+        let tx = 0;
+        let ty = 0;
+        const stack: Array<[number, number]> = [];
+        let rings: Array<Array<[number, number]>> = [];
+        let curRing: Array<[number, number]> = [];
+        const ensureBuf = () => {
+          if (c.pixels.length !== c.width * c.height * 4) {
+            c.pixels = new Uint8ClampedArray(c.width * c.height * 4);
+          }
+        };
+        const ctx = {
+          globalAlpha: 1,
+          globalCompositeOperation: 'source-over',
+          fillStyle: '#ffffff',
+          save() { stack.push([tx, ty]); },
+          restore() { const s = stack.pop(); if (s) [tx, ty] = s; },
+          setTransform(_a: number, _b: number, _c: number, _d: number, e: number, f: number) { tx = e; ty = f; },
+          translate(dx: number, dy: number) { tx += dx; ty += dy; },
+          clearRect() { ensureBuf(); c.pixels.fill(0); },
+          beginPath() { rings = []; curRing = []; },
+          moveTo(x: number, y: number) { if (curRing.length) rings.push(curRing); curRing = [[x, y]]; },
+          lineTo(x: number, y: number) { curRing.push([x, y]); },
+          closePath() { if (curRing.length) rings.push(curRing); curRing = []; },
+          fill(pathOrRule?: SoftwarePath2D | string) {
+            ensureBuf();
+            const targetRings = pathOrRule instanceof SoftwarePath2D ? pathOrRule.rings : rings;
+            const rgb = Number.parseInt(ctx.fillStyle.slice(1), 16);
+            const shifted = targetRings.map((r) => r.map(([x, y]): [number, number] => [x + tx, y + ty]));
+            for (let y = 0; y < c.height; y += 1) {
+              for (let x = 0; x < c.width; x += 1) {
+                if (pointInNonzero(x + 0.5, y + 0.5, shifted)) {
+                  const i = (y * c.width + x) * 4;
+                  c.pixels[i] = (rgb >> 16) & 255;
+                  c.pixels[i + 1] = (rgb >> 8) & 255;
+                  c.pixels[i + 2] = rgb & 255;
+                  c.pixels[i + 3] = 255;
+                }
+              }
+            }
+          },
+          drawImage(src: SwCanvas | FakeImage) {
+            ensureBuf();
+            if (!('pixels' in src)) return; // 0-alpha fallback SVG draws zero alpha pixels
+            for (let i = 0; i < c.pixels.length; i += 4) {
+              if (ctx.globalCompositeOperation === 'destination-in') {
+                const ma = src.pixels[i + 3]! / 255;
+                c.pixels[i + 3] = Math.round(c.pixels[i + 3]! * ma);
+              } else if (src.pixels[i + 3]! > 0) {
+                c.pixels[i] = src.pixels[i]!;
+                c.pixels[i + 1] = src.pixels[i + 1]!;
+                c.pixels[i + 2] = src.pixels[i + 2]!;
+                c.pixels[i + 3] = Math.round(src.pixels[i + 3]! * ctx.globalAlpha);
+              }
+            }
+          },
+          getImageData(_x: number, _y: number, w: number, h: number) {
+            ensureBuf();
+            return { data: new Uint8ClampedArray(c.pixels.subarray(0, w * h * 4)) };
+          },
+          putImageData(img: { data: Uint8ClampedArray }) {
+            ensureBuf();
+            c.pixels.set(img.data);
+          },
+        };
+        return c;
+      },
+    });
+
+    const visual = evaluateFlaGraphicVisual({ definition, frameOrdinal: 0, mode: 'instance' })!;
+    const rendered = renderFlaGraphicCanvas(
+      visual,
+      new Map([[assetId, new FakeImage() as unknown as CanvasImageSource]]),
+    )!;
+    const out = rendered.canvas as unknown as SwCanvas;
+    const pixelAt = (x: number, y: number) => {
+      const i = (y * out.width + x) * 4;
+      return [out.pixels[i], out.pixels[i + 1], out.pixels[i + 2], out.pixels[i + 3]];
+    };
+
+    // Inside 0-alpha ring AND inside [0..16] mask => restored to [137, 34, 51, 180]:
+    expect(pixelAt(3, 10)).toEqual([137, 34, 51, 180]);
+    // Inside interior hole [6..14, 6..14] => stays completely transparent:
+    expect(pixelAt(10, 10)).toEqual([0, 0, 0, 0]);
+    // Inside ring [16..20] but OUTSIDE mask [0..16] => clipped cleanly to transparent:
+    expect(pixelAt(18, 10)).toEqual([0, 0, 0, 0]);
+    // Outside shape in canvas margin [25, 25] => stays transparent (no scratch rect tinting!):
+    expect(pixelAt(25, 25)).toEqual([0, 0, 0, 0]);
+
+    // Two instances sharing the same Definition with independent instanceColor render independently:
+    const instA = evaluateFlaGraphicVisual({
+      definition,
+      frameOrdinal: 0,
+      mode: 'instance',
+      instanceColor: { rgbaTransform: { multipliers: [1, 1, 1, 1], offsets: [0, 80, 0, 0] } },
+    })!;
+    const instB = evaluateFlaGraphicVisual({
+      definition,
+      frameOrdinal: 0,
+      mode: 'instance',
+      instanceColor: { rgbaTransform: { multipliers: [1, 1, 1, 1], offsets: [0, 0, 90, 0] } },
+    })!;
+    const outA = renderFlaGraphicCanvas(instA, new Map([[assetId, new FakeImage() as unknown as CanvasImageSource]]))!.canvas as unknown as SwCanvas;
+    const outB = renderFlaGraphicCanvas(instB, new Map([[assetId, new FakeImage() as unknown as CanvasImageSource]]))!.canvas as unknown as SwCanvas;
+    const idx = (10 * outA.width + 3) * 4;
+    expect([outA.pixels[idx], outA.pixels[idx + 1], outA.pixels[idx + 2], outA.pixels[idx + 3]]).toEqual([137, 114, 51, 180]);
+    expect([outB.pixels[idx], outB.pixels[idx + 1], outB.pixels[idx + 2], outB.pixels[idx + 3]]).toEqual([137, 34, 141, 180]);
   });
 });

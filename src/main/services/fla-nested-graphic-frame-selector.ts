@@ -16,6 +16,7 @@ import {
   type FlaGraphicSymbolDefinition,
 } from './fla-display-list-resolver';
 import type { FlaStaticSnapshotDisplaySource } from './fla-static-snapshot-display-list-adapter';
+import { resolveMovieClipPlayheadFrame } from './fla-movieclip-script-analyzer';
 import { evaluateFlaViewerGraphicFrame } from './fla-viewer-tween-evaluator';
 
 export const FLA_NESTED_GRAPHIC_FRAME_SELECTOR_LIMITS = Object.freeze({
@@ -59,6 +60,7 @@ export interface FlaNestedGraphicFrameSelection {
     | 'play-once-hold-terminal'
     | 'single-frame-parent-keyframe'
     | 'movieclip-local-timeline'
+    | 'movieclip-stop-held'
     | 'movieclip-script-held';
   readonly selectionBasis?: 'mode-invariant-single-frame';
   readonly sourceTransform: FlaDisplayListMatrix;
@@ -250,6 +252,14 @@ export function ikContainerPlaybackLength(
   return selected.ok ? selected.playOnceFrameCount ?? 1 : 1;
 }
 
+export function selectFlaGraphicFrameIndex(
+  element: Extract<FlaDisplayListElement, { kind: 'symbol' }>,
+  frameCount: number,
+): number | undefined {
+  const selected = selectAuthoredChildFrame(element, frameCount);
+  return selected.ok ? selected.frameIndex : undefined;
+}
+
 /**
  * Select one authored state for each active nested Graphic instance. The
  * returned resolver map uses per-frame lookup keys; display-list nodes retain
@@ -331,7 +341,10 @@ export function prepareFlaNestedGraphicFrameSelections(
     );
     building.delete(key);
     if (!prepared.ok) return prepared;
-    definitions.set(key, { kind: 'graphic', libraryItemName, sourceFrameCount: descriptor.frameCount, frameContext: prepared.frameContext });
+    definitions.set(key, {
+      kind: 'graphic', libraryItemName, sourceFrameCount: descriptor.frameCount, frameContext: prepared.frameContext,
+      ...(descriptor.scale9Grid ? { scale9Grid: descriptor.scale9Grid } : {}),
+    });
     return { ok: true, key };
   };
 
@@ -388,8 +401,10 @@ export function prepareFlaNestedGraphicFrameSelections(
       let childClock: TimelineClock;
       if (isMovieClip) {
         const run = element.movieClipRun ?? { start: parentFrameSpanStart, end: parentFrameIndex + 1 };
+        const stopFrames = descriptor.movieClipStopFrames;
+        const firstStopFrame = stopFrames?.[0];
         let age = 0;
-        if (!descriptor.movieClipHasScript && descriptor.frameCount > 1) {
+        if (!descriptor.movieClipHasScript && (descriptor.frameCount > 1 || descriptor.hasNestedSymbol)) {
           for (;;) {
             if (++clockSteps > 1_000_000) {
               return failure('BUDGET_EXCEEDED', 'MovieClip clock traversal exceeded its frame budget', sourceAddress);
@@ -399,12 +414,22 @@ export function prepareFlaNestedGraphicFrameSelections(
             age += 1;
           }
         }
-        childClock = (ticksAgo) => ticksAgo > age ? undefined : (age - ticksAgo) % descriptor.frameCount;
+        const frameAt = (tick: number): number =>
+          descriptor.movieClipHasScript
+            ? 0
+            : resolveMovieClipPlayheadFrame(tick, descriptor.frameCount, stopFrames);
+        childClock = (ticksAgo) => ticksAgo > age ? undefined : frameAt(age - ticksAgo);
+        const frameIndex = frameAt(age);
+        const selectionRule = descriptor.movieClipHasScript
+          ? 'movieclip-script-held'
+          : firstStopFrame !== undefined && age >= firstStopFrame
+            ? 'movieclip-stop-held'
+            : 'movieclip-local-timeline';
         selected = {
           ok: true,
-          frameIndex: age % descriptor.frameCount,
+          frameIndex,
           effectiveFirstFrame: 0,
-          selectionRule: descriptor.movieClipHasScript ? 'movieclip-script-held' : 'movieclip-local-timeline',
+          selectionRule,
         };
       } else {
         // A single authored Scene frame may expose extra playback samples.

@@ -1,15 +1,20 @@
 import { z } from 'zod';
+import { FlaInstanceColorSchema } from '../../shared/fla-instance-color';
 import { AnimationSourceRangeSchema } from './animationSourceRange';
 import {
   AnimationClipSchema,
   AnimationClipV32Schema,
   AnimationClipV0V22Schema,
   AnimationClipV22Schema,
+  LayerAnimationTrackSchema,
   type AnimationClip,
 } from './animationCore';
 import { LAYER_ANCHOR } from '../constants';
+import { LAYER_DEPTH_MAX, LAYER_DEPTH_MIN } from '../constants';
+import { AnimationKeySchema } from './animationKeys';
 import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
 import { FlaGraphicShapeOverridesSchema } from '../fla-shape-vector';
+import { FlaGraphicInstanceTextOverridesSchema } from './flaGraphicInstanceText';
 import { FlaGraphicInstanceTransformOverridesSchema, FlaGraphicInstanceTransformOverridesV22Schema } from './flaGraphicInstanceOverrides';
 
 const AssetLayerSourceV22Schema = z
@@ -186,6 +191,24 @@ function validateAnimationLayerFields(
     return;
   }
 
+  if (layer.source.kind === 'video') {
+    if (layer.animationPlayback !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['animationPlayback'],
+        message: 'Only animation layers may have playback settings.',
+      });
+    }
+    if (layer.animationFirstFrame !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['animationFirstFrame'],
+        message: 'Only animation layers may have an animation first frame.',
+      });
+    }
+    return;
+  }
+
   if (layer.startTimeMs !== undefined) {
     context.addIssue({
       code: 'custom',
@@ -231,15 +254,40 @@ export const LayerV15AdaptiveSchema = z
 export const LayerV15Schema = LayerV15AnimationSchema;
 
 export const AssetLayerSourceSchema = AssetLayerSourceV22Schema;
-export const AnimationLayerSourceSchema = AnimationLayerSourceV22Schema;
-export const LayerSourceSchema = LayerSourceV22Schema;
+export const AnimationLayerSourceSchema = AnimationLayerSourceV22Schema.extend({
+  flaOccurrence: AnimationLayerSourceV22Schema.shape.flaOccurrence.unwrap().extend({
+    instanceColor: FlaInstanceColorSchema.optional(),
+  }).optional(),
+});
+export const VideoLayerSourceSchema = z
+  .object({
+    kind: z.literal('video'),
+    assetId: IdSchema,
+    playbackMode: z.enum(['play-once', 'loop', 'single-frame']).optional(),
+    trimStartMs: FiniteNumberSchema.nonnegative().optional(),
+    trimEndMs: FiniteNumberSchema.positive().optional(),
+    heldFrameIndex: FiniteNumberSchema.int().nonnegative().optional(),
+    sourceFps: FiniteNumberSchema.positive().max(1_000).optional(),
+    audioAssetId: IdSchema.optional(),
+  })
+  .strict();
+const LayerSourceV43Schema = z.discriminatedUnion('kind', [
+  AssetLayerSourceSchema,
+  CharacterLayerSourceV15Schema,
+  AnimationLayerSourceSchema,
+  VideoLayerSourceSchema,
+]);
+export const LayerSourceSchema = z.discriminatedUnion('kind', [
+  ...LayerSourceV43Schema.options,
+  z.object({ kind: z.literal('control') }).strict(),
+]);
 export const AnimationPlaybackSchema = AnimationPlaybackV22Schema;
 
 /** Frozen v20 Layer reader, before Animation Core. */
 export const LayerV20Schema = z
   .object({
     ...LayerV15AnimationShape,
-    source: LayerSourceSchema,
+    source: LayerSourceV22Schema,
     /** Authored first frame offset for Graphic or raster animation instances. */
     animationFirstFrame: FiniteNumberSchema.int().nonnegative().optional(),
     animationPlayback: AnimationPlaybackSchema.optional(),
@@ -270,7 +318,11 @@ export const LayerV21Schema = LayerV20Schema.safeExtend({
 });
 
 function validateClipOwnership(
-  layer: z.infer<typeof LayerV20Schema> & { animationClip?: AnimationClip },
+  layer: {
+    id: string;
+    source: { kind: string; animationId?: string };
+    animationClip?: AnimationClip;
+  },
   context: z.RefinementCtx,
 ): void {
   const clip = layer.animationClip;
@@ -325,8 +377,171 @@ export const LayerV32Schema = LayerV30Schema.safeExtend({
   }
 });
 
-export const LayerSchema = LayerV32Schema.safeExtend({
+export const LayerV41Schema = LayerV32Schema.safeExtend({
   animationClip: AnimationClipSchema.optional(),
+});
+
+const LayerV42Shape = {
+    ...LayerV15AnimationShape,
+    source: LayerSourceV43Schema,
+    /** Authored first frame offset for Graphic or raster animation instances. */
+    animationFirstFrame: FiniteNumberSchema.int().nonnegative().optional(),
+    animationPlayback: AnimationPlaybackSchema.optional(),
+    /** Sparse transforms authored on this Layer instance, never on its Definition. */
+    flaGraphicInstanceTransformOverrides:
+      FlaGraphicInstanceTransformOverridesSchema.optional(),
+    flaGraphicInstanceShapeOverrides: FlaGraphicShapeOverridesSchema.optional(),
+    flaGraphicInstanceTextOverrides: FlaGraphicInstanceTextOverridesSchema.optional(),
+    animationSourceRange: AnimationSourceRangeSchema.optional(),
+    animationClip: AnimationClipSchema.optional(),
+};
+
+function validateModernLayer(layer: Omit<z.output<z.ZodObject<typeof LayerV42Shape>>, 'source'> & { source: LayerSource }, context: z.RefinementCtx) {
+    validateAnimationLayerFields(layer, context, true);
+    validateClipOwnership(layer, context);
+    if (layer.animationSourceRange && layer.source.kind !== 'animation') {
+      context.addIssue({
+        code: 'custom',
+        path: ['animationSourceRange'],
+        message: 'Animation source ranges require an animation layer.',
+      });
+    }
+  }
+
+export const LayerV42Schema = z.strictObject(LayerV42Shape).superRefine(validateModernLayer);
+
+export const LayerSpaceMatrixSchema = z.object({
+  a: FiniteNumberSchema, b: FiniteNumberSchema, c: FiniteNumberSchema,
+  d: FiniteNumberSchema, tx: FiniteNumberSchema, ty: FiniteNumberSchema,
+}).strict();
+
+const LayerV43Shape = {
+  ...LayerV42Shape,
+  parentLayerId: IdSchema.optional(),
+  /** Maps authored local animation into the current parent's space (or world when detached). */
+  parentSpaceOffset: LayerSpaceMatrixSchema.optional(),
+  /** Local root motion for layers without a Graphic Layer Clip. */
+  layerMotionTracks: z.array(LayerAnimationTrackSchema).optional(),
+};
+
+function validateLayerRootTracks(
+  layer: {
+    id: string;
+    layerMotionTracks?: readonly z.output<typeof LayerAnimationTrackSchema>[];
+    animationClip?: AnimationClip;
+  },
+  context: z.RefinementCtx,
+) {
+  const properties = new Set<string>();
+  layer.layerMotionTracks?.forEach((track, index) => {
+    if (track.target.layerId !== layer.id || properties.has(track.property) || layer.animationClip?.version === 2) {
+      context.addIssue({
+        code: 'custom', path: ['layerMotionTracks', index],
+        message: 'Root motion requires a unique track on its owning layer and cannot duplicate a Layer Clip.',
+      });
+    }
+    properties.add(track.property);
+  });
+}
+
+export const LayerV43Schema = z.strictObject(LayerV43Shape).superRefine(validateModernLayer).superRefine(validateLayerRootTracks);
+
+const LayerAttachmentPathSchema = z.array(z.string().min(1)).min(1).max(128);
+
+/** Frozen v44 attachment target reader (Graphic attachments stored only `nodePath`). */
+export const LayerAttachmentTargetV44Schema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('character-part'), partId: z.string().min(1) }),
+  z.strictObject({ kind: z.literal('graphic-node'), nodePath: LayerAttachmentPathSchema }),
+]);
+
+const LayerParentAttachmentV44Schema = z.strictObject({
+  target: LayerAttachmentTargetV44Schema,
+  ownerLocalFallback: LayerSpaceMatrixSchema,
+});
+
+export const LayerDepthSchema = FiniteNumberSchema.min(LAYER_DEPTH_MIN).max(LAYER_DEPTH_MAX);
+
+const LayerV44Shape = {
+  ...LayerV43Shape,
+  source: LayerSourceSchema,
+  /** Absent values inherit the parent's effective depth and camera space. */
+  depth: LayerDepthSchema.optional(),
+  depthKeys: z.array(AnimationKeySchema.extend({ value: LayerDepthSchema })).nonempty().max(4096).optional(),
+  cameraSpace: z.enum(['world', 'screen']).optional(),
+  parentAttachment: LayerParentAttachmentV44Schema.optional(),
+};
+
+export const LayerV44Schema = z.strictObject(LayerV44Shape).superRefine(validateModernLayer).superRefine(validateLayerRootTracks);
+
+const GraphicNodeAttachmentTargetSchema = z
+  .strictObject({
+    kind: z.literal('graphic-node'),
+    /** Stable cross-frame identity chain (nested symbol occurrences + target identity). */
+    identityPath: LayerAttachmentPathSchema.optional(),
+    /** Legacy v44 nodePath retained only when migration cannot prove a stable identity. */
+    nodePath: LayerAttachmentPathSchema.optional(),
+  })
+  .refine(
+    (target) => Boolean(target.identityPath?.length || target.nodePath?.length),
+    'Graphic attachment target requires a stable identity path or legacy node path.',
+  );
+
+export const LayerAttachmentTargetSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('character-part'), partId: z.string().min(1) }),
+  GraphicNodeAttachmentTargetSchema,
+]);
+
+export const LayerParentAttachmentSchema = z.strictObject({
+  target: LayerAttachmentTargetSchema,
+  ownerLocalFallback: LayerSpaceMatrixSchema,
+});
+
+export type LayerSpaceMatrix = z.infer<typeof LayerSpaceMatrixSchema>;
+export type LayerAttachmentTarget = z.infer<typeof LayerAttachmentTargetSchema>;
+export type LayerParentAttachment = z.infer<typeof LayerParentAttachmentSchema>;
+
+const LayerV45Shape = {
+  ...LayerV44Shape,
+  parentAttachment: LayerParentAttachmentSchema.optional(),
+};
+
+/** Frozen v45 Layer reader before dynamic parentKeys and animationTimeLink. */
+export const LayerV45Schema = z.strictObject(LayerV45Shape).superRefine(validateModernLayer).superRefine(validateLayerRootTracks);
+
+export const LayerParentKeyDepthModeSchema = z.enum(['inherit', 'preserve']);
+
+export const LayerParentKeySchema = z.strictObject({
+  timeMs: AnimationKeySchema.shape.timeMs,
+  parentLayerId: IdSchema.nullable(),
+  parentAttachment: LayerParentAttachmentSchema.optional(),
+  parentSpaceOffset: LayerSpaceMatrixSchema.optional(),
+  depthMode: LayerParentKeyDepthModeSchema.optional(),
+  depth: LayerDepthSchema.optional(),
+  cameraSpace: z.enum(['world', 'screen']).optional(),
+});
+
+export const LayerAnimationTimeLinkSchema = z.strictObject({
+  kind: z.literal('character-action'),
+  sourceLayerId: IdSchema,
+  eventId: IdSchema,
+});
+
+export type LayerParentKeyDepthMode = z.infer<typeof LayerParentKeyDepthModeSchema>;
+export type LayerParentKey = z.infer<typeof LayerParentKeySchema>;
+export type LayerAnimationTimeLink = z.infer<typeof LayerAnimationTimeLinkSchema>;
+
+export const LayerSchema = z.strictObject({
+  ...LayerV45Shape,
+  parentKeys: z.array(LayerParentKeySchema).optional(),
+  animationTimeLink: LayerAnimationTimeLinkSchema.optional(),
+}).superRefine(validateModernLayer).superRefine(validateLayerRootTracks).superRefine((layer, context) => {
+  if (layer.animationTimeLink && layer.source.kind !== 'animation') {
+    context.addIssue({
+      code: 'custom',
+      path: ['animationTimeLink'],
+      message: 'Animation time links require an animation layer.',
+    });
+  }
 });
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */

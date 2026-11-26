@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ExportAudioMixPlanSchema } from './audio-mix-types';
 import { EXPORT_FPS } from './export-types';
+import { ExportOutputFpsSchema } from './export-output-profile';
 
 const Mp4OutputPathSchema = z
   .string()
@@ -9,15 +10,23 @@ const Mp4OutputPathSchema = z
   .refine((value) => /\.mp4$/iu.test(value), {
     message: '视频输出路径必须使用 .mp4 扩展名。',
   });
+const VideoOutputPathSchema = z.string().trim().min(1).refine(
+  (value) => /\.(?:mp4|webm)$/iu.test(value),
+  '视频输出路径必须使用 .mp4 或 .webm 扩展名。',
+);
 
 export const EncodePngSequenceRequestSchema = z
   .object({
     framesDirectory: z.string().trim().min(1),
-    outputPath: Mp4OutputPathSchema,
-    fps: z.literal(EXPORT_FPS),
+    outputPath: z.string().trim().min(1).regex(/\.(?:mp4|webm|gif)$/iu, {
+      message: '输出路径必须使用 .mp4、.webm 或 .gif 扩展名。',
+    }),
+    fps: ExportOutputFpsSchema,
+    gifLoop: z.boolean().optional(),
     overwrite: z.boolean().default(true),
   })
-  .strict();
+  .strict()
+  .refine((request) => /\.gif$/iu.test(request.outputPath) ? request.fps !== 60 : request.gifLoop === undefined);
 
 export const MuxSingleAudioRequestSchema = z
   .object({
@@ -33,7 +42,7 @@ export const MuxAudioMixRequestSchema = z
   .object({
     videoPath: z.string().trim().min(1),
     audioMixPlan: ExportAudioMixPlanSchema,
-    outputPath: Mp4OutputPathSchema,
+    outputPath: VideoOutputPathSchema,
     overwrite: z.boolean().default(true),
   })
   .strict();
@@ -90,6 +99,7 @@ export interface VideoProbeResult {
   fps: number;
   frameCount: number | null;
   durationSeconds: number;
+  videoStartSeconds?: number;
   hasAudio: boolean;
   audioStreamCount?: number;
   audioCodecName: string | null;

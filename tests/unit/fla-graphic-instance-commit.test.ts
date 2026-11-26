@@ -119,6 +119,7 @@ interface Harness {
   service: FlaGraphicInstanceCommitService;
   batchStructure: { current: FlaGraphicStructure | undefined };
   batchBitmaps: { current: readonly FlaGraphicBatchBitmap[] | undefined };
+  batchFallbacks: { current: FlaGraphicDefinitionFrameBatch['fallbacks'] };
   partPreviewService: FlaPartPreviewService;
 }
 
@@ -163,10 +164,12 @@ async function harness(
   current.revision = 0;
   const batchStructure: { current: FlaGraphicStructure | undefined } = { current: undefined };
   const batchBitmaps: { current: readonly FlaGraphicBatchBitmap[] | undefined } = { current: undefined };
+  const batchFallbacks: Harness['batchFallbacks'] = { current: undefined };
   const withStructure = (batch: FlaGraphicDefinitionFrameBatch): FlaGraphicDefinitionFrameBatch => ({
     ...batch,
     ...(batchStructure.current ? { structure: batchStructure.current } : {}),
     ...(batchBitmaps.current ? { bitmaps: batchBitmaps.current } : {}),
+    ...(batchFallbacks.current ? { fallbacks: batchFallbacks.current } : {}),
   });
   const partPreviewService = {
     getPlan: vi.fn(() => ({ capability: 'GRAPHIC_INSTANCES_READY', poseIdentity: 'c'.repeat(64) })),
@@ -197,7 +200,7 @@ async function harness(
     },
     ...(hashService ? { hashService } : {}),
   });
-  return { projectRoot, projectService, current, service, batchStructure, batchBitmaps, partPreviewService };
+  return { projectRoot, projectService, current, service, batchStructure, batchBitmaps, batchFallbacks, partPreviewService };
 }
 
 function commitRequest(h: Harness, baseRevision: number, unitId = 'part-0123456789abcdef') {
@@ -751,6 +754,33 @@ describe('FLA Graphic structured Definition (E1)', () => {
     expect(second.project.shots[0]!.layers).toHaveLength(2); // Two layers referencing the same animationId!
   });
 
+  it('places a full-frame Graphic without reusing a legacy structured Definition with identical SVGs', async () => {
+    const h = await harness();
+    h.batchStructure.current = sampleStructure();
+    const first = await h.service.commit(commitRequest(h, 0));
+    if (!first.ok) throw new Error(first.error.message);
+
+    const batch: FlaGraphicDefinitionFrameBatch = {
+      ...frameBatch({
+        occurrenceId: SECOND_OCCURRENCE_ID,
+        sourceAddress: 'DOMDocument.xml/timeline[0]/layer[0]/frame[0]/instance[1]',
+      }),
+      requiresFullFrame: true,
+    };
+    vi.mocked(h.partPreviewService.buildGraphicDefinitionFrameBatch).mockResolvedValueOnce({ ok: true, batch });
+    const second = await h.service.commit(commitRequest(h, 1, SECOND_UNIT_ID));
+    if (!second.ok) throw new Error(second.error.message);
+
+    expect(second.animationId).not.toBe(first.animationId);
+    const reopened = await h.projectService.open(h.projectRoot);
+    expect(reopened.project.animations.find(({ id }) => id === first.animationId)).toHaveProperty('structure');
+    expect(reopened.project.animations.find(({ id }) => id === second.animationId)).not.toHaveProperty('structure');
+    expect(reopened.project.shots[0]!.layers.map(({ source }) => source)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ animationId: first.animationId }),
+      expect.objectContaining({ animationId: second.animationId }),
+    ]));
+  });
+
   it('preserves real structure differences (playbackMode, localTransform) and does not merge definitions', async () => {
     const h = await harness();
     h.batchStructure.current = sampleStructure();
@@ -807,6 +837,49 @@ describe('FLA Graphic structured Definition (E1)', () => {
     if (symPlayback.type !== 'symbol') throw new Error('unexpected');
     symPlayback.playbackMode = 'loop';
     expect(sameAuthoredStructure(base, changedPlayback)).toBe(false);
+  });
+
+  it.each([false, true])('refreshes Shape colors on reimport and reuses the Definition (existing paths: %s)', async (hasPaths) => {
+    const h = await harness();
+    const before = sampleStructure();
+    const shapeNode = (structure: FlaGraphicStructure) => {
+      const group = structure.frames[0]?.layers[0]?.nodes[0];
+      const shape = group?.type === 'group' ? group.children[2] : undefined;
+      if (shape?.type !== 'opaque') throw new Error('Missing fixture Shape');
+      return shape;
+    };
+    shapeNode(before).fallbackScope = 'subtree';
+    const coveragePathData = ['M0 0L50 0L50 50Z'];
+    if (hasPaths) shapeNode(before).coveragePathData = coveragePathData;
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50"><path d="M0 0L50 0L50 50Z"/></svg>';
+    h.batchFallbacks.current = [{
+      sourceRef: 'shape-a', svg, sha256: createHash('sha256').update(svg).digest('hex'),
+      byteLength: Buffer.byteLength(svg), width: 50, height: 50,
+    }];
+    h.batchStructure.current = before;
+    const first = await h.service.commit(commitRequest(h, 0));
+    if (!first.ok) throw new Error(first.error.message);
+    const after = structuredClone(before);
+    shapeNode(after).coveragePathData = coveragePathData;
+    shapeNode(after).coverageZeroAlphaColors = ['#112233'];
+    expect(sameAuthoredStructure(before, after)).toBe(false);
+
+    h.batchStructure.current = after;
+    const second = await h.service.commit(commitRequest(h, 1, SECOND_UNIT_ID));
+    if (!second.ok) throw new Error(second.error.message);
+    expect(second.animationId).toBe(first.animationId);
+    const saved = (await h.projectService.open(h.projectRoot)).project.animations[0];
+    if (!saved || !('kind' in saved) || saved.kind !== 'fla-graphic' || !saved.structure) {
+      throw new Error('Missing upgraded Definition');
+    }
+    expect(shapeNode(saved.structure)).toMatchObject({
+      coveragePathData, coverageZeroAlphaColors: ['#112233'], fallbackAssetId: expect.any(String),
+    });
+
+    const third = await h.service.commit(commitRequest(h, 2, THIRD_UNIT_ID));
+    if (!third.ok) throw new Error(third.error.message);
+    expect(third.animationId).toBe(first.animationId);
+    expect(third.project.animations).toHaveLength(1);
   });
 
   it('reuses structured Definition across userLabel/renderTargetId and rendered-frame SHA changes when authored semantics match (#1082 F3)', async () => {

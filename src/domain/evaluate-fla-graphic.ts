@@ -1,3 +1,15 @@
+import {
+  isIdentityFlaRgbaTransform,
+  type FlaInstanceColor,
+  type FlaRgbaTransform,
+} from '../shared/fla-instance-color';
+import type { FlaStaticTextDescriptor } from '../shared/fla-static-text';
+import type { FlaGraphicInstanceTextOverrides } from './models/flaGraphicInstanceText';
+import {
+  flaBlendModeToCanvasCompositeOperation,
+  type FlaBlendMode,
+  type FlaCanvasCompositeOperation,
+} from '../shared/fla-blend-mode';
 import type { AffineMatrix2D } from '../shared/affine-matrix';
 import {
   invertAffineMatrix,
@@ -56,6 +68,10 @@ const instanceOverrideVisualCache = new WeakMap<
   object,
   WeakMap<object, WeakMap<FlaGraphicDefinition, Map<string, EvaluatedFlaGraphicVisual>>>
 >();
+const instanceTextVisualCache = new WeakMap<
+  FlaGraphicInstanceTextOverrides,
+  WeakMap<Map<string, EvaluatedFlaGraphicVisual>, Map<string, EvaluatedFlaGraphicVisual>>
+>();
 
 export type FlaGraphicEvaluationMode = 'definition' | 'instance';
 
@@ -94,6 +110,7 @@ export interface EvaluatedFlaGraphicNode {
   readonly children: readonly EvaluatedFlaGraphicNode[];
   /** Present when Shape regions were extracted or edited as writable vector data. */
   readonly vectorVisual?: EvaluatedFlaGraphicVectorVisual;
+  readonly staticText?: FlaStaticTextDescriptor;
   readonly regionRef?: string;
   readonly extractedFromNodePath?: readonly string[];
   readonly displayName?: string;
@@ -103,28 +120,55 @@ export interface FlaGraphicNodeCompositePlan {
   readonly needsComposite: boolean;
   readonly hasClips: boolean;
   readonly opacity: number;
-  readonly rgbTransform: { readonly multiplier: number; readonly offset: number } | null;
+  readonly rgbTransform: {
+    readonly multiplier: number;
+    readonly offset: number;
+    readonly channelOffsets?: readonly [number, number, number];
+  } | null;
+  readonly rgbaTransform?: FlaRgbaTransform;
+  readonly blendMode: FlaBlendMode;
+  readonly canvasCompositeOperation: FlaCanvasCompositeOperation;
 }
 
 /**
  * Pure domain compositing semantics for an evaluated FLA Graphic node so the
- * raster backend never owns mask/opacity/rgb-transform rules.
+ * raster backend never owns mask/opacity/rgb-transform/blend-mode rules.
  */
 export function evaluateFlaGraphicNodeCompositePlan(
   node: EvaluatedFlaGraphicNode,
 ): FlaGraphicNodeCompositePlan {
   const hasClips = node.clipPaths.length > 0;
-  const opacity = node.source.type === 'symbol' ? (node.source.opacity ?? 1) : 1;
-  const rawRgb = node.source.type === 'symbol' ? node.source.rgbTransform : undefined;
+  const rawRgba = node.source.type === 'symbol' ? node.source.rgbaTransform : undefined;
+  const rgbaTransform = rawRgba && !isIdentityFlaRgbaTransform(rawRgba) ? rawRgba : undefined;
+  // When rgbaTransform is present, alphaMultiplier is applied inside rgbaTransform
+  // and must never be multiplied a second time via canvas globalAlpha.
+  const opacity = rgbaTransform
+    ? 1
+    : node.source.type === 'symbol'
+      ? (node.source.opacity ?? 1)
+      : 1;
+  const rawRgb = !rgbaTransform && node.source.type === 'symbol' ? node.source.rgbTransform : undefined;
   const rgbTransform =
-    rawRgb && !(rawRgb.multiplier === 1 && rawRgb.offset === 0)
+    rawRgb && !(
+      rawRgb.multiplier === 1 &&
+      rawRgb.offset === 0 &&
+      (rawRgb.channelOffsets === undefined || rawRgb.channelOffsets.every((value) => value === 0))
+    )
       ? rawRgb
       : null;
+  const blendMode: FlaBlendMode =
+    (node.source.type === 'symbol' || node.source.type === 'opaque') && node.source.blendMode
+      ? node.source.blendMode
+      : 'normal';
+  const canvasCompositeOperation = flaBlendModeToCanvasCompositeOperation(blendMode);
   return {
-    needsComposite: hasClips || opacity !== 1 || rgbTransform !== null,
+    needsComposite: hasClips || opacity !== 1 || rgbTransform !== null || rgbaTransform !== undefined || blendMode !== 'normal',
     hasClips,
     opacity,
     rgbTransform,
+    ...(rgbaTransform ? { rgbaTransform } : {}),
+    blendMode,
+    canvasCompositeOperation,
   };
 }
 
@@ -168,6 +212,7 @@ export interface EvaluatedFlaGraphicVisual {
   readonly mode: FlaGraphicEvaluationMode;
   readonly frameOrdinal: number;
   readonly frameAssetId: string;
+  readonly instanceColor?: FlaInstanceColor;
   readonly frameOffset: { readonly x: number; readonly y: number };
   readonly frameViewport: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   readonly canvas: { readonly width: number; readonly height: number };
@@ -396,7 +441,7 @@ function resolveNestedSymbolInternalTimeMs(
 
 /**
  * The one formal FLA Graphic evaluator. Definition mode ignores Layer state;
- * Instance mode applies only sparse node-local matrices from the owning Layer.
+ * Instance mode carries the owning Layer’s sparse edits and occurrence color.
  * Stale paths are never visited and therefore cannot affect the output.
  */
 export function evaluateFlaGraphicVisual(input: {
@@ -405,6 +450,8 @@ export function evaluateFlaGraphicVisual(input: {
   readonly mode: FlaGraphicEvaluationMode;
   readonly instanceTransformOverrides?: FlaGraphicInstanceTransformOverrides;
   readonly instanceShapeOverrides?: FlaGraphicShapeOverrides;
+  readonly instanceTextOverrides?: FlaGraphicInstanceTextOverrides;
+  readonly instanceColor?: FlaInstanceColor;
   readonly internalTimeMs?: number;
 }): EvaluatedFlaGraphicVisual | null {
   const { definition, frameOrdinal, mode } = input;
@@ -414,8 +461,23 @@ export function evaluateFlaGraphicVisual(input: {
     input.internalTimeMs !== undefined && Number.isFinite(input.internalTimeMs)
       ? Math.max(0, input.internalTimeMs)
       : Math.round(frameOrdinal * (1_000 / fps));
-  const cacheKey = `${frameOrdinal}:${effectiveInternalTimeMs}`;
-  const cache = visualCacheFor(input);
+  const instanceColor = mode === 'instance' ? input.instanceColor : undefined;
+  const cacheKey = `${frameOrdinal}:${effectiveInternalTimeMs}:${instanceColor ? JSON.stringify(instanceColor) : ''}`;
+  const textOverrides = mode === 'instance' ? input.instanceTextOverrides : undefined;
+  let cache = visualCacheFor(input);
+  if (textOverrides) {
+    let byGeometry = instanceTextVisualCache.get(textOverrides);
+    if (!byGeometry) {
+      byGeometry = new WeakMap();
+      instanceTextVisualCache.set(textOverrides, byGeometry);
+    }
+    let withText = byGeometry.get(cache);
+    if (!withText) {
+      withText = new Map();
+      byGeometry.set(cache, withText);
+    }
+    cache = withText;
+  }
   const cachedVisual = cache.get(cacheKey);
   if (cachedVisual) return cachedVisual;
   const frame = definition.frames.find((candidate) => candidate.ordinal === frameOrdinal);
@@ -429,6 +491,7 @@ export function evaluateFlaGraphicVisual(input: {
       mode,
       frameOrdinal,
       frameAssetId: frame.assetId,
+      ...(instanceColor ? { instanceColor } : {}),
       frameOffset: frame.offset,
       frameViewport: frame.sourceViewport,
       canvas: definition.source.canvas,
@@ -472,6 +535,11 @@ export function evaluateFlaGraphicVisual(input: {
       .sort((left, right) => left.drawOrder - right.drawOrder)
       .flatMap((node): readonly EvaluatedFlaGraphicNode[] => {
         const path = [...parentPath, node.id];
+        const replacement = textOverrides?.[String(frameOrdinal)]?.[flaGraphicInstanceNodePathKey(path)];
+        const editableText = node.type === 'opaque' && node.opaqueKind === 'text' ? node.editableText : undefined;
+        const staticText = editableText && replacement !== undefined
+          ? { ...editableText, runs: [{ ...editableText.runs[0], characters: replacement }] }
+          : undefined;
         let authoredLocalTransform = node.localTransform;
         if (isFlaGraphicNodeTransformable(node) && timelineContext.timeline) {
           const trackId = resolveFlaGraphicStableNodeIdentity(
@@ -518,7 +586,7 @@ export function evaluateFlaGraphicVisual(input: {
         // The isolated SVG's viewBox can begin away from (0,0). Compose it ONCE
         // after resolving authored/timeline/override transform so edits stay in
         // node-local space without double-applying fallbackViewBox.
-        const localTransform = applyFlaGraphicSubtreeViewBox(
+        const localTransform = staticText ? authoredOrOverrideTransform : applyFlaGraphicSubtreeViewBox(
           node,
           authoredOrOverrideTransform,
         );
@@ -617,6 +685,7 @@ export function evaluateFlaGraphicVisual(input: {
           renderable,
           children,
           ...(vectorVisual ? { vectorVisual } : {}),
+          ...(staticText ? { staticText } : {}),
         };
         if (!shapeNodeOverride || shapeNodeOverride.extractedRegions.length === 0) {
           return [sourceEvaluated];
@@ -703,6 +772,7 @@ export function evaluateFlaGraphicVisual(input: {
     mode,
     frameOrdinal,
     frameAssetId: frame.assetId,
+    ...(instanceColor ? { instanceColor } : {}),
     frameOffset: frame.offset,
     frameViewport: frame.sourceViewport,
     canvas: definition.source.canvas,

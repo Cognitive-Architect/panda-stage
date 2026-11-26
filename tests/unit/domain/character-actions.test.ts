@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   CharacterService,
+  LayerMotionService,
+  LayerService,
+  resolveCharacterActionRootPatch,
+  type LayerDisplayTransformPatch,
   CharacterSchema,
   CharacterActionSchema,
   ProjectSchema,
@@ -191,6 +195,65 @@ describe('Character actions', () => {
     expect(restored.characterAction).toBeUndefined();
     expect(restored.currentExpressionId).toBe(IDS.expressionNormal);
     expect(resolveLayerVisualParts(project, resolvedShot, restored, 2_500).kind).toBe('single-image-character');
+  });
+
+  it.each([true, false])('preserves the visible action anchor during inherited gestures (autoKey=%s)', (autoKey) => {
+    const authored = new CharacterService({ createId: () => action.id }).setAction(buildProjectWithAnimation(), IDS.character, {
+      name: action.name,
+      animationId: action.animationId,
+      placement: { offsetX: 36, offsetY: -47, scale: 1.5 },
+    });
+    const shot = authored.shots[0]!;
+    const project = ProjectSchema.parse({
+      ...authored,
+      shots: [{
+        ...shot,
+        layers: shot.layers.map((layer) => layer.id === IDS.layerAsset || layer.id === IDS.layerChar
+          ? { ...layer, scaleX: 1.25, scaleY: 0.8, rotationDeg: 33, flipX: true } : layer),
+        timelineEvents: [],
+      }],
+    });
+    const time = 750;
+    const layers = new LayerService();
+    const bound = layers.setParent(project, shot.id, IDS.layerChar, IDS.layerAsset, 0);
+    const movedParent = ProjectSchema.parse({
+      ...bound,
+      shots: bound.shots.map((current) => ({
+        ...current,
+        layers: current.layers.map((layer) => layer.id === IDS.layerAsset
+          ? { ...layer, scaleX: 1.5, scaleY: 0.6, rotationDeg: 55 } : layer),
+      })),
+    });
+    const active = upsertCharacterActionEvent(movedParent, IDS.shot, IDS.layerChar, {
+      actionId: action.id, startMs: 500, endMs: 1_000,
+    });
+    let current = active;
+    const motion = new LayerMotionService();
+    const evaluated = () => evaluateShotAtTime(current.shots[0]!, time, current).layers.find(({ id }) => id === IDS.layerChar)!;
+    const display = () => resolveLayerVisualParts(current, current.shots[0]!, evaluated(), time).ownerTransform;
+    const inherited = evaluated().parentSpace;
+    const initial = display();
+    const move = { x: initial.x + 40, y: initial.y - 23 };
+    const scale = { scaleX: initial.scaleX * 1.2, scaleY: initial.scaleY * 1.2 };
+    const rotate = { rotationDeg: initial.rotationDeg + 59 };
+    let expected = initial;
+    for (const target of [move, scale, rotate] satisfies LayerDisplayTransformPatch[]) {
+      current = motion.applyTransform(current, { shotId: shot.id, layerId: IDS.layerChar, timeMs: time, autoKey },
+        resolveCharacterActionRootPatch(evaluated(), target));
+      expected = { ...expected, ...target };
+      const shown = display();
+      for (const key of ['x', 'y', 'scaleX', 'scaleY', 'rotationDeg'] as const) {
+        expect(shown[key]).toBeCloseTo(expected[key], 8);
+      }
+    }
+    expect(evaluated().parentSpace).toEqual(inherited);
+    expect(evaluated().characterAction?.placement).toEqual({ offsetX: 36, offsetY: -47, scale: 1.5 });
+    const currentShot = current.shots[0]!;
+    const preview = projectProductPreviewDialogue(current, currentShot, evaluateShotAtTime(currentShot, time, current))
+      .layers.find(({ id }) => id === IDS.layerChar)!;
+    const output = evaluateExportShotAtTime(current, currentShot, time).layers.find(({ id }) => id === IDS.layerChar)!;
+    expect(resolveLayerVisualParts(current, currentShot, preview, time).ownerTransform).toEqual(display());
+    expect(resolveLayerVisualParts(current, currentShot, output, time).ownerTransform).toEqual(display());
   });
 
   it('authors non-overlapping intervals and remaps the occurrence when duplicating a shot', () => {

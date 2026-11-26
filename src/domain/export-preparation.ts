@@ -9,6 +9,7 @@ import {
 import { evaluateFlaGraphicVisual } from './evaluate-fla-graphic';
 import { selectFlaGraphicSubtreeVisual } from './fla-graphic-subtree';
 import { evaluateShotAtTime } from './evaluate-shot-at-time';
+import { resolveLayerAnimationTimeLink } from './animation-time-link';
 import { listCharacterActionVisualAssetIds, MOUTH_FLAP_PERIOD_MS, MOUTH_OPEN_MS, projectShotMouth } from './selectors/temporalRender';
 import { resolveLayerVisualParts } from './selectors/visualParts';
 import { resolveBackgroundVisualDimensions } from './selectors/canvasLayers';
@@ -163,6 +164,20 @@ function shotVisualSampleTimes(shot: Project['shots'][number]): number[] {
       if (event.type === 'mouth-pose' || event.type === 'graphic-playback') times.add(event.endMs);
     }
   }
+  for (const layer of shot.layers) {
+    const resolvedLink = resolveLayerAnimationTimeLink(shot, layer);
+    if (resolvedLink.status !== 'active') continue;
+    if (resolvedLink.startMs >= 0 && resolvedLink.startMs < shot.durationMs) {
+      times.add(resolvedLink.startMs);
+    }
+    const lastActiveMs = Math.min(shot.durationMs, resolvedLink.endMs - 1);
+    if (lastActiveMs >= resolvedLink.startMs && lastActiveMs >= 0) {
+      times.add(lastActiveMs);
+    }
+    if (resolvedLink.endMs >= 0 && resolvedLink.endMs <= shot.durationMs) {
+      times.add(resolvedLink.endMs);
+    }
+  }
   return [...times].sort((left, right) => left - right);
 }
 
@@ -213,10 +228,12 @@ function addShotVisualAssets(
   shot: Project['shots'][number],
   shotIndex: number,
   referencesByAssetId: ReadonlyMap<string, readonly AssetReference[]>,
+  outputLayerId?: string,
 ): void {
   const fallbackUsage = ['镜头“' + shot.name + '”的图像素材'];
   const restResourcesByCharacter = new Set<string>();
-  for (const assetId of listCharacterActionVisualAssetIds(project, shot)) {
+  const outputLayers = outputLayerId ? shot.layers.filter(({ id }) => id === outputLayerId) : shot.layers;
+  for (const assetId of listCharacterActionVisualAssetIds(project, { ...shot, layers: outputLayers })) {
     const asset = project.assets.find((candidate) => candidate.id === assetId);
     if (asset?.kind === 'image') addUsage(entries, asset, fallbackUsage);
   }
@@ -226,7 +243,7 @@ function addShotVisualAssets(
     for (const [layerIndex, baseLayer] of evaluatedShot.layers.entries()) {
       const poseLayer = projected.layers[layerIndex];
       const evaluatedLayer = poseLayer?.mouthPose ? poseLayer : baseLayer;
-      if (!evaluatedLayer.visible) continue;
+      if (!evaluatedLayer.visible || evaluatedLayer.control || (outputLayerId && evaluatedLayer.id !== outputLayerId)) continue;
       const source = shot.layers.find(layer => layer.id === evaluatedLayer.id)?.source;
       if (source?.kind === 'character' && !restResourcesByCharacter.has(source.characterId)) {
         restResourcesByCharacter.add(source.characterId);
@@ -294,7 +311,7 @@ function addShotVisualAssets(
       (listCharacterTalkingSources(character).length === 0 && !character.mouthOpenAssetId && !character.mouthOpenVisualSource)
     ) continue;
     const characterLayerIds = new Set(
-      shot.layers
+      outputLayers
         .filter(
           (layer) =>
             layer.source.kind === 'character' &&
@@ -351,6 +368,7 @@ function addShotAnimationMedia(
   shot: Project['shots'][number],
   shotIndex: number,
   referencesByAssetId: ReadonlyMap<string, readonly AssetReference[]>,
+  outputLayerId?: string,
 ): void {
   const sampleTimes = new Set(shotVisualSampleTimes(shot));
   for (const layer of shot.layers) {
@@ -378,7 +396,7 @@ function addShotAnimationMedia(
   for (const timeMs of [...sampleTimes].sort((left, right) => left - right)) {
     const evaluatedShot = evaluateShotAtTime(shot, timeMs, project);
     for (const evaluatedLayer of evaluatedShot.layers) {
-      if (!evaluatedLayer.visible) continue;
+      if (!evaluatedLayer.visible || (outputLayerId && evaluatedLayer.id !== outputLayerId)) continue;
       const layer = shot.layers.find((candidate) => candidate.id === evaluatedLayer.id);
       const layerSource = layer?.source;
       if (layerSource?.kind === 'animation') {
@@ -506,6 +524,7 @@ function addShotAnimationMedia(
 
 export function collectExportPreparationMedia(
   project: Project,
+  outputLayerId?: string,
 ): ExportPreparationMediaSource[] {
   const entries = new Map<string, ExportPreparationMediaSource>();
   const referencesByAssetId = new Map(
@@ -522,6 +541,7 @@ export function collectExportPreparationMedia(
       shot,
       shotIndex,
       referencesByAssetId,
+      outputLayerId,
     );
     addShotAnimationMedia(
       entries,
@@ -529,7 +549,19 @@ export function collectExportPreparationMedia(
       shot,
       shotIndex,
       referencesByAssetId,
+      outputLayerId,
     );
+
+    shot.layers.forEach((layer) => {
+      if (outputLayerId && layer.id !== outputLayerId) return;
+      if (layer.source.kind !== 'video') return;
+      const videoAssetId = layer.source.assetId;
+      const asset = project.assets.find(
+        (candidate) => candidate.id === videoAssetId && candidate.kind === 'video',
+      );
+      if (!asset) return;
+      addUsage(entries, asset, ['镜头“' + shot.name + '”的视频图层“' + layer.name + '”']);
+    });
 
     shot.audioClips.forEach((clip) => {
       const asset = project.assets.find(

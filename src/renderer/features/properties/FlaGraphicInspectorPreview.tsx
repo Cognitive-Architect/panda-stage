@@ -16,15 +16,19 @@ export function FlaGraphicInspectorPreview(): React.JSX.Element | null {
     if (!target || !snapshot) return null;
     const shot = snapshot.project.shots.find(shot => shot.id === target.shotId);
     const playback = shot ? evaluateShotAtTime(shot, time.currentTimeMs, snapshot.project).layers.find(layer => layer.id === target.layerId) : null;
+    const { source } = target.layer;
+    const instanceColor = source.kind === 'animation' ? source.flaOccurrence?.instanceColor : undefined;
     return scope ? evaluateFlaGraphicProjectionVisual({ definition: target.animation, frameOrdinal: scope.frameOrdinal,
       editMode: scope.editMode, internalTimeMs: scope.editMode === 'definition' && time.flaGraphicInternalContext?.timelineAuthoringActive ? time.flaGraphicInternalContext.internalTimeMs : undefined,
       instanceTransformOverrides: target.layer.flaGraphicInstanceTransformOverrides,
       instanceShapeOverrides: target.layer.flaGraphicInstanceShapeOverrides,
-      draftMatrices: {} })
+      instanceTextOverrides: target.layer.flaGraphicInstanceTextOverrides,
+      instanceColor, draftMatrices: {} })
       : evaluateFlaGraphicVisual({ definition: target.animation, frameOrdinal: playback?.animationFrame?.frameOrdinal ?? 0,
-        internalTimeMs: playback?.animationFrame?.internalTimeMs, mode: 'instance',
+        internalTimeMs: playback?.animationFrame?.internalTimeMs, instanceColor, mode: 'instance',
         instanceTransformOverrides: target.layer.flaGraphicInstanceTransformOverrides,
-        instanceShapeOverrides: target.layer.flaGraphicInstanceShapeOverrides });
+        instanceShapeOverrides: target.layer.flaGraphicInstanceShapeOverrides,
+        instanceTextOverrides: target.layer.flaGraphicInstanceTextOverrides });
   }, [target?.key, target?.layer, snapshot, scope, time.currentTimeMs, time.flaGraphicInternalContext]);
   useEffect(() => {
     const resourceSession = new CanvasImageResourceSession(); session.current = resourceSession;

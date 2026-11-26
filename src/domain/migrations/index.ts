@@ -41,11 +41,18 @@ import {
   ProjectV38Schema,
   ProjectV39Schema,
   ProjectV40Schema,
+  ProjectV41Schema,
+  ProjectV42Schema,
+  ProjectV43Schema,
+  ProjectV44Schema,
+  ProjectV45Schema,
   ProjectV1Schema,
   inferLegacyBackgroundLayerId,
   migrateFormalProject,
   type Project,
 } from '../models/project';
+import { isFlaGraphicDefinition } from '../models/animation';
+import { resolveLegacyGraphicAttachmentIdentityPath } from '../layer-attachment';
 import type { Layer } from '../models/layer';
 import {
   LegacyProbeProjectV1Schema,
@@ -73,6 +80,11 @@ export type DetectedSchemaVersion =
   | 38
   | 39
   | 40
+  | 41
+  | 42
+  | 43
+  | 44
+  | 45
   | 25
   | 24
   | 23
@@ -163,6 +175,11 @@ export function detectSchemaVersion(input: unknown): DetectedSchemaVersion {
     version === 38 ||
     version === 39 ||
     version === 40 ||
+    version === 41 ||
+    version === 42 ||
+    version === 43 ||
+    version === 44 ||
+    version === 45 ||
     version === PROJECT_SCHEMA_VERSION
   ) {
     return version as DetectedSchemaVersion;
@@ -503,6 +520,16 @@ export function migrateProject(input: unknown): Project {
       return ProjectSchema.parse({ ...ProjectV39Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
     case 40:
       return ProjectSchema.parse({ ...ProjectV40Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 41:
+      return ProjectSchema.parse({ ...ProjectV41Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 42:
+      return ProjectSchema.parse({ ...ProjectV42Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 43:
+      return ProjectSchema.parse({ ...ProjectV43Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
+    case 44:
+      return upgradeV44Project(ProjectV44Schema.parse(input));
+    case 45:
+      return ProjectSchema.parse({ ...ProjectV45Schema.parse(input), schemaVersion: PROJECT_SCHEMA_VERSION });
     case PROJECT_SCHEMA_VERSION:
       // Current projects are validated without an implicit compatibility rewrite.
       project = ProjectSchema.parse(input);
@@ -568,6 +595,39 @@ export function migrateProject(input: unknown): Project {
  * `migrateLegacyProject`. An envelope that claims v1 but matches neither shape
  * is rejected as ambiguous/corrupt instead of silently guessing a path.
  */
+function upgradeV44Project(input: z.infer<typeof ProjectV44Schema>): Project {
+  return ProjectSchema.parse({
+    ...input,
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    shots: input.shots.map((shot) => {
+      const layersById = new Map(shot.layers.map((layer) => [layer.id, layer]));
+      return {
+        ...shot,
+        layers: shot.layers.map((layer) => {
+          const attachment = layer.parentAttachment;
+          if (!attachment || attachment.target.kind !== 'graphic-node' || !layer.parentLayerId) {
+            return layer;
+          }
+          const owner = layersById.get(layer.parentLayerId);
+          if (!owner || owner.source.kind !== 'animation') return layer;
+          const animationId = owner.source.animationId;
+          const definition = input.animations.find(({ id }) => id === animationId);
+          if (!definition || !isFlaGraphicDefinition(definition) || !definition.structure) return layer;
+          const proven = resolveLegacyGraphicAttachmentIdentityPath(definition.structure, attachment.target.nodePath);
+          if (!proven) return layer;
+          return {
+            ...layer,
+            parentAttachment: {
+              ...attachment,
+              target: { kind: 'graphic-node' as const, identityPath: [...proven] },
+            },
+          };
+        }),
+      };
+    }),
+  });
+}
+
 function migrateVersion1(input: unknown): Project {
   const formal = ProjectV1Schema.safeParse(input);
   if (formal.success) {

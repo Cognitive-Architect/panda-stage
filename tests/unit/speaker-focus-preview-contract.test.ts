@@ -125,8 +125,8 @@ describe('Speaker Focus Preview integration contract', () => {
     expect(overlay).toContain('data-testid="product-preview-speaker-focus"');
     expect(overlay).toContain('aria-pressed={autoCameraEnabled}');
     expect(overlay).toContain('自动运镜');
-    expect(overlay).toContain('prepareSpeakerFocusCamera(project, shot)');
-    expect(overlay).toContain('evaluateSpeakerFocusCamera(cameraPlan, activeShotTimeMs)');
+    expect(overlay).toContain("prepareShotCamera(project, shot, autoCameraEnabled ? 'speaker-focus' : 'static')");
+    expect(overlay).toContain('cameraPlan?.(activeShotTimeMs)');
     expect(overlay).toContain('camera={camera}');
     expect(shell).toContain('setProductPreviewOpen(false)');
     expect(overlay).not.toMatch(/updateProject|HistoryStore|setDirty|setRevision/);

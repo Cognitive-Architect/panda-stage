@@ -15,9 +15,28 @@
  *  - only the bounded SVG in, only bounded PNG bytes out.
  */
 
+import {
+  FLA_STATIC_TEXT_LIMITS,
+  computeAuthoritativeGraphicViewport,
+  layoutFlaStaticText,
+  type FlaStaticTextBounds,
+  type FlaStaticTextGraphicFraming,
+  type FlaStaticTextRenderItem,
+} from '../shared/fla-static-text';
+import {
+  FLA_SNAPSHOT_MAX_WIDTH,
+  FLA_SNAPSHOT_MAX_HEIGHT,
+  FLA_SNAPSHOT_MAX_PIXELS,
+} from '../shared/fla-snapshot-output-size';
+
+import { createCanvasStaticTextMeasurer, drawCanvasStaticText } from './fla-static-text-canvas';
+
 interface FlaSnapshotRenderRequest {
   requestId: string;
   svg: string;
+  staticTexts?: readonly FlaStaticTextRenderItem[];
+  graphicFraming?: FlaStaticTextGraphicFraming;
+  returnResolvedSvg?: boolean;
 }
 
 interface FlaSnapshotRenderResult {
@@ -26,6 +45,8 @@ interface FlaSnapshotRenderResult {
   width: number;
   height: number;
   pixelCount: number;
+  sourceViewport?: { x: number; y: number; width: number; height: number };
+  resolvedSvg?: string;
   profile?: {
     imageLoadMs: number;
     canvasDrawMs: number;
@@ -50,7 +71,124 @@ declare global {
   }
 }
 
-const MAX_SNAPSHOT_DIMENSION = 4_096;
+function formatNum(value: number): string {
+  return Number.isFinite(value) ? Number(value.toFixed(3)).toString() : '0';
+}
+
+function resolveStaticTextPlaceholders(
+  svg: string,
+  staticTexts?: readonly FlaStaticTextRenderItem[],
+  graphicFraming?: FlaStaticTextGraphicFraming,
+): {
+  readonly svg: string;
+  readonly sourceViewport?: { x: number; y: number; width: number; height: number };
+} {
+  if (!staticTexts || staticTexts.length === 0) return { svg };
+
+  const measureCanvas = document.createElement('canvas');
+  measureCanvas.width = 1;
+  measureCanvas.height = 1;
+  const measureCtx = measureCanvas.getContext('2d');
+  if (!measureCtx) {
+    throw new Error('snapshot static text canvas 2D context is unavailable');
+  }
+
+  const measure = createCanvasStaticTextMeasurer(measureCtx);
+
+  let resolvedSvg = svg;
+  let totalRasterPixels = 0;
+  const measuredBoundsByPlaceholderId = new Map<string, FlaStaticTextBounds>();
+
+  for (const item of staticTexts) {
+    const layout = layoutFlaStaticText(item.descriptor, measure);
+    if (layout.truncated) {
+      throw new Error(
+        `BUDGET_EXCEEDED: Static text line count exceeds maximum ${FLA_STATIC_TEXT_LIMITS.maxLinesPerText} lines`,
+      );
+    }
+    measuredBoundsByPlaceholderId.set(item.placeholderId, layout.bounds);
+    const { x: bx, y: by, width: bw, height: bh } = layout.bounds;
+    const desiredScale = Math.min(4, Math.max(1, item.scaleHint));
+    const maxScaleX = FLA_STATIC_TEXT_LIMITS.maxRasterDimension / Math.max(1, bw);
+    const maxScaleY = FLA_STATIC_TEXT_LIMITS.maxRasterDimension / Math.max(1, bh);
+    const effectiveScale = Math.max(0.25, Math.min(desiredScale, maxScaleX, maxScaleY));
+    const pixelWidth = Math.max(1, Math.min(FLA_STATIC_TEXT_LIMITS.maxRasterDimension, Math.ceil(bw * effectiveScale)));
+    const pixelHeight = Math.max(1, Math.min(FLA_STATIC_TEXT_LIMITS.maxRasterDimension, Math.ceil(bh * effectiveScale)));
+
+    totalRasterPixels += pixelWidth * pixelHeight;
+    if (totalRasterPixels > FLA_STATIC_TEXT_LIMITS.maxTotalRasterPixels) {
+      throw new Error('BUDGET_EXCEEDED: snapshot static text raster pixel budget exceeded');
+    }
+
+    const textCanvas = document.createElement('canvas');
+    textCanvas.width = pixelWidth;
+    textCanvas.height = pixelHeight;
+    const ctx = textCanvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('snapshot static text draw context is unavailable');
+    }
+    ctx.clearRect(0, 0, pixelWidth, pixelHeight);
+    ctx.scale(pixelWidth / bw, pixelHeight / bh);
+    ctx.translate(-bx, -by);
+    drawCanvasStaticText(ctx, layout);
+
+    const dataUri = textCanvas.toDataURL('image/png');
+    const placeholderPattern = new RegExp(
+      `<image id="${item.placeholderId}"[^>]*\\/>`,
+      'u',
+    );
+    const replacement =
+      `<image id="${item.placeholderId}" x="${formatNum(bx)}" y="${formatNum(by)}" ` +
+      `width="${formatNum(bw)}" height="${formatNum(bh)}" preserveAspectRatio="none" href="${dataUri}"/>`;
+    resolvedSvg = resolvedSvg.replace(placeholderPattern, () => replacement);
+  }
+
+  let sourceViewport: { x: number; y: number; width: number; height: number } | undefined;
+  if (graphicFraming) {
+    const authoritative = computeAuthoritativeGraphicViewport(graphicFraming, measuredBoundsByPlaceholderId);
+    if (!authoritative) {
+      throw new Error('BUDGET_EXCEEDED: Graphic static text viewport is not finite');
+    }
+    if (
+      authoritative.outputWidth > FLA_SNAPSHOT_MAX_WIDTH ||
+      authoritative.outputHeight > FLA_SNAPSHOT_MAX_HEIGHT ||
+      authoritative.outputWidth * authoritative.outputHeight > FLA_SNAPSHOT_MAX_PIXELS
+    ) {
+      throw new Error(
+        `BUDGET_EXCEEDED: Measured Graphic viewport ${authoritative.outputWidth}x${authoritative.outputHeight} exceeds snapshot budget`,
+      );
+    }
+    const vb = authoritative.viewBox;
+    const vbAttr = `${formatNum(vb.x)} ${formatNum(vb.y)} ${formatNum(vb.width)} ${formatNum(vb.height)}`;
+    resolvedSvg = resolvedSvg.replace(
+      /<svg\b([^>]*)>/u,
+      (_match, attrs: string) => {
+        const updated = attrs
+          .replace(/\bviewBox="[^"]*"/u, `viewBox="${vbAttr}"`)
+          .replace(/\bwidth="[^"]*"/u, `width="${authoritative.outputWidth}"`)
+          .replace(/\bheight="[^"]*"/u, `height="${authoritative.outputHeight}"`);
+        return `<svg${updated}>`;
+      },
+    );
+    resolvedSvg = resolvedSvg.replace(
+      /<filter\b([^>]*filterUnits="userSpaceOnUse"[^>]*)>/gu,
+      (_match, attrs: string) => {
+        const updated = attrs
+          .replace(/\bx="[^"]*"/u, `x="${formatNum(vb.x)}"`)
+          .replace(/\by="[^"]*"/u, `y="${formatNum(vb.y)}"`)
+          .replace(/\bwidth="[^"]*"/u, `width="${formatNum(vb.width)}"`)
+          .replace(/\bheight="[^"]*"/u, `height="${formatNum(vb.height)}"`);
+        return `<filter${updated}>`;
+      },
+    );
+    sourceViewport = vb;
+  }
+
+  return {
+    svg: resolvedSvg,
+    ...(sourceViewport ? { sourceViewport } : {}),
+  };
+}
 
 function rasterizeSvg(
   svg: string,
@@ -76,8 +214,8 @@ function rasterizeSvg(
         height <= 0 ||
         !Number.isFinite(width) ||
         !Number.isFinite(height) ||
-        width > MAX_SNAPSHOT_DIMENSION ||
-        height > MAX_SNAPSHOT_DIMENSION
+        width > FLA_SNAPSHOT_MAX_WIDTH ||
+        height > FLA_SNAPSHOT_MAX_HEIGHT
       ) {
         URL.revokeObjectURL(url);
         reject(new Error('snapshot SVG produced out-of-bounds dimensions'));
@@ -148,7 +286,12 @@ function rasterizeSvg(
 async function handleRender(request: FlaSnapshotRenderRequest): Promise<void> {
   const renderer = window.pandaStageFlaSnapshotRenderer;
   try {
-    const rasterized = await rasterizeSvg(request.svg, renderer.issue762ProfileEnabled);
+    const resolved = resolveStaticTextPlaceholders(
+      request.svg,
+      request.staticTexts,
+      request.graphicFraming,
+    );
+    const rasterized = await rasterizeSvg(resolved.svg, renderer.issue762ProfileEnabled);
     const pngArraySerializeStartedAt = renderer.issue762ProfileEnabled ? performance.now() : 0;
     const png = Array.from(rasterized.bytes);
     const pngArraySerializeMs = renderer.issue762ProfileEnabled
@@ -160,6 +303,8 @@ async function handleRender(request: FlaSnapshotRenderRequest): Promise<void> {
       width: rasterized.width,
       height: rasterized.height,
       pixelCount: rasterized.width * rasterized.height,
+      ...(resolved.sourceViewport ? { sourceViewport: resolved.sourceViewport } : {}),
+      ...(request.returnResolvedSvg ? { resolvedSvg: resolved.svg } : {}),
       ...(rasterized.profile ? {
         profile: {
           ...rasterized.profile,

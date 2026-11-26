@@ -24,6 +24,10 @@ import {
   type EvaluatedFlaGraphicVisual,
 } from '../evaluate-fla-graphic';
 import { selectFlaGraphicSubtreeVisual } from '../fla-graphic-subtree';
+import {
+  evaluateFlaVideoClock,
+  flaVideoFrameAssetKey,
+} from '../../shared/fla-video-clock';
 import { resolveImageAsset } from './canvasLayers';
 import {
   characterPartRegionAnchorBounds,
@@ -38,6 +42,8 @@ import {
   evaluateCompositeFacePoseAtTime,
   type EvaluatedCharacterNodePose,
 } from '../character-node-animation';
+import { layerPivotStageVector } from '../layer-animation';
+import type { LayerDisplayTransformPatch } from '../services/LayerMotionService';
 import { sameAnimationTarget } from '../models/animationCore';
 import {
   resolveCharacterFaceSource,
@@ -1340,15 +1346,47 @@ export function resolveCharacterActionRenderTransform(evaluated: EvaluatedLayer)
   const transform = ownerTransform(evaluated);
   const placement = evaluated.characterAction?.placement;
   if (!placement) return transform;
-  const radians = transform.rotationDeg * Math.PI / 180;
-  const localX = placement.offsetX * transform.scaleX * (transform.flipX ? -1 : 1);
-  const localY = placement.offsetY * transform.scaleY;
+  const offset = layerPivotStageVector(
+    { x: placement.offsetX, y: placement.offsetY },
+    transform.rotationDeg, transform.scaleX, transform.scaleY, transform.flipX,
+  );
   return {
     ...transform,
-    x: transform.x + localX * Math.cos(radians) - localY * Math.sin(radians),
-    y: transform.y + localX * Math.sin(radians) + localY * Math.cos(radians),
+    x: transform.x + offset.x,
+    y: transform.y + offset.y,
     scaleX: transform.scaleX * placement.scale,
     scaleY: transform.scaleY * placement.scale,
+  };
+}
+
+/** Convert the gesture target in the parent plane to the authored root pose. */
+export function resolveCharacterActionRootPatch(
+  evaluated: EvaluatedLayer,
+  target: LayerDisplayTransformPatch,
+): LayerDisplayTransformPatch {
+  const placement = evaluated.characterAction?.placement;
+  if (!placement || (placement.scale === 1 && placement.offsetX === 0 && placement.offsetY === 0)) {
+    return target;
+  }
+  if (!Number.isFinite(placement.scale) || placement.scale <= 0) {
+    throw new Error('角色动作缩放无效，无法编辑图层变换。');
+  }
+
+  const displayed = resolveCharacterActionRenderTransform(evaluated);
+  const scaleX = target.scaleX !== undefined ? target.scaleX / placement.scale : evaluated.scaleX;
+  const scaleY = target.scaleY !== undefined ? target.scaleY / placement.scale : evaluated.scaleY;
+  const offset = layerPivotStageVector(
+    { x: placement.offsetX, y: placement.offsetY },
+    target.rotationDeg ?? evaluated.rotationDeg, scaleX, scaleY, evaluated.flipX,
+  );
+  const x = (target.x ?? displayed.x) - offset.x;
+  const y = (target.y ?? displayed.y) - offset.y;
+  return {
+    ...target,
+    ...(target.scaleX !== undefined ? { scaleX } : {}),
+    ...(target.scaleY !== undefined ? { scaleY } : {}),
+    ...(Math.abs(x - evaluated.x) > 1e-6 ? { x } : { x: undefined }),
+    ...(Math.abs(y - evaluated.y) > 1e-6 ? { y } : { y: undefined }),
   };
 }
 
@@ -1366,7 +1404,7 @@ export function resolveLayerVisualParts(
   evaluated: EvaluatedLayer,
   timeMs = 0,
   isImageUnavailable?: (assetId: string) => boolean,
-  options?: { collectCandidates: boolean },
+  options?: { collectCandidates?: boolean },
 ): LayerVisualParts {
   const layer = shot.layers.find((candidate) => candidate.id === evaluated.id);
   if (!layer) {
@@ -1393,6 +1431,12 @@ export function resolveLayerVisualParts(
   }
 
   const source = layer.source;
+  if (source.kind === 'control') {
+    return {
+      ...baseResult(evaluated, 'ordinary-image', null, [], null, { required: [], candidates: [], fallback: [] }),
+      combinedLocalBounds: { x: -36, y: -36, width: 72, height: 72 },
+    };
+  }
   if (source.kind === 'asset') {
     const asset = imageAsset(project, evaluated.assetId || source.assetId, layer.id);
     const part: LayerVisualPart = {
@@ -1421,6 +1465,50 @@ export function resolveLayerVisualParts(
     );
   }
 
+  if (source.kind === 'video') {
+    const videoAsset = project.assets.find((candidate) => candidate.id === source.assetId);
+    if (!videoAsset || videoAsset.kind !== 'video') {
+      throw new Error('Cannot resolve video asset ' + source.assetId + ' for layer ' + layer.id + '.');
+    }
+    const sample = evaluateFlaVideoClock({
+      shotTimeMs: timeMs,
+      layerStartTimeMs: layer.startTimeMs ?? 0,
+      timing: videoAsset.videoTiming,
+      playbackMode: source.playbackMode,
+      trimStartMs: source.trimStartMs,
+      trimEndMs: source.trimEndMs,
+      heldFrameIndex: source.heldFrameIndex,
+      sourceFps: source.sourceFps,
+    });
+    const frameKey = sample ? flaVideoFrameAssetKey(videoAsset.id, sample.sampleIndex) : null;
+    const parts: LayerVisualPart[] = frameKey
+      ? [{
+          partId: `${layer.id}:video-frame`,
+          ownerLayerId: layer.id,
+          slot: 'single',
+          source: { kind: 'asset', assetId: frameKey },
+          assetId: frameKey,
+          localRect: centeredRect(videoAsset),
+          rotationDeg: 0,
+          flipX: false,
+          drawOrder: 0,
+          ownerZIndex: evaluated.zIndex,
+        }]
+      : [];
+    return baseResult(
+      evaluated,
+      'ordinary-image',
+      null,
+      parts,
+      null,
+      {
+        required: frameKey ? [{ assetId: frameKey, reason: 'current-layer' }] : [],
+        candidates: [],
+        fallback: [],
+      },
+    );
+  }
+
   if (source.kind === 'animation') {
     const animation = project.animations.find(
       (candidate) => candidate.id === source.animationId,
@@ -1438,7 +1526,9 @@ export function resolveLayerVisualParts(
         mode: 'instance',
         instanceTransformOverrides: layer.flaGraphicInstanceTransformOverrides,
         instanceShapeOverrides: layer.flaGraphicInstanceShapeOverrides,
+        instanceTextOverrides: layer.flaGraphicInstanceTextOverrides,
         internalTimeMs: evaluated.animationFrame?.internalTimeMs,
+        instanceColor: source.flaOccurrence?.instanceColor,
       });
       if (!flaGraphic) {
         throw new Error('Cannot resolve FLA Graphic frame ' + frameOrdinal + ' for layer ' + layer.id + '.');

@@ -121,17 +121,20 @@ export function ExportTaskSurface({
   const isFailed = task.status === 'failed';
   const isCancelled = task.status === 'cancelled';
   const png = Boolean(task.pngSequence);
+  const spriteSheet = task.pngSequence?.spriteSheet === true;
   const finalOutput = task.outputPath && (isCompleted || isFailed || isCancelled) ? task.outputPath : undefined;
   const failureReasonIsListed =
     isFailed &&
     Boolean(task.message) &&
     task.issues.some((issue) => issue.problem.trim() === task.message?.trim());
+  const hasCompletionWarnings = isCompleted && task.issues.length > 0;
   const title = isCompleted
-    ? '\u5bfc\u51fa\u5b8c\u6210'
-    : png ? '导出 PNG 序列' : '\u5bfc\u51fa\u89c6\u9891';
+    ? hasCompletionWarnings ? '导出完成（含提示）' : '\u5bfc\u51fa\u5b8c\u6210'
+    : spriteSheet ? '导出精灵图' : png ? '导出 PNG 序列' : '\u5bfc\u51fa\u89c6\u9891';
   const statusText =
     task.status === 'running'
-      ? png && task.phase === 'committing' ? '正在完成 PNG 序列' : phaseCopy(task.phase)
+      ? spriteSheet && task.phase === 'encoding' ? '正在合成精灵图'
+        : png && task.phase === 'committing' ? spriteSheet ? '正在写入精灵图' : '正在完成 PNG 序列' : phaseCopy(task.phase)
       : isFailed
         ? failureReasonIsListed
           ? STATUS_COPY.failed
@@ -144,7 +147,7 @@ export function ExportTaskSurface({
 
   return (
     <aside
-      aria-label={png ? 'PNG 序列导出任务' : '\u5bfc\u51fa\u89c6\u9891\u4efb\u52a1'}
+      aria-label={spriteSheet ? '精灵图导出任务' : png ? 'PNG 序列导出任务' : '\u5bfc\u51fa\u89c6\u9891\u4efb\u52a1'}
       className="export-task-surface"
       data-task-status={task.status}
       data-task-phase={task.phase ?? ''}
@@ -168,7 +171,11 @@ export function ExportTaskSurface({
               }`}
             >
               {isCompleted ? (
-                <Check focusable="false" size={18} />
+                hasCompletionWarnings ? (
+                  <AlertTriangle focusable="false" size={18} />
+                ) : (
+                  <Check focusable="false" size={18} />
+                )
               ) : isFailed ? (
                 <AlertTriangle focusable="false" size={18} />
               ) : isCancelled ? (

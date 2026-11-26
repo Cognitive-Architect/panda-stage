@@ -6,6 +6,7 @@ import {
   PROJECT_WIDTH,
   FlaGraphicDefinitionSchema,
   ImageAssetSchema,
+  isFlaGraphicDefinition,
   LayerService,
   ProjectSchema,
   pruneFlaGraphicInstanceTransformOverrides,
@@ -31,6 +32,7 @@ import {
   assetDisplayName,
   sanitizeAssetFileName,
 } from './AssetImportService';
+import { hasUnresolvedFlaStaticTextPlaceholder } from '../../shared/fla-static-text';
 import { isSafeGeneratedFlaSvg } from './AssetCanvasImageService';
 import {
   AssetImportFileSystemService,
@@ -394,11 +396,13 @@ function existingDefinition(
     // Refresh only the selected source's verified Shape fallback metadata.
     // Preserve shared edits, timelines, node paths and every Layer override.
     if (batch.fallbacks?.length) {
-      const isolated = new Map<string, Extract<FlaGraphicStructureNode, { type: 'opaque' }>>();
+      type OpaqueNode = Extract<FlaGraphicStructureNode, { type: 'opaque' }>;
+      const sourceKey = (node: OpaqueNode) => JSON.stringify([node.sourceRef, node.id, node.sourceAddress]);
+      const isolated = new Map<string, OpaqueNode>();
       const collect = (nodes: readonly FlaGraphicStructureNode[]): void => {
         for (const node of nodes) {
           if (node.type === 'opaque' && node.opaqueKind === 'shape' && node.fallbackScope === 'subtree' && node.sourceRef) {
-            isolated.set(node.sourceRef, node);
+            isolated.set(sourceKey(node), node);
           } else if (node.type === 'group' || node.type === 'symbol') {
             collect(node.children ?? []);
           }
@@ -410,13 +414,28 @@ function existingDefinition(
         if (!match.structure || (occurrenceDefinitionId && match.id !== occurrenceDefinitionId)) continue;
         let changed = false;
         const refresh = (nodes: readonly FlaGraphicStructureNode[]): FlaGraphicStructureNode[] => nodes.map((node) => {
-          if (node.type === 'opaque' && node.opaqueKind === 'shape' && node.fallbackScope === 'frame-crop') {
-            const next = isolated.get(node.sourceRef ?? '');
-            if (next && next.id === node.id && next.sourceAddress === node.sourceAddress) {
+          if (node.type === 'opaque' && node.opaqueKind === 'shape') {
+            const next = isolated.get(sourceKey(node));
+            if (next && node.fallbackScope === 'frame-crop') {
               const refreshed = { ...node, fallbackScope: next.fallbackScope, fallbackViewBox: next.fallbackViewBox };
+              if (next.coveragePathData) refreshed.coveragePathData = next.coveragePathData;
+              if (next.coverageZeroAlphaColors) refreshed.coverageZeroAlphaColors = next.coverageZeroAlphaColors;
               delete refreshed.fallbackAssetId;
               changed = true;
               return refreshed;
+            }
+            const before = node.fallbackViewBox;
+            const after = next?.fallbackViewBox;
+            if (node.fallbackScope === 'subtree' && next?.coveragePathData &&
+                before && after && before.x === after.x && before.y === after.y &&
+                before.width === after.width && before.height === after.height) {
+              if (!node.coveragePathData || (!node.coverageZeroAlphaColors && next.coverageZeroAlphaColors &&
+                  node.coveragePathData.length === next.coveragePathData.length &&
+                  node.coveragePathData.every((pathData, index) => pathData === next.coveragePathData?.[index]))) {
+                changed = true;
+                return { ...node, coveragePathData: next.coveragePathData,
+                  ...(next.coverageZeroAlphaColors ? { coverageZeroAlphaColors: next.coverageZeroAlphaColors } : {}) };
+              }
             }
           }
           if (node.type === 'group') return { ...node, children: refresh(node.children) };
@@ -441,6 +460,7 @@ function existingDefinition(
     return null;
   }
   const legacyMatch = semanticCandidates.find((match) =>
+    (!batch.requiresFullFrame || !match.structure) &&
     match.source.renderTargetId === batch.target.renderTargetId &&
     match.frames.every((frame, index) => frame.sha256 === batch.frames[index]?.sha256),
   );
@@ -575,6 +595,7 @@ export class FlaGraphicInstanceCommitService {
           return bytes.byteLength !== frame.byteLength ||
             this.hashService.hashBytes(bytes).hex !== frame.sha256 ||
             !isSafeGeneratedFlaSvg(bytes, frame.width, frame.height) ||
+            hasUnresolvedFlaStaticTextPlaceholder(frame.svg) ||
             bytes.byteLength > FLA_IMPORT_LIMITS.maxSingleEntryBytes;
         })) {
       return this.failure('FRAME_RENDER_FAILED', transaction.projectRoot, 'A generated SVG frame failed content validation.', request);
@@ -583,9 +604,24 @@ export class FlaGraphicInstanceCommitService {
     if (request.shotId && (!previousShot || request.startTimeMs > previousShot.durationMs)) {
       return this.failure('SHOT_NOT_FOUND', transaction.projectRoot, 'The selected Shot is unavailable.', request);
     }
+    const matchingOccurrence = previousShot?.layers.find((layer) =>
+      layer.source.kind === 'animation' &&
+      layer.source.flaOccurrence?.occurrenceId === batch.unit.occurrenceId &&
+      layer.source.flaOccurrence.sourceAddress === batch.unit.sourceAddress);
+    const previousAnimationId = matchingOccurrence?.source.kind === 'animation'
+      ? matchingOccurrence.source.animationId
+      : undefined;
+    const previousDefinition = current.project.animations.find((animation): animation is FlaGraphicDefinition =>
+      animation.id === previousAnimationId && isFlaGraphicDefinition(animation) &&
+      animation.source.sha256 === batch.source.rawSha256);
+    const existingLayer = previousDefinition ? matchingOccurrence : undefined;
     const reusedMatch = existingDefinition(current.project, batch, request.shotId);
-    const reused = reusedMatch?.definition ?? null;
-    const upgradeStructure = reusedMatch?.upgrade ?? false;
+    const reusableMatch = !previousDefinition || reusedMatch?.definition.id === previousDefinition.id ? reusedMatch : null;
+    const reused = reusableMatch?.definition ?? previousDefinition ?? null;
+    const upgradeStructure = reusableMatch?.upgrade ?? false;
+    const instanceColor = batch.unit.instanceColor;
+    const existingOccurrence = existingLayer?.source.kind === 'animation' ? existingLayer.source.flaOccurrence : undefined;
+    const restoreColor = instanceColor && existingOccurrence && !existingOccurrence.instanceColor ? instanceColor : undefined;
     const pendingFiles: PendingFrameFile[] = [];
     let projectSaved = false;
     let committedProject: Project | null = null;
@@ -598,16 +634,27 @@ export class FlaGraphicInstanceCommitService {
       const occupiedNames = new Set(
         current.project.assets.map((asset) => path.basename(asset.relativePath).toLowerCase()),
       );
-      const sourceStem = path.basename(batch.source.basename).replace(/\.fla$/iu, '') || 'fla-graphic';
+      const sourceStem = path.basename(batch.source.basename).replace(/\.(?:fla|xfl)$/iu, '') || 'fla-graphic';
 
-      const resources = [
+      const resources = existingLayer && !upgradeStructure ? [] : [
         ...(batch.bitmaps ?? []).map((item) => ({
           ...item, key: item.libraryItemName, bytes: item.pngBytes,
           extension: '.png' as const, mimeType: 'image/png', map: bitmapAssetMap, label: 'bitmap',
         })),
         ...(batch.fallbacks ?? []).map((item) => ({
-          ...item, key: item.sourceRef, bytes: Buffer.from(item.svg, 'utf8'),
-          extension: '.svg' as const, mimeType: 'image/svg+xml', map: isolatedAssetMap, label: 'shape',
+          ...item,
+          key: item.sourceRef,
+          bytes: Buffer.from(item.svg, 'utf8'),
+          extension: '.svg' as const,
+          mimeType: 'image/svg+xml',
+          map: isolatedAssetMap,
+          label: item.sourceRef.startsWith('subtree:text:')
+            ? 'text'
+            : item.sourceRef.startsWith('subtree:filter:')
+              ? 'filter'
+              : item.sourceRef.startsWith('subtree:symbol:')
+                ? 'subtree'
+                : 'shape',
         })),
       ];
       if (resources.length > 0) {
@@ -718,7 +765,7 @@ export class FlaGraphicInstanceCommitService {
         batch,
         assets.filter((asset) => asset.flaGraphicFrame?.definitionId === definitionId).map((asset) => asset.id),
         definitionId,
-        uniqueAnimationName(current.project, `${path.basename(batch.source.basename).replace(/\.fla$/iu, '')} ${batch.target.name}`),
+        uniqueAnimationName(current.project, `${path.basename(batch.source.basename).replace(/\.(?:fla|xfl)$/iu, '')} ${batch.target.name}`),
         bitmapAssetMap,
         isolatedAssetMap,
       );
@@ -783,18 +830,7 @@ export class FlaGraphicInstanceCommitService {
           ? this.failure('ROLLBACK_FAILED', transaction.projectRoot, 'The Graphic instance was rejected and staged files need recovery.', request)
           : this.failure('TRANSFORM_UNSUPPORTED', transaction.projectRoot, 'The Graphic instance transform or playback mode is outside the supported range.', request);
       }
-      const existingLayer = previousShot?.layers.find((layer) => {
-        if (layer.source.kind !== 'animation') return false;
-        const occurrence = layer.source.flaOccurrence;
-        if (!occurrence) return false;
-        const animationId = layer.source.animationId;
-        const animation = current.project.animations.find((candidate) => candidate.id === animationId);
-        return occurrence.occurrenceId === batch.unit.occurrenceId &&
-          'kind' in (animation ?? {}) &&
-          animation?.source.sha256 === batch.source.rawSha256 &&
-          occurrence.sourceAddress === batch.unit.sourceAddress;
-      });
-      if ((existingLayer || (!request.shotId && reused)) && !upgradeStructure) {
+      if ((existingLayer || (!request.shotId && reused)) && !upgradeStructure && !restoreColor) {
         const residualPaths = await this.cleanupFiles(transaction.projectRoot, pendingFiles);
         if (residualPaths.length) {
           return this.failure('ROLLBACK_FAILED', transaction.projectRoot, 'The Graphic instance already exists, but staged files need recovery.', request);
@@ -821,10 +857,14 @@ export class FlaGraphicInstanceCommitService {
           batch.authorPoseReferences,
         );
       }
-      // An already-imported occurrence only needs a Project save when its
-      // SVG-only Definition is being upgraded with the captured structure.
+      // Reimport can recover color on a legacy occurrence while preserving edits and placement.
       const created = existingLayer || !request.shotId
-        ? { project: baseProject, layer: existingLayer ?? null }
+        ? {
+            project: restoreColor && existingLayer && request.shotId
+              ? this.layerService.restoreFlaOccurrenceColor(baseProject, request.shotId, existingLayer.id, restoreColor)
+              : baseProject,
+            layer: existingLayer ?? null,
+          }
         : this.layerService.createFromAnimation(baseProject, request.shotId, {
         animationId: definition.id,
         position: transform!.position,
@@ -837,6 +877,7 @@ export class FlaGraphicInstanceCommitService {
           sourceAddress: batch.unit.sourceAddress!,
           adapterIdentity: batch.unit.adapterIdentity!,
           drawOrder: batch.unit.drawOrder,
+          ...(instanceColor ? { instanceColor } : {}),
         },
       });
       const nextProject = ProjectSchema.parse({

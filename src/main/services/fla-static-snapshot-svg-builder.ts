@@ -33,6 +33,8 @@ import crypto from 'node:crypto';
 import { FLA_GRAPHIC_MAX_FRAMES } from '../../domain/models/animation';
 import JSZip from 'jszip';
 import { FLA_IMPORT_LIMITS } from '../../shared/fla-import-api';
+import { applyFlaRgbaTransform, isFlaRgbaTransform, type FlaRgbaTransform } from '../../shared/fla-instance-color';
+import { planFlaScale9Slices } from '../../shared/fla-scale9';
 import type {
   FlaRenderableTargetCatalogRole,
   FlaRenderTarget,
@@ -62,6 +64,26 @@ import {
 } from './fla-display-list-resolver';
 import { prepareFlaNestedGraphicFrameSelections } from './fla-nested-graphic-frame-selector';
 import {
+  FLA_STATIC_TEXT_LIMITS,
+  FLA_STATIC_TEXT_PLACEHOLDER_BASE64,
+  countExplicitStaticTextLines,
+  layoutFlaStaticText,
+  type FlaStaticTextDescriptor,
+  type FlaStaticTextGraphicFraming,
+  type FlaStaticTextRenderItem,
+} from '../../shared/fla-static-text';
+import { flaBlendModeToSvgMixBlendMode } from '../../shared/fla-blend-mode';
+import {
+  computeBoundedFlaGraphicOutputSize,
+  FLA_SNAPSHOT_MAX_WIDTH as MAX_OUTPUT_WIDTH,
+  FLA_SNAPSHOT_MAX_HEIGHT as MAX_OUTPUT_HEIGHT,
+  FLA_SNAPSHOT_MAX_PIXELS as MAX_OUTPUT_PIXELS,
+} from '../../shared/fla-snapshot-output-size';
+import {
+  buildVariableWidthStrokeOutline,
+  type VariableWidthMarker,
+} from './fla-variable-width-stroke';
+import {
   adaptFlaXflDisplaySource,
   adaptFlaXflDisplaySourceCooperatively,
   getFlaXflDirectChildren,
@@ -72,9 +94,6 @@ import {
 // ---- Limits (subset of FLA_IMPORT_LIMITS used by the R1 SVG builder) ----
 const MAX_SOURCE_BYTES = FLA_IMPORT_LIMITS.maxSourceBytes; // 256 MiB
 const MAX_XML_BYTES = FLA_IMPORT_LIMITS.maxXmlBytes; // 32 MiB
-const MAX_OUTPUT_WIDTH = 4_096;
-const MAX_OUTPUT_HEIGHT = 4_096;
-const MAX_OUTPUT_PIXELS = 16_777_216;
 const MAX_TARGETS = 64;
 const MAX_EDGE_CHARS = 64 * 1024 * 1024; // 64 MiB; matches maxSnapshotBytes cap
 const MAX_STYLE_ENTRIES_PER_SHAPE = 4_096;
@@ -112,6 +131,13 @@ export interface BuildSvgSuccess {
   hasRenderablePath: boolean;
   readonly maskWarning?: string;
   readonly ikPoseWarning?: string;
+  readonly projectionWarning?: string;
+  /** Bounded classic static text items resolved by the sandboxed snapshot rasterizer. */
+  readonly staticTexts?: readonly FlaStaticTextRenderItem[];
+  readonly hasInstanceFilters?: boolean;
+  readonly hasPerChannelColorTransform?: boolean;
+  /** Graphic content-framing metadata so the rasterizer can recompute authoritative viewport from real font metrics. */
+  readonly graphicFraming?: FlaStaticTextGraphicFraming;
 }
 
 export interface BuildSvgFailure {
@@ -1007,6 +1033,7 @@ interface ReconstructedFillPaint {
   readonly gradientId: string | null;
   readonly gradientDefinition: string | null;
   readonly gradientStopCount: number;
+  readonly gradientMatrix?: Matrix2D;
 }
 
 interface BitmapFillPaint {
@@ -1181,6 +1208,7 @@ function parseLinearGradientPaint(
       gradientId,
       gradientDefinition: definition,
       gradientStopCount: stops.length,
+      gradientMatrix: matrix,
     },
   };
 }
@@ -1251,6 +1279,7 @@ function hasClosedLinearStrokeStructure(
   solidStrokeXml: string,
   fillBlock: string,
   gradientBlock: string,
+  variableWidthBlock: string | null = null,
 ): boolean {
   const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
   const stopTags = extractSelfClosingTags(gradientBlock, 'GradientEntry');
@@ -1258,8 +1287,9 @@ function hasClosedLinearStrokeStructure(
     ? (matrixBlocks[0] as string).match(/<Matrix\b[^>]*\/?\s*>/gu) ?? []
     : [];
   if (matrixBlocks.length !== 1 || matrixTags.length !== 1) return false;
+  const expectedSolidStrokeChildren = variableWidthBlock ? [fillBlock, variableWidthBlock] : [fillBlock];
   return hasOnlyExpectedChildElements(style.sourceXml, 'StrokeStyle', [solidStrokeXml]) &&
-    hasOnlyExpectedChildElements(solidStrokeXml, 'SolidStroke', [fillBlock]) &&
+    hasOnlyExpectedChildElements(solidStrokeXml, 'SolidStroke', expectedSolidStrokeChildren) &&
     hasOnlyExpectedChildElements(fillBlock, 'fill', [gradientBlock]) &&
     hasOnlyExpectedChildElements(gradientBlock, 'LinearGradient', [
       matrixBlocks[0] as string,
@@ -1378,7 +1408,6 @@ function hasExplicitSafeLinearStrokeSemantics(
       strokeAttributes.joints !== 'round' || strokeAttributes.pixelHinting !== 'false') return false;
   const weight = Number(strokeAttributes.weight);
   if (!Number.isFinite(weight) || weight <= 0) return false;
-  if (/<VariablePointWidth\b/u.test(solidStrokeXml)) return false;
 
   const gradientTag = gradientBlock.match(/<LinearGradient\b[^>]*>/u)?.[0];
   const gradientAttributes = xmlAttributes(gradientTag);
@@ -1512,6 +1541,7 @@ function parseRadialGradientPaint(
       gradientId,
       gradientDefinition: definition,
       gradientStopCount: stops.length,
+      gradientMatrix: matrix,
     },
   };
 }
@@ -1855,6 +1885,47 @@ function reconstructFills(
  * Extracts the same bounded filled contours used by the formal SVG builder so
  * persisted Structured Graphic masks do not need a second XFL shape parser.
  */
+/**
+ * Extracts bounded filled vector contours in shape-local coordinates for ordinary
+ * imported shapes so positive RGBA alphaOffset can restore 0-alpha geometry without
+ * tinting empty scratch/filter margins or interior holes (E-F09).
+ */
+export function extractFlaGraphicShapeCoverage(input: {
+  readonly shapeBlock: string;
+  readonly shapeId: string;
+  readonly renderTargetId: string;
+  readonly frameIndex: number;
+}): readonly { pathD: string; zeroAlphaColor: string | null }[] | undefined {
+  try {
+    const representation = buildStyleAwareShapeRepresentation(
+      parseShapeAt(input.shapeBlock),
+      input.shapeId,
+    );
+    if (!representation.ok) return undefined;
+    const reconstructed = reconstructFills(
+      representation.representation,
+      input.shapeId,
+      input.renderTargetId,
+      input.frameIndex,
+    );
+    if (!reconstructed.ok || reconstructed.result.fills.length === 0 || reconstructed.result.fills.length > 256) {
+      return undefined;
+    }
+    const coverage = reconstructed.result.fills.map(({ pathD, style, paint }) => ({
+      pathD,
+      zeroAlphaColor: style.type === 'solid' && 'opacity' in paint && paint.opacity === 0
+        ? paint.firstColor
+        : null,
+    }));
+    const totalLength = coverage.reduce((total, { pathD }) => total + pathD.length, 0);
+    return totalLength > 512 * 1024 || coverage.some(({ pathD }) => pathD.length === 0)
+      ? undefined
+      : coverage;
+  } catch {
+    return undefined;
+  }
+}
+
 export function extractFlaGraphicMaskPathData(input: {
   readonly shapeBlock: string;
   readonly shapeId: string;
@@ -1901,6 +1972,7 @@ interface ParsedSolidStrokeStyle {
   readonly join: StrokeJoin;
   readonly miterLimit: number;
   readonly scaleMode: StrokeScaleMode;
+  readonly variableWidthMarkers?: readonly VariableWidthMarker[];
 }
 
 interface StrokeBoundarySegment {
@@ -1908,6 +1980,7 @@ interface StrokeBoundarySegment {
   readonly to: Point2D;
   readonly command: StrokeDrawCommand;
   readonly order: number;
+  readonly edgeIndex: number;
   readonly sourceSubpathId: number;
   readonly closesSourceSubpath: boolean;
 }
@@ -1916,6 +1989,7 @@ interface ReconstructedStrokePath {
   readonly commands: DecodedEdges['commands'];
   readonly pathD: string;
   readonly segmentCount: number;
+  readonly filledOutline?: boolean;
 }
 
 interface ReconstructedSolidStroke {
@@ -1923,6 +1997,92 @@ interface ReconstructedSolidStroke {
   readonly rendererStyle: ParsedSolidStrokeStyle;
   readonly paths: readonly ReconstructedStrokePath[];
   readonly segmentCount: number;
+}
+
+const MAX_VARIABLE_WIDTH_MARKERS = 256;
+const MAX_VARIABLE_WIDTH_MULTIPLIER = 100;
+
+function parseVariablePointWidthMarkers(
+  solidStrokeXml: string,
+  shapeId: string,
+  styleIndex: number,
+):
+  | { readonly ok: true; readonly markers: readonly VariableWidthMarker[] | null; readonly block: string | null }
+  | BuildSvgFailure {
+  const directChildren = getFlaXflDirectChildren(solidStrokeXml, 'SolidStroke');
+  const vpBlocks = directChildren.filter((child) => child.name === 'VariablePointWidth');
+  if (vpBlocks.length === 0) {
+    if (/<VariablePointWidth\b/u.test(solidStrokeXml)) {
+      return {
+        ok: false,
+        code: 'RENDER_FAILED',
+        message: `Shape ${shapeId} StrokeStyle ${styleIndex} has a malformed VariablePointWidth block`,
+      };
+    }
+    return { ok: true, markers: null, block: null };
+  }
+  if (vpBlocks.length !== 1) {
+    return {
+      ok: false,
+      code: 'RENDER_FAILED',
+      message: `Shape ${shapeId} StrokeStyle ${styleIndex} has multiple VariablePointWidth blocks`,
+    };
+  }
+  const vpBlock = vpBlocks[0]!;
+  const block = vpBlock.xml;
+  const children = getFlaXflDirectChildren(block, 'VariablePointWidth');
+  for (const child of children) {
+    if (child.name !== 'WidthMarker') {
+      return {
+        ok: false,
+        code: 'TARGET_UNSUPPORTED',
+        message: `Shape ${shapeId} StrokeStyle ${styleIndex} has unsupported child <${child.name}> inside VariablePointWidth`,
+      };
+    }
+  }
+  if (children.length === 0) {
+    return { ok: true, markers: null, block };
+  }
+  if (children.length > MAX_VARIABLE_WIDTH_MARKERS) {
+    return {
+      ok: false,
+      code: 'BUDGET_EXCEEDED',
+      message: `Shape ${shapeId} StrokeStyle ${styleIndex} exceeds VariablePointWidth marker budget`,
+    };
+  }
+  const parsed: Array<VariableWidthMarker & { readonly index: number }> = [];
+  for (let i = 0; i < children.length; i += 1) {
+    const attrs = children[i]!.attributes;
+    const position = attrs.position === undefined ? 0 : Number(attrs.position);
+    const left = attrs.left === undefined ? 0 : Number(attrs.left);
+    const right = attrs.right === undefined ? 0 : Number(attrs.right);
+    if (
+      !Number.isFinite(position) || position < 0 || position > 1 ||
+      !Number.isFinite(left) || left < 0 || left > MAX_VARIABLE_WIDTH_MULTIPLIER ||
+      !Number.isFinite(right) || right < 0 || right > MAX_VARIABLE_WIDTH_MULTIPLIER
+    ) {
+      return {
+        ok: false,
+        code: 'RENDER_FAILED',
+        message: `Shape ${shapeId} StrokeStyle ${styleIndex} has out-of-range WidthMarker values`,
+      };
+    }
+    const rawType = attrs.type;
+    if (rawType !== undefined && rawType !== 'corner' && rawType !== 'normal') {
+      return {
+        ok: false,
+        code: 'TARGET_UNSUPPORTED',
+        message: `Shape ${shapeId} StrokeStyle ${styleIndex} has unsupported WidthMarker type "${rawType}"`,
+      };
+    }
+    parsed.push({ position, left, right, corner: rawType === 'corner', index: i });
+  }
+  parsed.sort((a, b) => (a.position !== b.position ? a.position - b.position : a.index - b.index));
+  return {
+    ok: true,
+    markers: parsed.map(({ position, left, right, corner }) => ({ position, left, right, corner })),
+    block,
+  };
 }
 
 function parseSolidStrokeStyle(
@@ -1944,6 +2104,8 @@ function parseSolidStrokeStyle(
   const solidStrokeBlocks = extractBalancedBlocks(style.sourceXml, 'SolidStroke');
   if (solidStrokeBlocks.length !== 1) return unsupported('non-SolidStroke construct');
   const solidStrokeXml = solidStrokeBlocks[0] as string;
+  const variableWidth = parseVariablePointWidthMarkers(solidStrokeXml, shapeId, style.index);
+  if (!variableWidth.ok) return variableWidth;
   const fillBlocks = extractBalancedBlocks(solidStrokeXml, 'fill');
   if (fillBlocks.length !== 1) return malformed('SolidStroke fill');
   const fillBlock = fillBlocks[0] as string;
@@ -1961,7 +2123,6 @@ function parseSolidStrokeStyle(
     color = parsedPaint.paint.firstColor;
     opacity = parsedPaint.paint.opacity;
   } else if (style.type === 'linear') {
-    if (/<VariablePointWidth\b/u.test(style.sourceXml)) return unsupported('VariablePointWidth');
     if (paintTags.length !== 1 || !/^<LinearGradient\b/u.test(paintTags[0] ?? '')) {
       return malformed('single linear-gradient stroke fill');
     }
@@ -1969,7 +2130,13 @@ function parseSolidStrokeStyle(
     if (!gradientBlock) return unsupported('linear-gradient stroke paint structure');
     const matchesEvidence = matchesEvidenceBoundLinearStroke(style, solidStrokeXml);
     const hasExplicitSemantics = hasExplicitSafeLinearStrokeSemantics(solidStrokeXml, gradientBlock);
-    const closedStructure = hasClosedLinearStrokeStructure(style, solidStrokeXml, fillBlock, gradientBlock);
+    const closedStructure = hasClosedLinearStrokeStructure(
+      style,
+      solidStrokeXml,
+      fillBlock,
+      gradientBlock,
+      variableWidth.block,
+    );
     if (!closedStructure || (!matchesEvidence && !hasExplicitSemantics)) {
       const matrixBlocks = extractBalancedBlocks(gradientBlock, 'matrix');
       const matrixTags = matrixBlocks.length === 1
@@ -2055,6 +2222,9 @@ function parseSolidStrokeStyle(
   const scaleMode = attributeFromElement(solidStrokeXml, 'SolidStroke', 'scaleMode') ?? 'normal';
   if (scaleMode !== 'normal' && scaleMode !== 'horizontal') return unsupported(`scaleMode "${scaleMode}"`);
   if (gradientPaint && scaleMode !== 'normal') return unsupported(`gradient scaleMode "${scaleMode}"`);
+  if (variableWidth.markers && scaleMode !== 'normal') {
+    return unsupported(`variable-width stroke scaleMode "${scaleMode}"`);
+  }
   const pixelHinting = attributeFromElement(solidStrokeXml, 'SolidStroke', 'pixelHinting');
   if (pixelHinting !== null && pixelHinting !== 'true' && pixelHinting !== 'false') {
     return {
@@ -2065,7 +2235,20 @@ function parseSolidStrokeStyle(
   }
   if (pixelHinting === 'true') return unsupported('pixelHinting');
 
-  return { ok: true, result: { color, opacity, gradientPaint, width, cap, join, miterLimit, scaleMode } };
+  return {
+    ok: true,
+    result: {
+      color,
+      opacity,
+      gradientPaint,
+      width,
+      cap,
+      join,
+      miterLimit,
+      scaleMode,
+      ...(variableWidth.markers ? { variableWidthMarkers: variableWidth.markers } : {}),
+    },
+  };
 }
 
 function stitchSolidStrokeSegments(
@@ -2235,11 +2418,76 @@ function stitchSolidStrokeSegments(
   return { ok: true, paths };
 }
 
+function buildVariableWidthStrokePaths(
+  segments: readonly StrokeBoundarySegment[],
+  closedSourceSubpaths: ReadonlySet<number>,
+  style: ParsedSolidStrokeStyle,
+  remainingCommandBudget: { remaining: number },
+): { readonly ok: true; readonly paths: readonly ReconstructedStrokePath[] } | BuildSvgFailure {
+  const markers = style.variableWidthMarkers!;
+  // Group directed segments in exact authored order within each original <Edge>,
+  // splitting whenever a segment starts a new Edge, a new sourceSubpath, or
+  // disconnects from the previous segment's endpoint.
+  const subpaths: Array<{ readonly subpathId: number; readonly segments: StrokeBoundarySegment[] }> = [];
+  for (const seg of segments) {
+    const prev = subpaths[subpaths.length - 1];
+    const prevSeg = prev?.segments[prev.segments.length - 1];
+    if (
+      prev &&
+      prevSeg &&
+      prevSeg.edgeIndex === seg.edgeIndex &&
+      prev.subpathId === seg.sourceSubpathId &&
+      pointKey(prevSeg.to) === pointKey(seg.from)
+    ) {
+      prev.segments.push(seg);
+    } else {
+      subpaths.push({ subpathId: seg.sourceSubpathId, segments: [seg] });
+    }
+  }
+
+  const paths: ReconstructedStrokePath[] = [];
+  for (const subpath of subpaths) {
+    const first = subpath.segments[0]!;
+    const last = subpath.segments[subpath.segments.length - 1]!;
+    const closed =
+      closedSourceSubpaths.has(subpath.subpathId) ||
+      (subpath.segments.length >= 2 && pointKey(first.from) === pointKey(last.to));
+    const outline = buildVariableWidthStrokeOutline(subpath.segments, {
+      weight: style.width,
+      markers,
+      cap: style.cap,
+      join: style.join,
+      miterLimit: style.miterLimit,
+      closed,
+      maxOutlineCommands: remainingCommandBudget.remaining,
+    });
+    if (!outline.ok) return outline;
+    if (outline.pathD) {
+      if (outline.commands.length > remainingCommandBudget.remaining) {
+        return {
+          ok: false,
+          code: 'BUDGET_EXCEEDED',
+          message: 'Composition path-command budget exceeded during variable-width stroke expansion',
+        };
+      }
+      remainingCommandBudget.remaining -= outline.commands.length;
+      paths.push({
+        commands: [...outline.commands],
+        pathD: outline.pathD,
+        segmentCount: subpath.segments.length,
+        filledOutline: true,
+      });
+    }
+  }
+  return { ok: true, paths };
+}
+
 function reconstructSolidStrokes(
   representation: StyleAwareShapeRepresentation,
   shapeId: string,
   renderTargetId: string,
   frameIndex: number,
+  remainingCommandBudget: { remaining: number },
 ): { readonly ok: true; readonly result: readonly ReconstructedSolidStroke[] } | BuildSvgFailure {
   const boundaryByStyle = new Map<number, StrokeBoundarySegment[]>();
   let currentEdgeIndex = -1;
@@ -2256,6 +2504,7 @@ function reconstructSolidStrokes(
     from: Point2D,
     to: Point2D,
     command: StrokeDrawCommand,
+    edgeIndex: number,
     sourceSubpathId: number,
     closesSourceSubpath = false,
   ): BuildSvgFailure | null => {
@@ -2272,6 +2521,7 @@ function reconstructSolidStrokes(
       to,
       command,
       order: nextOrder,
+      edgeIndex,
       sourceSubpathId,
       closesSourceSubpath,
     });
@@ -2312,6 +2562,7 @@ function reconstructSolidStrokes(
             current,
             subpathStart,
             { type: 'L', x: subpathStart.x, y: subpathStart.y },
+            run.edgeIndex,
             currentSourceSubpathId,
             true,
           );
@@ -2342,7 +2593,7 @@ function reconstructSolidStrokes(
           message: `Shape ${shapeId} StrokeStyle ${run.strokeStyle} has a non-finite endpoint`,
         };
       }
-      const failure = addSegment(run.strokeStyle, current, end, command, currentSourceSubpathId);
+      const failure = addSegment(run.strokeStyle, current, end, command, run.edgeIndex, currentSourceSubpathId);
       if (failure) return failure;
       current = end;
     }
@@ -2355,8 +2606,10 @@ function reconstructSolidStrokes(
     if (!segments || segments.length === 0) continue;
     const parsed = parseSolidStrokeStyle(style, shapeId, renderTargetId, frameIndex);
     if (!parsed.ok) return parsed;
-    const stitched = stitchSolidStrokeSegments(segments, closedSourceSubpaths, shapeId, style.index);
-    if (!stitched.ok) return stitched;
+    const builtPaths = parsed.result.variableWidthMarkers
+      ? buildVariableWidthStrokePaths(segments, closedSourceSubpaths, parsed.result, remainingCommandBudget)
+      : stitchSolidStrokeSegments(segments, closedSourceSubpaths, shapeId, style.index);
+    if (!builtPaths.ok) return builtPaths;
     if (!stylesByIndex.has(style.index)) {
       return {
         ok: false,
@@ -2367,7 +2620,7 @@ function reconstructSolidStrokes(
     strokes.push({
       style,
       rendererStyle: parsed.result,
-      paths: stitched.paths,
+      paths: builtPaths.paths,
       segmentCount: segments.length,
     });
   }
@@ -2453,6 +2706,7 @@ function resolveTargetDisplayList(
   readonly ok: true;
   readonly displayList: FlaResolvedDisplayList;
   readonly shapeBlocks: ReadonlyMap<string, string>;
+  readonly staticTextBlocks: ReadonlyMap<string, FlaStaticTextDescriptor>;
 } | BuildSvgFailure {
   let root: FlaDisplayListResolverInput['root'];
   let playbackFrameIndex: number | undefined;
@@ -2533,8 +2787,9 @@ function resolveTargetDisplayList(
   }
 
   // Selected-frame parsing resets the adapter's mutable source map each time.
-  // Keep only base blocks plus Shape blocks referenced by selected contexts.
+  // Keep only base blocks plus Shape/Text blocks referenced by selected contexts.
   const shapeBlocks = new Map(source.shapeBlocks);
+  const staticTextBlocks = new Map<string, FlaStaticTextDescriptor>(source.staticTextBlocks ?? []);
   const shapeBlockLimit = DEFAULT_FLA_DISPLAY_LIST_RESOLVER_LIMITS.maxResolvedNodeCount;
   let shapeBlockBudgetExceeded = false;
   const captureShapeBlocks = (elements: readonly FlaDisplayListElement[]): string | null => {
@@ -2549,6 +2804,15 @@ function resolveTargetDisplayList(
           return `Nested Graphic shape-source blocks exceeded ${shapeBlockLimit}`;
         }
         shapeBlocks.set(element.shapeId, xml);
+      } else if (element.kind === 'text') {
+        if (staticTextBlocks.has(element.textId)) continue;
+        const descriptor = source.staticTextBlocks?.get(element.textId);
+        if (descriptor === undefined) return `Selected Graphic static text source not found: ${element.textId}`;
+        if (staticTextBlocks.size >= FLA_STATIC_TEXT_LIMITS.maxTextNodesPerComposition * 4) {
+          shapeBlockBudgetExceeded = true;
+          return `Nested Graphic static text blocks exceeded budget`;
+        }
+        staticTextBlocks.set(element.textId, descriptor);
       } else if (element.kind === 'group') {
         const nestedError = captureShapeBlocks(element.elements);
         if (nestedError) return nestedError;
@@ -2605,7 +2869,11 @@ function resolveTargetDisplayList(
 
   const resolved = resolveFlaDisplayList(nested.resolverInput);
   if (!resolved.ok) return mapResolverFailure(resolved);
-  return { ok: true, displayList: resolved.displayList, shapeBlocks };
+  return { ok: true, displayList: resolved.displayList, shapeBlocks, staticTextBlocks };
+}
+
+function hasDrawableStaticText(descriptor: FlaStaticTextDescriptor): boolean {
+  return descriptor.runs.some((run) => run.alpha > 0 && run.characters.trim().length > 0);
 }
 
 function catalogSupportReason(
@@ -2613,13 +2881,23 @@ function catalogSupportReason(
   displayList: FlaResolvedDisplayList,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup,
   allowBlankFrame = false,
+  staticTextBlocks?: ReadonlyMap<string, FlaStaticTextDescriptor>,
 ): { unsupportedReason: string | null; isBlank: boolean } {
   let drawableCount = 0;
   let reason: string | null = null;
-  const visit = (node: FlaResolvedDisplayNode): void => {
+  const visit = (node: FlaResolvedDisplayNode, textVisible: boolean): void => {
     if (reason) return;
     if (node.kind === 'group') {
-      for (const child of node.children) visit(child);
+      for (const child of node.children) visit(child, textVisible && node.opacity !== 0);
+      return;
+    }
+    if (node.kind === 'text') {
+      const descriptor = staticTextBlocks?.get(node.textId);
+      if (!descriptor) {
+        reason = 'Static text source not found: ' + node.textId;
+      } else if (textVisible && hasDrawableStaticText(descriptor)) {
+        drawableCount += 1;
+      }
       return;
     }
     drawableCount += 1;
@@ -2643,7 +2921,7 @@ function catalogSupportReason(
     }
   };
   for (const layer of displayList.layers) {
-    for (const node of layer.children) visit(node);
+    for (const node of layer.children) visit(node, true);
   }
   if (reason) return { unsupportedReason: reason, isBlank: false };
   const isBlank = drawableCount === 0;
@@ -2767,7 +3045,7 @@ export async function buildRenderableTargetCatalog(
     finishIssue762Profile('fla.catalog.candidate.resolve', resolveStartedAt, candidateDetails);
     const supportStartedAt = startIssue762Profile();
     const check = resolved.ok
-      ? catalogSupportReason(resolved.shapeBlocks, resolved.displayList, resolveBitmapMedia, true)
+      ? catalogSupportReason(resolved.shapeBlocks, resolved.displayList, resolveBitmapMedia, true, resolved.staticTextBlocks)
       : { unsupportedReason: resolved.message, isBlank: false };
     finishIssue762Profile('fla.catalog.candidate.support-check', supportStartedAt, {
       ...candidateDetails,
@@ -2775,7 +3053,8 @@ export async function buildRenderableTargetCatalog(
     });
     let unsupportedReason = check.unsupportedReason;
     if (resolved.ok && !unsupportedReason &&
-        (!check.isBlank || resolved.displayList.maskDiagnostics?.length || resolved.displayList.ikPoseDiagnostics?.length)) {
+        (!check.isBlank || resolved.displayList.maskDiagnostics?.length || resolved.displayList.ikPoseDiagnostics?.length ||
+          resolved.displayList.projectionDiagnostics?.length)) {
       // Use the exact production SVG composition path as the capability
       // check. The previous structural-only check incorrectly marked some
       // gradient-stroke targets as previewable even though this builder
@@ -2787,6 +3066,7 @@ export async function buildRenderableTargetCatalog(
         stageWidth: source.stageWidth,
         stageHeight: source.stageHeight,
         shapeBlocks: resolved.shapeBlocks,
+        staticTextBlocks: resolved.staticTextBlocks,
         resolveBitmapMedia,
         metadataOnlyBitmaps: options.metadataOnlyBitmaps,
       });
@@ -3040,6 +3320,10 @@ export async function buildSvgForRenderTarget(
   target: FlaRenderTarget,
   resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup = () => ({ ok: false, reason: 'missing' }),
   preparedDisplaySource?: FlaStaticSnapshotDisplaySource,
+  budgetOverrides?: {
+    readonly maxPathCommandsPerShape?: number;
+    readonly maxPathCommandsPerComposition?: number;
+  },
 ): Promise<BuildComposedSvgResult> {
   const previewStartedAt = startIssue762Profile();
   const details = {
@@ -3063,7 +3347,14 @@ export async function buildSvgForRenderTarget(
     stageWidth: source.stageWidth,
     stageHeight: source.stageHeight,
     shapeBlocks: resolved.shapeBlocks,
+    staticTextBlocks: resolved.staticTextBlocks,
     resolveBitmapMedia,
+    ...(budgetOverrides?.maxPathCommandsPerShape !== undefined
+      ? { maxPathCommandsPerShape: budgetOverrides.maxPathCommandsPerShape }
+      : {}),
+    ...(budgetOverrides?.maxPathCommandsPerComposition !== undefined
+      ? { maxPathCommandsPerComposition: budgetOverrides.maxPathCommandsPerComposition }
+      : {}),
   });
   finishIssue762Profile('fla.preview.svg-compose', svgStartedAt, {
     ...details,
@@ -3169,8 +3460,13 @@ export interface BuildComposedSvgInput {
   readonly stageHeight: number;
   /** C01 shape ids map to source DOMShape blocks held in the Main process. */
   readonly shapeBlocks: ReadonlyMap<string, string>;
+  /** Classic DOMStaticText descriptors held in the Main process. */
+  readonly staticTextBlocks?: ReadonlyMap<string, FlaStaticTextDescriptor>;
   /** Resolves names against the Panda-owned inspection-session PNG payloads. */
   readonly resolveBitmapMedia: FlaStaticSnapshotBitmapMediaLookup;
+  /** Optional tighter path-command caps (clamped to production ceilings) for deterministic budget tests. */
+  readonly maxPathCommandsPerShape?: number;
+  readonly maxPathCommandsPerComposition?: number;
   /** Only the catalog capability check may compose without the actual pixels. */
   readonly metadataOnlyBitmaps?: boolean;
 }
@@ -3179,6 +3475,7 @@ interface ComposedLeaf {
   readonly layer: FlaResolvedDisplayLayer;
   readonly node: Exclude<FlaResolvedDisplayNode, { readonly kind: 'group' }>;
   readonly compositeGroups: readonly Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[];
+  readonly scale9?: Scale9Placement;
 }
 
 interface Point2D {
@@ -3448,6 +3745,19 @@ function includeTransformedBitmapBounds(
   ].every((point) => includePoint(bounds, point));
 }
 
+function includeTransformedRectBounds(
+  bounds: MutableBounds,
+  rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+  matrix: Matrix2D,
+): boolean {
+  return [
+    transformPoint(matrix, { x: rect.x, y: rect.y }),
+    transformPoint(matrix, { x: rect.x + rect.width, y: rect.y }),
+    transformPoint(matrix, { x: rect.x + rect.width, y: rect.y + rect.height }),
+    transformPoint(matrix, { x: rect.x, y: rect.y + rect.height }),
+  ].every((point) => includePoint(bounds, point));
+}
+
 function createGraphicViewport(
   bounds: MutableBounds,
   filterExpansion: { readonly x: number; readonly y: number } = { x: 0, y: 0 },
@@ -3474,17 +3784,8 @@ function createGraphicViewport(
   if (![viewBox.x, viewBox.y, viewBox.width, viewBox.height].every(Number.isFinite) ||
       viewBox.width <= 0 || viewBox.height <= 0) return null;
 
-  const pixelScale = Math.sqrt(MAX_OUTPUT_PIXELS) / Math.sqrt(viewBox.width) / Math.sqrt(viewBox.height);
-  const scale = Math.min(1, MAX_OUTPUT_WIDTH / viewBox.width, MAX_OUTPUT_HEIGHT / viewBox.height, pixelScale);
-  if (!Number.isFinite(scale) || scale <= 0) return null;
-  let outputWidth = Math.max(1, Math.min(MAX_OUTPUT_WIDTH, Math.ceil(viewBox.width * scale)));
-  let outputHeight = Math.max(1, Math.min(MAX_OUTPUT_HEIGHT, Math.ceil(viewBox.height * scale)));
-  while (outputWidth * outputHeight > MAX_OUTPUT_PIXELS) {
-    if (outputWidth / viewBox.width >= outputHeight / viewBox.height && outputWidth > 1) outputWidth -= 1;
-    else if (outputHeight > 1) outputHeight -= 1;
-    else return null;
-  }
-  return { contentBounds, viewBox, outputWidth, outputHeight };
+  const size = computeBoundedFlaGraphicOutputSize(viewBox.width, viewBox.height);
+  return size ? { contentBounds, viewBox, ...size } : null;
 }
 
 function formatSvgNumber(value: number): string {
@@ -3529,15 +3830,159 @@ function isPngWithExpectedDimensions(
   return readUint32(16) === width && readUint32(20) === height && bytes[25] === 6;
 }
 
+type Scale9Placement = NonNullable<ReturnType<typeof planFlaScale9Slices>>;
+
+export function planStaticScale9Placement(
+  node: Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>,
+  shapeBlocks: ReadonlyMap<string, string>,
+): Scale9Placement | null {
+  const { worldTransform: world, scale9Grid } = node;
+  const local = node.scale9LocalTransform ?? node.localTransform;
+  const absX = Math.abs(local.a);
+  const absY = Math.abs(local.d);
+  if (!scale9Grid || absX === 0 || absY === 0 || world.a === 0 || world.d === 0 ||
+      local.b !== 0 || local.c !== 0 || world.b !== 0 || world.c !== 0 ||
+      (local.a < 0 && local.d < 0) || (absX === 1 && absY === 1) || node.children.length > 64) return null;
+  const bounds = createBounds();
+  for (const child of node.children) {
+    if (child.kind !== 'shape' || child.clipPaths?.some((clip) => !node.inheritedClipPaths?.includes(clip))) return null;
+    const block = shapeBlocks.get(child.shapeId);
+    if (!block) return null;
+    const shape = parseShapeAt(block);
+    if (shape.issue || shape.strokeStyles.length ||
+        shape.fillStyles.some((style) => !['solid', 'linear', 'radial'].includes(style.type))) return null;
+    const path = buildStyleAwareShapeRepresentation(shape, child.shapeId);
+    if (!path.ok) return null;
+    const m = child.worldTransform;
+    const childLocal = {
+      a: m.a / world.a, b: m.b / world.d, c: m.c / world.a, d: m.d / world.d,
+      tx: (m.tx - world.tx) / world.a, ty: (m.ty - world.ty) / world.d,
+    };
+    if (!includeTransformedPathBounds(bounds, path.representation.commands, childLocal)) return null;
+  }
+  const layout = planFlaScale9Slices(
+    { left: bounds.minX, top: bounds.minY, right: bounds.maxX, bottom: bounds.maxY },
+    scale9Grid, absX, absY,
+  );
+  const rect = (left: number, top: number, right: number, bottom: number, sx: number, sy: number) => ({
+    left: Math.min(left * sx, right * sx) + world.tx,
+    right: Math.max(left * sx, right * sx) + world.tx,
+    top: Math.min(top * sy, bottom * sy) + world.ty,
+    bottom: Math.max(top * sy, bottom * sy) + world.ty,
+  });
+  const placements = layout?.map(({ source, target }) => ({
+    source: rect(source.left, source.top, source.right, source.bottom, world.a, world.d),
+    target: rect(target.left, target.top, target.right, target.bottom, world.a / absX, world.d / absY),
+  }));
+  return placements?.every(({ source, target }) =>
+    Object.values(source).every(Number.isFinite) && Object.values(target).every(Number.isFinite) &&
+    source.left < source.right && source.top < source.bottom,
+  ) ? placements : null;
+}
+
+function composeMatrix2D(outer: Matrix2D, inner: Matrix2D): Matrix2D {
+  return {
+    a: outer.a * inner.a + outer.c * inner.b,
+    b: outer.b * inner.a + outer.d * inner.b,
+    c: outer.a * inner.c + outer.c * inner.d,
+    d: outer.b * inner.c + outer.d * inner.d,
+    tx: outer.a * inner.tx + outer.c * inner.ty + outer.tx,
+    ty: outer.b * inner.tx + outer.d * inner.ty + outer.ty,
+  };
+}
+
+function transformSvgPathD(pathD: string, matrix: Matrix2D): string {
+  const tokens = pathD.match(/[MLQCZmlqcz]|[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/gu);
+  if (!tokens) return pathD;
+  const out: string[] = [];
+  let index = 0;
+  const mapPoint = (x: number, y: number): string => {
+    const mx = matrix.a * x + matrix.c * y + matrix.tx;
+    const my = matrix.b * x + matrix.d * y + matrix.ty;
+    return `${formatSvgNumber(mx)} ${formatSvgNumber(my)}`;
+  };
+  while (index < tokens.length) {
+    const cmd = tokens[index]!;
+    index += 1;
+    if (cmd === 'Z' || cmd === 'z') {
+      out.push('Z');
+      continue;
+    }
+    if (cmd === 'M' || cmd === 'L') {
+      const x = Number(tokens[index++]);
+      const y = Number(tokens[index++]);
+      out.push(`${cmd} ${mapPoint(x, y)}`);
+    } else if (cmd === 'Q') {
+      const cx = Number(tokens[index++]);
+      const cy = Number(tokens[index++]);
+      const x = Number(tokens[index++]);
+      const y = Number(tokens[index++]);
+      out.push(`Q ${mapPoint(cx, cy)} ${mapPoint(x, y)}`);
+    } else if (cmd === 'C') {
+      const c1x = Number(tokens[index++]);
+      const c1y = Number(tokens[index++]);
+      const c2x = Number(tokens[index++]);
+      const c2y = Number(tokens[index++]);
+      const x = Number(tokens[index++]);
+      const y = Number(tokens[index++]);
+      out.push(`C ${mapPoint(c1x, c1y)} ${mapPoint(c2x, c2y)} ${mapPoint(x, y)}`);
+    } else {
+      return pathD;
+    }
+  }
+  return out.join(' ');
+}
+
+export function diagnoseStaticScale9Fallback(
+  node: Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>,
+  shapeBlocks: ReadonlyMap<string, string>,
+): string | null {
+  const { worldTransform: world, scale9Grid } = node;
+  if (!scale9Grid) return null;
+  if (planStaticScale9Placement(node, shapeBlocks) !== null) return null;
+  const local = node.scale9LocalTransform ?? node.localTransform;
+  // Identity scale needs no 9-slice; rotated occurrences use ordinary scaling.
+  if (local.b === 0 && local.c === 0) {
+    if (Math.abs(local.a) === 1 && Math.abs(local.d) === 1) return null;
+    if (local.a < 0 && local.d < 0) return null;
+  }
+  const effective = local.b !== 0 || local.c !== 0 ? local : world;
+  if (effective.b !== 0 || effective.c !== 0) {
+    const lenX = Math.hypot(effective.a, effective.b);
+    const lenY = Math.hypot(effective.c, effective.d);
+    const dot = Math.abs(effective.a * effective.c + effective.b * effective.d);
+    if (lenX > 0 && lenY > 0 && dot <= 1e-4 * lenX * lenY) return null;
+    return `Scale9Grid (${node.symbolLibraryItemName ?? node.groupId}): skewed transform falls back to ordinary scaling`;
+  }
+  const reasons = new Set<string>();
+  for (const child of node.children) {
+    if (child.kind === 'text') reasons.add('text');
+    else if (child.kind === 'bitmap') reasons.add('bitmap');
+    else if (child.kind === 'group') reasons.add('nested symbol/group');
+    else if (child.kind === 'shape') {
+      if (child.clipPaths?.some((clip) => !node.inheritedClipPaths?.includes(clip))) reasons.add('inner mask');
+      const block = shapeBlocks.get(child.shapeId);
+      const shape = block ? parseShapeAt(block) : undefined;
+      if (shape?.strokeStyles.length) reasons.add('stroke');
+      if (shape?.fillStyles.some((style) => !['solid', 'linear', 'radial'].includes(style.type))) reasons.add('bitmap/unsupported fill');
+    }
+  }
+  const detail = reasons.size > 0 ? [...reasons].join(', ') : 'grid bounds outside artwork';
+  return `Scale9Grid (${node.symbolLibraryItemName ?? node.groupId}): falls back to ordinary scaling (${detail})`;
+}
+
 function flattenResolvedDisplayList(
   displayList: FlaResolvedDisplayList,
+  shapeBlocks: ReadonlyMap<string, string>,
 ): {
   readonly ok: true;
   readonly leaves: readonly ComposedLeaf[];
   readonly groupCount: number;
   readonly expandedSymbolCount: number;
+  readonly scale9Diagnostics: readonly string[];
 } | BuildSvgFailure {
   const leaves: ComposedLeaf[] = [];
+  const scale9Diagnostics = new Set<string>();
   let visited = 0;
   let groupCount = 0;
   let expandedSymbolCount = 0;
@@ -3546,6 +3991,7 @@ function flattenResolvedDisplayList(
     depth: number,
     layer: FlaResolvedDisplayLayer,
     compositeGroups: readonly Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[] = [],
+    scale9?: Scale9Placement,
   ): BuildSvgFailure | null => {
     visited += 1;
     if (visited > 100_000) {
@@ -3567,16 +4013,29 @@ function flattenResolvedDisplayList(
       if (node.rgbTransform !== undefined && !isValidFlaDisplayListRgbTransform(node.rgbTransform)) {
         return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains an invalid group RGB transform' };
       }
-      const childCompositeGroups = node.opacity !== undefined && node.opacity < 1 || node.rgbTransform !== undefined
-        ? [...compositeGroups, node]
-        : compositeGroups;
+      if (node.rgbaTransform && (node.rgbTransform || !isFlaRgbaTransform(node.rgbaTransform))) {
+        return { ok: false, code: 'RENDER_FAILED', message: 'Resolved display list contains an invalid group RGBA transform' };
+      }
+      const childCompositeGroups =
+        (node.opacity !== undefined && node.opacity < 1) ||
+        node.rgbTransform !== undefined ||
+        node.rgbaTransform !== undefined ||
+        node.instanceFilters !== undefined ||
+        node.blendMode !== undefined
+          ? [...compositeGroups, node]
+          : compositeGroups;
+      const placement = node.scale9Grid ? planStaticScale9Placement(node, shapeBlocks) ?? undefined : undefined;
+      if (node.scale9Grid && !placement) {
+        const reason = diagnoseStaticScale9Fallback(node, shapeBlocks);
+        if (reason && scale9Diagnostics.size < 32) scale9Diagnostics.add(reason);
+      }
       for (const child of node.children) {
-        const nestedFailure = visit(child, depth + 1, layer, childCompositeGroups);
+        const nestedFailure = visit(child, depth + 1, layer, childCompositeGroups, placement);
         if (nestedFailure) return nestedFailure;
       }
       return null;
     }
-    leaves.push({ layer, node, compositeGroups });
+    leaves.push({ layer, node, compositeGroups, ...(scale9 ? { scale9 } : {}) });
     return null;
   };
 
@@ -3589,7 +4048,7 @@ function flattenResolvedDisplayList(
   if (displayList.resolvedNodeCount > 100_000 || visited > displayList.resolvedNodeCount) {
     return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Resolved display-list count is inconsistent or exceeds its budget' };
   }
-  return { ok: true, leaves, groupCount, expandedSymbolCount };
+  return { ok: true, leaves, groupCount, expandedSymbolCount, scale9Diagnostics: [...scale9Diagnostics] };
 }
 
 /**
@@ -3600,7 +4059,7 @@ function flattenResolvedDisplayList(
  * back-to-front painter order, and SVG paints later siblings on top.
  */
 export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): BuildComposedSvgResult {
-  const { displayList, renderTargetId, stageWidth, stageHeight, shapeBlocks, resolveBitmapMedia } = input;
+  const { displayList, renderTargetId, stageWidth, stageHeight, shapeBlocks, staticTextBlocks, resolveBitmapMedia } = input;
   if (!displayList || !Array.isArray(displayList.layers) || !shapeBlocks ||
       typeof shapeBlocks.get !== 'function' ||
       typeof renderTargetId !== 'string' || renderTargetId.length === 0 || renderTargetId.length > 512 ||
@@ -3622,7 +4081,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     }
   }
 
-  const flattened = flattenResolvedDisplayList(displayList);
+  const flattened = flattenResolvedDisplayList(displayList, shapeBlocks);
   if (!flattened.ok) return flattened;
 
   const frameBlurIdByLayer = new Map<FlaResolvedDisplayLayer, string>();
@@ -3644,34 +4103,201 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     maxFrameBlurExpansionY = Math.max(maxFrameBlurExpansionY, Math.ceil(layer.frameFilter.blurY * 3));
   }
 
+  type CompositeGroup = Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>;
+  type ResolvedTextNode = Extract<FlaResolvedDisplayNode, { readonly kind: 'text' }>;
+  const instanceFilterByGroup = new Map<CompositeGroup, { id: string; x: number; y: number }>();
+  const instanceFilterByTextNode = new Map<ResolvedTextNode, { id: string; x: number; y: number }>();
+  const instancePrimitivesById = new Map<string, string>();
+  const compileInstanceFilters = (
+    filters: NonNullable<CompositeGroup['instanceFilters']>,
+  ): { id: string; x: number; y: number } | null => {
+    let expansionX = 0;
+    let expansionY = 0;
+    let source = 'SourceGraphic';
+    const primitives: string[] = [];
+    for (const [index, filter] of filters.entries()) {
+      if (!filter.enabled) continue;
+      const { blurX, blurY, distance, angle, color, alpha, strength } = filter;
+      const output = 'effect' + index;
+      if (filter.kind === 'colorMatrix') {
+        if (!filter.matrix || filter.matrix.length !== 20 ||
+            !filter.matrix.every((value) => Number.isFinite(value) && Math.abs(value) <= 1024) || filter.matrix[19]! > 0) continue;
+        const values = filter.matrix.map((value, i) => formatSvgNumber(i % 5 === 4 ? value / 255 : value)).join(' ');
+        primitives.push(`<feColorMatrix in="${source}" type="matrix" values="${values}" result="${output}"/>`);
+        source = output;
+        continue;
+      }
+      // Animate's screen-space blur radii are approximated as twice the SVG sigma.
+      const sigmaX = blurX / 2;
+      const sigmaY = blurY / 2;
+      const radians = angle * Math.PI / 180;
+      const dx = distance * Math.cos(radians);
+      const dy = distance * Math.sin(radians);
+      expansionX += Math.ceil(3 * sigmaX + Math.abs(dx));
+      expansionY += Math.ceil(3 * sigmaY + Math.abs(dy));
+      const blur = 'blur' + index;
+      if (filter.kind === 'blur') {
+        primitives.push(`<feGaussianBlur in="${source}" stdDeviation="${sigmaX} ${sigmaY}" result="${output}"/>`);
+      } else if (filter.kind === 'glow' && (filter.inner || filter.knockout)) {
+        let glowInput = source;
+        if (filter.inner) {
+          glowInput = 'inverse' + index;
+          primitives.push(`<feComponentTransfer in="${source}" result="${glowInput}"><feFuncA type="linear" slope="-1" intercept="1"/></feComponentTransfer>`);
+        }
+        if (filter.inner && !filter.knockout) {
+          const strengthMask = 'glowStrength' + index;
+          const inner = 'glowInside' + index;
+          const remainder = 'glowRemainder' + index;
+          // Mix premultiplied colors under the source alpha. The complementary
+          // weights preserve the original silhouette, including its edges.
+          primitives.push(
+            `<feGaussianBlur in="${glowInput}" stdDeviation="${sigmaX} ${sigmaY}" result="${blur}"/>`,
+            `<feFlood flood-color="${color}" flood-opacity="${Math.min(alpha * strength, 1)}"/>`,
+            `<feComposite in2="${blur}" operator="in" result="${strengthMask}"/>`,
+            `<feComposite in="${strengthMask}" in2="${source}" operator="in" result="${inner}"/>`,
+            `<feComposite in="${source}" in2="${strengthMask}" operator="out" result="${remainder}"/>`,
+            `<feComposite in="${inner}" in2="${remainder}" operator="arithmetic" k2="1" k3="1" result="${output}"/>`,
+          );
+          source = output;
+          continue;
+        }
+        const silhouette = 'silhouette' + index;
+        primitives.push(
+          `<feGaussianBlur in="${glowInput}" stdDeviation="${sigmaX} ${sigmaY}" result="${blur}"/>`,
+          `<feComposite in="${blur}" in2="${source}" operator="${filter.inner ? 'in' : 'out'}" result="${silhouette}"/>`,
+          `<feFlood flood-color="${color}" flood-opacity="${Math.min(alpha * strength, 1)}"/>`,
+          `<feComposite in2="${silhouette}" operator="in" result="${output}"/>`,
+        );
+      } else {
+        const offset = 'offset' + index;
+        primitives.push(
+          `<feGaussianBlur in="${source}" stdDeviation="${sigmaX} ${sigmaY}" result="${blur}"/>`,
+          `<feOffset in="${blur}" dx="${formatSvgNumber(dx)}" dy="${formatSvgNumber(dy)}" result="${offset}"/>`,
+          `<feFlood flood-color="${color}" flood-opacity="${Math.min(alpha * strength, 1)}"/>`,
+          `<feComposite in2="${offset}" operator="in" result="shadow${index}"/>`,
+          `<feMerge result="${output}"><feMergeNode in="shadow${index}"/><feMergeNode in="${source}"/></feMerge>`,
+        );
+      }
+      source = output;
+    }
+    if (primitives.length === 0) return null;
+    const markup = primitives.join('');
+    const id = `fla-instance-filter-${crypto.createHash('sha256').update(markup).digest('hex').slice(0, 24)}`;
+    instancePrimitivesById.set(id, markup);
+    return { id, x: expansionX, y: expansionY };
+  };
+  let instanceExpansionX = 0;
+  let instanceExpansionY = 0;
+  for (const { node, compositeGroups } of flattened.leaves) {
+    let x = 0;
+    let y = 0;
+    for (const group of compositeGroups) {
+      if (!group.instanceFilters) continue;
+      let effect = instanceFilterByGroup.get(group);
+      if (!effect) {
+        if (instanceFilterByGroup.size + instanceFilterByTextNode.size >= 128) {
+          return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition exceeds the instance filter group budget' };
+        }
+        const compiled = compileInstanceFilters(group.instanceFilters);
+        if (!compiled) continue;
+        effect = compiled;
+        instanceFilterByGroup.set(group, effect);
+      }
+      x += effect.x;
+      y += effect.y;
+    }
+    if (node.kind === 'text' && node.instanceFilters) {
+      const descriptor = staticTextBlocks?.get(node.textId);
+      if (descriptor && hasDrawableStaticText(descriptor) && !compositeGroups.some((group) => group.opacity === 0)) {
+        let textEffect = instanceFilterByTextNode.get(node);
+        if (!textEffect) {
+          if (instanceFilterByGroup.size + instanceFilterByTextNode.size >= 128) {
+            return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition exceeds the instance filter group budget' };
+          }
+          const compiled = compileInstanceFilters(node.instanceFilters);
+          if (compiled) {
+            textEffect = compiled;
+            instanceFilterByTextNode.set(node, textEffect);
+          }
+        }
+        if (textEffect) {
+          x += textEffect.x;
+          y += textEffect.y;
+        }
+      }
+    }
+    instanceExpansionX = Math.max(instanceExpansionX, x);
+    instanceExpansionY = Math.max(instanceExpansionY, y);
+  }
+  if (instanceExpansionX > 2048 || instanceExpansionY > 2048) {
+    return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition exceeds the cumulative instance filter expansion budget' };
+  }
+  const filterExpansion = {
+    x: maxFrameBlurExpansionX + instanceExpansionX,
+    y: maxFrameBlurExpansionY + instanceExpansionY,
+  };
+
   const graphicBounds = framingMode === 'content' ? createBounds() : null;
+  const nonTextGraphicBounds = framingMode === 'content' ? createBounds() : null;
+  const staticTextTransforms: Array<{
+    readonly placeholderId: string;
+    readonly worldTransform: Matrix2D;
+  }> = [];
   const definitions = new Map<string, string>();
   const colorTransformFilterIdByGroup = new Map<
     Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>,
     string
   >();
   const colorTransformGroups = new Set<Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>>();
+  const solidColorByGroup = new Map<CompositeGroup, FlaRgbaTransform>();
+  const rgbaWarnings = new Set<string>();
   for (const leaf of flattened.leaves) {
     for (const group of leaf.compositeGroups) {
-      if (group.rgbTransform) colorTransformGroups.add(group);
+      if (group.rgbTransform || group.rgbaTransform) colorTransformGroups.add(group);
     }
   }
   for (const group of colorTransformGroups) {
-    const transform = group.rgbTransform!;
-    const offsets = transform.channelOffsets ?? [transform.offset, transform.offset, transform.offset];
-    const identity = [transform.multiplier, ...(transform.channelOffsets ?? [transform.offset])]
+    const rgba = group.rgbaTransform;
+    const transform = group.rgbTransform;
+    let tightBitmapCoverage = false;
+    if (rgba && rgba.offsets[3] > 0) {
+      const child = group.children.length === 1 ? group.children[0] : undefined;
+      const block = child?.kind === 'shape' ? shapeBlocks.get(child.shapeId) : undefined;
+      const shape = block ? parseShapeAt(block) : undefined;
+      if (shape && !shape.issue && shape.strokeStyles.length === 0 &&
+          shape.fillStyles.length === 1 && shape.fillStyles[0]?.type === 'solid') {
+        solidColorByGroup.set(group, rgba);
+        continue;
+      }
+      if (child?.kind === 'bitmap' && !group.instanceFilters?.some((filter) => filter.enabled)) {
+        // A sole bitmap's own [0..w, 0..h] texel grid is exact coverage; clamping the
+        // filter region to objectBoundingBox [0,0,1,1] lets interior transparent texels
+        // receive positive alphaOffset without tinting surrounding canvas padding.
+        tightBitmapCoverage = true;
+      } else {
+        rgbaWarnings.add('Alpha offset needs known coverage and was skipped for complex artwork.');
+      }
+    }
+    const multipliers = rgba?.multipliers ?? [transform!.multiplier, transform!.multiplier, transform!.multiplier, 1];
+    const offsets = rgba
+      ? [rgba.offsets[0], rgba.offsets[1], rgba.offsets[2], tightBitmapCoverage ? rgba.offsets[3] : Math.min(0, rgba.offsets[3])]
+      : [...(transform!.channelOffsets ?? [transform!.offset, transform!.offset, transform!.offset]), 0];
+    const regionAttrs = tightBitmapCoverage
+      ? 'filterUnits="objectBoundingBox" x="0" y="0" width="1" height="1"'
+      : 'x="-10%" y="-10%" width="120%" height="120%"';
+    const identity = (rgba
+      ? [...multipliers, ...offsets, ...(tightBitmapCoverage ? [1] : [])]
+      : [transform!.multiplier, ...(transform!.channelOffsets ?? [transform!.offset])])
       .map(formatSvgNumber).join('\u0000');
-    const id = `fla-rgb-transform-${crypto.createHash('sha256').update(identity, 'utf8').digest('hex').slice(0, 24)}`;
+    const id = `fla-${rgba ? 'rgba' : 'rgb'}-transform-${crypto.createHash('sha256').update(identity, 'utf8').digest('hex').slice(0, 24)}`;
     const existingDefinition = definitions.get(id);
-    const multiplier = formatSvgNumber(transform.multiplier);
-    const [red, green, blue] = offsets.map((offset) => formatSvgNumber(offset / 255));
     const values = [
-      multiplier, '0', '0', '0', red,
-      '0', multiplier, '0', '0', green,
-      '0', '0', multiplier, '0', blue,
-      '0', '0', '0', '1', '0',
-    ].join(' ');
-    const definition = `<filter id="${id}" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB"><feColorMatrix in="SourceGraphic" type="matrix" values="${values}"/></filter>`;
+      multipliers[0]!, 0, 0, 0, offsets[0]! / 255,
+      0, multipliers[1]!, 0, 0, offsets[1]! / 255,
+      0, 0, multipliers[2]!, 0, offsets[2]! / 255,
+      0, 0, 0, multipliers[3]!, offsets[3]! / 255,
+    ].map(formatSvgNumber).join(' ');
+    const definition = `<filter id="${id}" ${regionAttrs} color-interpolation-filters="sRGB"><feColorMatrix in="SourceGraphic" type="matrix" values="${values}"/></filter>`;
     if (existingDefinition && existingDefinition !== definition) {
       return { ok: false, code: 'RENDER_FAILED', message: 'RGB color-transform filter id collision detected' };
     }
@@ -3679,6 +4305,14 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     colorTransformFilterIdByGroup.set(group, id);
   }
   const resolvedMediaByName = new Map<string, FlaStaticSnapshotBitmapMediaLookupResult>();
+  const maxPathCommandsPerShape = Math.min(
+    MAX_PATH_COMMANDS_PER_SHAPE,
+    Math.max(0, input.maxPathCommandsPerShape ?? MAX_PATH_COMMANDS_PER_SHAPE),
+  );
+  const maxPathCommandsPerComposition = Math.min(
+    MAX_PATH_COMMANDS_PER_COMPOSITION,
+    Math.max(0, input.maxPathCommandsPerComposition ?? MAX_PATH_COMMANDS_PER_COMPOSITION),
+  );
   const emittedNodes: string[] = [];
   let bitmapDefinitionBytes = 0;
   let gradientDefinitionBytes = 0;
@@ -3688,6 +4322,10 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   let pathCommandCount = 0;
   let shapeCount = 0;
   let bitmapInstanceCount = 0;
+  let staticTextNodeCount = 0;
+  let staticTextCharCount = 0;
+  const staticTexts: FlaStaticTextRenderItem[] = [];
+  const staticTextIdsSeen = new Set<string>();
   let skippedBitmapFillCount = 0;
   const bitmapFillDiagnostics: BuildComposedSvgSuccess['composition']['bitmapFillDiagnostics'][number][] = [];
   let catalogHasUnknownBitmapDimensions = false;
@@ -3934,15 +4572,14 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     return null;
   };
 
-  const openCompositeGroups: Extract<FlaResolvedDisplayNode, { readonly kind: 'group' }>[] = [];
+  const openCompositeGroups: Array<{ group: CompositeGroup; close: string; coveredClips: number }> = [];
   let openLayer: FlaResolvedDisplayLayer | null = null;
   let openLayerFilter = false;
-  for (const { layer, node, compositeGroups } of flattened.leaves) {
+  for (const { layer, node, compositeGroups, scale9 } of flattened.leaves) {
     if (openLayer !== layer) {
       while (openCompositeGroups.length > 0) {
-        const closeFailure = appendCompositeGroupTag('</g>');
+        const closeFailure = appendCompositeGroupTag(openCompositeGroups.pop()!.close);
         if (closeFailure) return closeFailure;
-        openCompositeGroups.pop();
       }
       if (openLayerFilter) {
         const closeFailure = appendCompositeGroupTag('</g>');
@@ -3960,24 +4597,42 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     let sharedGroupCount = 0;
     while (sharedGroupCount < openCompositeGroups.length &&
         sharedGroupCount < compositeGroups.length &&
-        openCompositeGroups[sharedGroupCount] === compositeGroups[sharedGroupCount]) {
+        openCompositeGroups[sharedGroupCount]?.group === compositeGroups[sharedGroupCount]) {
       sharedGroupCount += 1;
     }
     for (let index = openCompositeGroups.length - 1; index >= sharedGroupCount; index -= 1) {
-      const closeFailure = appendCompositeGroupTag('</g>');
+      const closeFailure = appendCompositeGroupTag(openCompositeGroups.pop()!.close);
       if (closeFailure) return closeFailure;
-      openCompositeGroups.pop();
     }
     for (let index = sharedGroupCount; index < compositeGroups.length; index += 1) {
       const group = compositeGroups[index]!;
       const attributes: string[] = [];
-      if (group.opacity !== undefined) attributes.push(`opacity="${formatSvgNumber(group.opacity)}"`);
+      const opacity = group.opacity === undefined ? '' : ` opacity="${formatSvgNumber(group.opacity)}"`;
+      const svgBlend = flaBlendModeToSvgMixBlendMode(group.blendMode);
+      const blendAttr = svgBlend ? ` style="mix-blend-mode:${svgBlend}"` : '';
       const colorFilterId = colorTransformFilterIdByGroup.get(group);
       if (colorFilterId) attributes.push(`filter="url(#${colorFilterId})"`);
-      const openFailure = appendCompositeGroupTag(`<g ${attributes.join(' ')}>`);
+      const effect = instanceFilterByGroup.get(group);
+      let tags = 1;
+      let markup = `<g${effect ? '' : `${opacity}${blendAttr}`}${attributes.length ? ' ' + attributes.join(' ') : ''}>`;
+      let coveredClips = openCompositeGroups.at(-1)?.coveredClips ?? 0;
+      if (effect) {
+        markup = `<g${opacity}${blendAttr} filter="url(#${effect.id})">${markup}`;
+        tags += 1;
+        const externalClips = group.instanceFilterClips ?? [];
+        for (const clip of externalClips.slice(coveredClips)) {
+          const registered = registerClipPath(clip);
+          if (!registered.ok) return registered;
+          markup = `<g clip-path="url(#${registered.id})">${markup}`;
+          tags += 1;
+        }
+        coveredClips = Math.max(coveredClips, externalClips.length);
+      }
+      const openFailure = appendCompositeGroupTag(markup);
       if (openFailure) return openFailure;
-      openCompositeGroups.push(group);
+      openCompositeGroups.push({ group, close: '</g>'.repeat(tags), coveredClips });
     }
+    const leafClips = node.clipPaths?.slice(openCompositeGroups.at(-1)?.coveredClips ?? 0);
 
     if (node.kind === 'shape') {
       const shapeBlock = shapeBlocks.get(node.shapeId);
@@ -4014,11 +4669,25 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       if (styleSourceChars > MAX_STYLE_SOURCE_CHARS_PER_COMPOSITION) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition style-source budget exceeded' };
       }
-      if (pathCommandCount + commands.length > MAX_PATH_COMMANDS_PER_COMPOSITION) {
+      if (commands.length > maxPathCommandsPerShape) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Shape ${node.shapeId} path-command budget exceeded` };
+      }
+      if (pathCommandCount + commands.length > maxPathCommandsPerComposition) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composition path-command budget exceeded' };
       }
-      if (graphicBounds && !includeTransformedPathBounds(graphicBounds, commands, node.worldTransform)) {
+      if (scale9) {
+        for (const bounds of [graphicBounds, nonTextGraphicBounds]) {
+          if (!bounds) continue;
+          for (const { target } of scale9) {
+            includePoint(bounds, { x: target.left, y: target.top });
+            includePoint(bounds, { x: target.right, y: target.bottom });
+          }
+        }
+      } else if (graphicBounds && !includeTransformedPathBounds(graphicBounds, commands, node.worldTransform)) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic Shape bounds are not finite: ${node.shapeId}` };
+      }
+      if (nonTextGraphicBounds && !scale9) {
+        includeTransformedPathBounds(nonTextGraphicBounds, commands, node.worldTransform);
       }
       const reconstructed = reconstructFills(
         representation,
@@ -4053,7 +4722,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
           if (input.metadataOnlyBitmaps && !media.pngBytes) {
             // The catalog can validate fill geometry before the bitmap is decoded.
             const outline = `<path d="${fill.pathD}" fill="none"/>`;
-            const failure = appendEmittedNode(outline, node.clipPaths);
+            const failure = appendEmittedNode(outline, leafClips);
             if (failure) return failure;
             fillRegionCount += 1;
             continue;
@@ -4078,24 +4747,116 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
             if (failure) return failure;
             markup = `<path d="${fill.pathD}" transform="${shapeTransform}" fill="url(#${patternId})" stroke="none" fill-rule="nonzero"/>`;
           }
-          const failure = appendEmittedNode(markup, node.clipPaths);
+          const failure = appendEmittedNode(markup, leafClips);
           if (failure) return failure;
           fillRegionCount += 1;
           continue;
         }
-        const gradientFailure = registerGradientPaint(paint);
-        if (gradientFailure) return gradientFailure;
-        const pathNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${paint.svgPaint}" fill-opacity="${formatSvgNumber(paint.opacity)}" stroke="none" fill-rule="nonzero"/>`;
-        const appendFailure = appendEmittedNode(pathNode, node.clipPaths);
+        let artwork: string;
+        if (scale9 && paint.gradientType && paint.gradientId && paint.gradientDefinition && paint.gradientMatrix) {
+          // Separate 9-slice vector geometry from gradient fill mapping (AIR/Animate semantics):
+          // gradient maps continuously once across the overall scaled target bounds rather than
+          // being piecewise-warped differently inside each of the 9 <svg viewBox> zones.
+          const sourceMinX = Math.min(...scale9.map((slice) => slice.source.left));
+          const sourceMinY = Math.min(...scale9.map((slice) => slice.source.top));
+          const targetMinX = Math.min(...scale9.map((slice) => slice.target.left));
+          const targetMinY = Math.min(...scale9.map((slice) => slice.target.top));
+          const overallOffset: Matrix2D = {
+            a: 1, b: 0, c: 0, d: 1,
+            tx: targetMinX - sourceMinX,
+            ty: targetMinY - sourceMinY,
+          };
+          const stageGradientMatrix = composeMatrix2D(
+            overallOffset,
+            composeMatrix2D(node.worldTransform, paint.gradientMatrix),
+          );
+          const stageGradientTransform = matrixToSvgTransform(stageGradientMatrix);
+          const stageGradientHash = crypto.createHash('sha256')
+            .update(`${paint.gradientId}\u0000${stageGradientTransform}`, 'utf8')
+            .digest('hex')
+            .slice(0, 16);
+          const stageGradientId = `${paint.gradientId}-s9-${stageGradientHash}`;
+          const stageGradientDef = paint.gradientDefinition
+            .replace(`id="${paint.gradientId}"`, `id="${stageGradientId}"`)
+            .replace(/gradientTransform="[^"]*"/u, `gradientTransform="${stageGradientTransform}"`);
+          const stageGradFailure = registerGradientPaint({
+            ...paint,
+            svgPaint: `url(#${stageGradientId})`,
+            gradientId: stageGradientId,
+            gradientDefinition: stageGradientDef,
+          });
+          if (stageGradFailure) return stageGradFailure;
+          const sliceNodes: string[] = [];
+          for (const { source, target } of scale9) {
+            const width = target.right - target.left;
+            const height = target.bottom - target.top;
+            if (width <= 0 || height <= 0) continue;
+            const sx = width / (source.right - source.left);
+            const sy = height / (source.bottom - source.top);
+            const sliceAffine: Matrix2D = {
+              a: sx,
+              b: 0,
+              c: 0,
+              d: sy,
+              tx: target.left - source.left * sx,
+              ty: target.top - source.top * sy,
+            };
+            const sliceToStage = composeMatrix2D(sliceAffine, node.worldTransform);
+            const transformedD = transformSvgPathD(fill.pathD, sliceToStage);
+            const rectMarkup = `<rect x="${formatSvgNumber(target.left)}" y="${formatSvgNumber(target.top)}" width="${formatSvgNumber(width)}" height="${formatSvgNumber(height)}"/>`;
+            const sliceClipId = `fla-s9-clip-${crypto.createHash('sha256').update(rectMarkup, 'utf8').digest('hex').slice(0, 20)}`;
+            const clipFailure = registerClipDefinition(
+              sliceClipId,
+              `<clipPath id="${sliceClipId}" clipPathUnits="userSpaceOnUse">${rectMarkup}</clipPath>`,
+            );
+            if (clipFailure) return clipFailure;
+            sliceNodes.push(
+              `<g clip-path="url(#${sliceClipId})"><path d="${transformedD}" fill="url(#${stageGradientId})" fill-opacity="${formatSvgNumber(paint.opacity)}" stroke="none" fill-rule="nonzero"/></g>`,
+            );
+          }
+          artwork = sliceNodes.join('');
+        } else {
+          const gradientFailure = registerGradientPaint(paint);
+          if (gradientFailure) return gradientFailure;
+          let fillColor = paint.svgPaint;
+          let fillOpacity = paint.opacity;
+          const ownColor = solidColorByGroup.get(compositeGroups.at(-1)!);
+          if (ownColor) {
+            const raw = fillColor.slice(1);
+            const hex = raw.length <= 4 ? [...raw].map((char) => char + char).join('') : raw;
+            const rgb = [0, 2, 4].map((index) => Number.parseInt(hex.slice(index, index + 2), 16));
+            const alpha = (hex.length === 8 ? Number.parseInt(hex.slice(6), 16) : 255) * fillOpacity;
+            const channels = applyFlaRgbaTransform([rgb[0]!, rgb[1]!, rgb[2]!, alpha], ownColor);
+            fillColor = '#' + channels.slice(0, 3).map((value) => Math.round(value).toString(16).padStart(2, '0')).join('');
+            fillOpacity = channels[3] / 255;
+          }
+          const pathNode = `<path d="${fill.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${fillColor}" fill-opacity="${formatSvgNumber(fillOpacity)}" stroke="none" fill-rule="nonzero"/>`;
+          artwork = scale9 ? scale9.map(({ source, target }) => {
+            const width = target.right - target.left;
+            const height = target.bottom - target.top;
+            if (width <= 0 || height <= 0) return '';
+            const viewBox = [source.left, source.top, source.right - source.left, source.bottom - source.top].join(' ');
+            return `<svg x="${target.left}" y="${target.top}" width="${width}" height="${height}" viewBox="${viewBox}" preserveAspectRatio="none" overflow="hidden">${pathNode}</svg>`;
+          }).join('') : pathNode;
+          if (firstFillColor === null) firstFillColor = ownColor ? fillColor : paint.firstColor;
+        }
+        const appendFailure = appendEmittedNode(artwork, leafClips);
         if (appendFailure) return appendFailure;
         fillRegionCount += 1;
         if (firstFillColor === null) firstFillColor = paint.firstColor;
       }
+      const strokeCommandBudget = {
+        remaining: Math.min(
+          maxPathCommandsPerShape - commands.length,
+          maxPathCommandsPerComposition - (pathCommandCount + commands.length),
+        ),
+      };
       const reconstructedStrokes = reconstructSolidStrokes(
         representation,
         node.shapeId,
         renderTargetId,
         displayList.frameIndex,
+        strokeCommandBudget,
       );
       if (!reconstructedStrokes.ok) return reconstructedStrokes;
       uniqueEffectiveStyleCount += reconstructed.result.fills.length + reconstructedStrokes.result.length;
@@ -4116,11 +4877,33 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
           return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic stroke bounds are not finite: ${node.shapeId}` };
         }
         for (const path of stroke.paths) {
+          if (path.filledOutline) {
+            if (graphicBounds && !includeTransformedPathBounds(graphicBounds, path.commands, node.worldTransform)) {
+              return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic variable-width stroke bounds are not finite: ${node.shapeId}` };
+            }
+            if (nonTextGraphicBounds) {
+              includeTransformedPathBounds(nonTextGraphicBounds, path.commands, node.worldTransform);
+            }
+            const pathBytes = Buffer.byteLength(path.pathD, 'utf8');
+            if (pathBytes > MAX_EDGE_CHARS) {
+              return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG path exceeds the geometry byte budget' };
+            }
+            const strokePaint = style.gradientPaint?.svgPaint ?? style.color;
+            const pathNode = `<path d="${path.pathD}" transform="${matrixToSvgTransform(node.worldTransform)}" fill="${strokePaint}" fill-opacity="${formatSvgNumber(style.opacity)}" stroke="none" fill-rule="nonzero"/>`;
+            const appendFailure = appendEmittedNode(pathNode, leafClips);
+            if (appendFailure) return appendFailure;
+            pathCommandCount += path.commands.length;
+            strokePathCount += 1;
+            continue;
+          }
           if (graphicBounds) {
             const strokePathBounds = createBounds();
             if (!includeTransformedPathBounds(strokePathBounds, path.commands, node.worldTransform) ||
                 !includeExpandedStrokeBounds(graphicBounds, strokePathBounds, expansion)) {
               return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic stroke bounds are not finite: ${node.shapeId}` };
+            }
+            if (nonTextGraphicBounds) {
+              includeExpandedStrokeBounds(nonTextGraphicBounds, strokePathBounds, expansion);
             }
           }
           const pathD = style.scaleMode === 'horizontal'
@@ -4138,13 +4921,65 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
             : '';
           const strokePaint = style.gradientPaint?.svgPaint ?? style.color;
           const pathNode = `<path d="${pathD}"${transformAttribute} fill="none" stroke="${strokePaint}" stroke-opacity="${formatSvgNumber(style.opacity)}" stroke-width="${formatSvgNumber(expansion.width)}" stroke-linecap="${style.cap}" stroke-linejoin="${style.join}" stroke-miterlimit="${formatSvgNumber(style.miterLimit)}"/>`;
-          const appendFailure = appendEmittedNode(pathNode, node.clipPaths);
+          const appendFailure = appendEmittedNode(pathNode, leafClips);
           if (appendFailure) return appendFailure;
           strokePathCount += 1;
         }
       }
       pathCommandCount += commands.length;
       shapeCount += 1;
+      continue;
+    }
+
+    if (node.kind === 'text') {
+      const descriptor = staticTextBlocks?.get(node.textId);
+      if (!descriptor) {
+        return { ok: false, code: 'RENDER_FAILED', message: `Resolved static text source not found: ${node.textId}` };
+      }
+      if (!hasDrawableStaticText(descriptor) || compositeGroups.some((group) => group.opacity === 0)) continue;
+      staticTextNodeCount += 1;
+      if (staticTextNodeCount > FLA_STATIC_TEXT_LIMITS.maxTextNodesPerComposition) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Composition static text node budget (${FLA_STATIC_TEXT_LIMITS.maxTextNodesPerComposition}) exceeded` };
+      }
+      const nodeCharCount = descriptor.runs.reduce((sum, run) => sum + run.characters.length, 0);
+      staticTextCharCount += nodeCharCount;
+      if (staticTextCharCount > FLA_STATIC_TEXT_LIMITS.maxCharsPerComposition) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Composition static text character budget (${FLA_STATIC_TEXT_LIMITS.maxCharsPerComposition}) exceeded` };
+      }
+      if (countExplicitStaticTextLines(descriptor) > FLA_STATIC_TEXT_LIMITS.maxLinesPerText) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Static text exceeds maximum ${FLA_STATIC_TEXT_LIMITS.maxLinesPerText} lines` };
+      }
+      const estimatedLayout = layoutFlaStaticText(descriptor);
+      if (graphicBounds && !includeTransformedRectBounds(graphicBounds, estimatedLayout.bounds, node.worldTransform)) {
+        return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic static text bounds are not finite: ${node.textId}` };
+      }
+      const worldScale = Math.max(
+        Math.hypot(node.worldTransform.a, node.worldTransform.b),
+        Math.hypot(node.worldTransform.c, node.worldTransform.d),
+      );
+      const scaleHint = Math.min(4, Math.max(2, Math.ceil((Number.isFinite(worldScale) ? worldScale : 1) * 2) / 2));
+      const placeholderId = `fla-text-${crypto.createHash('sha256')
+        .update(`${node.textId}\u0000${scaleHint}`, 'utf8')
+        .digest('hex')
+        .slice(0, 24)}`;
+      if (!staticTextIdsSeen.has(placeholderId)) {
+        staticTextIdsSeen.add(placeholderId);
+        const placeholderTag =
+          `<image id="${placeholderId}" x="${formatSvgNumber(estimatedLayout.bounds.x)}" y="${formatSvgNumber(estimatedLayout.bounds.y)}" ` +
+          `width="${formatSvgNumber(estimatedLayout.bounds.width)}" height="${formatSvgNumber(estimatedLayout.bounds.height)}" ` +
+          `preserveAspectRatio="none" href="data:image/png;base64,${FLA_STATIC_TEXT_PLACEHOLDER_BASE64}"/>`;
+        const defFailure = registerBitmapDefinition(placeholderId, placeholderTag);
+        if (defFailure) return defFailure;
+        staticTexts.push({ placeholderId, descriptor, scaleHint });
+      }
+      if (framingMode === 'content') {
+        staticTextTransforms.push({ placeholderId, worldTransform: node.worldTransform });
+      }
+      const useNode = `<use href="#${placeholderId}" transform="${matrixToSvgTransform(node.worldTransform)}"/>`;
+      const textEffect = instanceFilterByTextNode.get(node);
+      const emittedTextNode = textEffect ? `<g filter="url(#${textEffect.id})">${useNode}</g>` : useNode;
+      const appendFailure = appendEmittedNode(emittedTextNode, leafClips);
+      if (appendFailure) return appendFailure;
       continue;
     }
 
@@ -4166,7 +5001,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
       } else if (graphicBounds && !includeTransformedBitmapBounds(graphicBounds, media.width, media.height, node.worldTransform)) {
         return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Graphic bitmap bounds are not finite' };
       }
-      const appendFailure = appendEmittedNode('<g/>', node.clipPaths);
+      const appendFailure = appendEmittedNode('<g/>', leafClips);
       if (appendFailure) return appendFailure;
       continue;
     }
@@ -4175,15 +5010,17 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     if (graphicBounds && !includeTransformedBitmapBounds(graphicBounds, media.width, media.height, node.worldTransform)) {
       return { ok: false, code: 'BUDGET_EXCEEDED', message: `Graphic bitmap bounds are not finite: ${node.libraryItemName}` };
     }
+    if (nonTextGraphicBounds) {
+      includeTransformedBitmapBounds(nonTextGraphicBounds, media.width, media.height, node.worldTransform);
+    }
     const useNode = `<use href="#${image.id}" transform="${matrixToSvgTransform(node.worldTransform)}"/>`;
-    const appendFailure = appendEmittedNode(useNode, node.clipPaths);
+    const appendFailure = appendEmittedNode(useNode, leafClips);
     if (appendFailure) return appendFailure;
   }
 
   while (openCompositeGroups.length > 0) {
-    const closeFailure = appendCompositeGroupTag('</g>');
+    const closeFailure = appendCompositeGroupTag(openCompositeGroups.pop()!.close);
     if (closeFailure) return closeFailure;
-    openCompositeGroups.pop();
   }
 
   if (openLayerFilter) {
@@ -4192,7 +5029,7 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
   }
 
   const graphicViewport = graphicBounds
-    ? createGraphicViewport(graphicBounds, { x: maxFrameBlurExpansionX, y: maxFrameBlurExpansionY })
+    ? createGraphicViewport(graphicBounds, filterExpansion)
     : null;
   const blankGraphic = framingMode === 'content' && flattened.leaves.length === 0;
   if (framingMode === 'content' && !graphicViewport && !blankGraphic && !catalogHasUnknownBitmapDimensions) {
@@ -4215,7 +5052,18 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     `width="${formatSvgNumber(viewBox.width)}" height="${formatSvgNumber(viewBox.height)}" ` +
     `color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" ` +
     `stdDeviation="${formatSvgNumber(filter.blurX)} ${formatSvgNumber(filter.blurY)}"/></filter>`);
-  const allDefinitions = [...definitions.values(), ...frameBlurDefinitions];
+  const instanceRegion = framingMode === 'content' ? viewBox : {
+    x: viewBox.x - instanceExpansionX,
+    y: viewBox.y - instanceExpansionY,
+    width: viewBox.width + 2 * instanceExpansionX,
+    height: viewBox.height + 2 * instanceExpansionY,
+  };
+  const instanceDefinitions = [...instancePrimitivesById].map(([id, primitives]) =>
+    `<filter id="${id}" filterUnits="userSpaceOnUse" primitiveUnits="userSpaceOnUse" ` +
+    `x="${formatSvgNumber(instanceRegion.x)}" y="${formatSvgNumber(instanceRegion.y)}" ` +
+    `width="${formatSvgNumber(instanceRegion.width)}" height="${formatSvgNumber(instanceRegion.height)}" ` +
+    `color-interpolation-filters="sRGB">${primitives}</filter>`);
+  const allDefinitions = [...definitions.values(), ...frameBlurDefinitions, ...instanceDefinitions];
   const defs = allDefinitions.length > 0 ? `<defs>${allDefinitions.join('')}</defs>` : '';
   const svg = `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${formatRect(viewBox)}" width="${width}" height="${height}">` +
@@ -4227,9 +5075,28 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     return { ok: false, code: 'BUDGET_EXCEEDED', message: 'Composed SVG exceeds the output byte budget' };
   }
   const ikPoseWarning = displayList.ikPoseDiagnostics?.join('；').slice(0, 500);
-  if ((maskWarnings.size || ikPoseWarning) && emittedLeafCount === 0) {
-    return { ok: false, code: 'TARGET_UNSUPPORTED', message: [...maskWarnings, ikPoseWarning].filter(Boolean).join('；').slice(0, 500) };
+  const projectionWarning = [...(displayList.projectionDiagnostics ?? []), ...flattened.scale9Diagnostics, ...rgbaWarnings].join('；').slice(0, 500);
+  if ((maskWarnings.size || ikPoseWarning || projectionWarning) && emittedLeafCount === 0) {
+    return { ok: false, code: 'TARGET_UNSUPPORTED', message: [...maskWarnings, ikPoseWarning, projectionWarning].filter(Boolean).join('；').slice(0, 500) };
   }
+  const graphicFraming: FlaStaticTextGraphicFraming | undefined =
+    framingMode === 'content' && staticTexts.length > 0
+      ? {
+          nonTextBounds:
+            nonTextGraphicBounds &&
+            [nonTextGraphicBounds.minX, nonTextGraphicBounds.minY, nonTextGraphicBounds.maxX, nonTextGraphicBounds.maxY].every(Number.isFinite)
+              ? {
+                  minX: nonTextGraphicBounds.minX,
+                  minY: nonTextGraphicBounds.minY,
+                  maxX: nonTextGraphicBounds.maxX,
+                  maxY: nonTextGraphicBounds.maxY,
+                }
+              : null,
+          textTransforms: staticTextTransforms,
+          filterExpansion,
+          padding: GRAPHIC_CONTENT_PADDING,
+        }
+      : undefined;
   return {
     ok: true,
     svg,
@@ -4241,6 +5108,12 @@ export function buildSvgForResolvedDisplayList(input: BuildComposedSvgInput): Bu
     hasRenderablePath: fillRegionCount > 0 || strokePathCount > 0,
     ...(maskWarnings.size ? { maskWarning: [...maskWarnings].join('；').slice(0, 500) } : {}),
     ...(ikPoseWarning ? { ikPoseWarning } : {}),
+    ...(projectionWarning ? { projectionWarning } : {}),
+    ...(staticTexts.length > 0 ? { staticTexts } : {}),
+    ...(instanceDefinitions.length > 0 ? { hasInstanceFilters: true } : {}),
+    ...([...colorTransformGroups].some((group) => group.rgbTransform?.channelOffsets !== undefined || group.rgbaTransform)
+      ? { hasPerChannelColorTransform: true } : {}),
+    ...(graphicFraming ? { graphicFraming } : {}),
     composition: {
       resolvedNodeCount: displayList.resolvedNodeCount,
       bitmapInstanceCount,

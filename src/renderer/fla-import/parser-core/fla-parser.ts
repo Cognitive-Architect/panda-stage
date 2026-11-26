@@ -70,6 +70,7 @@ const DEFAULT_DASH_SPACE_LENGTH = 4;
 // Ported from lifeart/fla-viewer ParseOptions.structureOnly (b14fa1d).
 export interface ParseOptions {
   structureOnly?: boolean;
+  skipAudio?: boolean;
 }
 
 export class FLAParser {
@@ -77,6 +78,11 @@ export class FLAParser {
   private symbolCache: Map<string, Symbol> = new Map();
   private parser = new DOMParser();
   private lastYieldTime = 0;
+
+  // Panda adapter hook for authored XFL metadata that the legacy parser defaults erase.
+  constructor(private readonly onXflSymbol?: (
+    symbol: Symbol | SymbolInstance, source: globalThis.Element, libraryFilename?: string,
+  ) => void) {}
 
   // Yield to browser if more than 50ms has passed since last yield
   private async yieldIfNeeded(): Promise<void> {
@@ -143,7 +149,7 @@ export class FLAParser {
 
     // Parse sound items from media section and load audio
     progress('Loading audio...');
-    const sounds = await this.parseSounds(root, options.structureOnly);
+    const sounds = await this.parseSounds(root, options.structureOnly || options.skipAudio);
 
     // Parse video items from media section and load FLV data
     progress('Loading videos...');
@@ -443,6 +449,7 @@ export class FLAParser {
           ...(scale9Grid && { scale9Grid }),
           ...(hitAreaFrame !== undefined && { hitAreaFrame })
         };
+        this.onXflSymbol?.(symbol, symbolRoot, filename);
 
         // Store with both normalized and original names
         setWithNormalizedPath(this.symbolCache, rawName, symbol);
@@ -711,6 +718,7 @@ export class FLAParser {
 
       // Parse sound reference
       const sound = this.parseFrameSound(frameEl);
+      const hasActionScript = Boolean(frameEl.querySelector(':scope > Actionscript'));
 
       // Parse morph shape for shape tweens
       const morphShape = tweenType === 'shape' ? this.parseMorphShape(frameEl) : undefined;
@@ -729,6 +737,7 @@ export class FLAParser {
         elements,
         tweens,
         sound,
+        ...(hasActionScript && { hasActionScript: true }),
         ...(morphShape && { morphShape }),
         ...(label && { label }),
         ...(labelType && { labelType }),
@@ -746,19 +755,29 @@ export class FLAParser {
     const soundName = frame.getAttribute('soundName');
     if (!soundName) return undefined;
 
-    const soundSync = (frame.getAttribute('soundSync') || 'event') as FrameSound['sync'];
-    const inPoint44 = frame.getAttribute('inPoint44');
-    const outPoint44 = frame.getAttribute('outPoint44');
-    const loopCount = frame.getAttribute('soundLoopMode') === 'loop'
-      ? parseInt(frame.getAttribute('soundLoop') || '1')
-      : undefined;
+    const rawSync = frame.getAttribute('soundSync');
+    const soundSync: FrameSound['sync'] =
+      rawSync === 'event' || rawSync === 'start' || rawSync === 'stop' || rawSync === 'stream'
+        ? rawSync
+        : 'event';
+    const inPoint44Attr = frame.getAttribute('inPoint44');
+    const outPoint44Attr = frame.getAttribute('outPoint44');
+    const parsedIn = inPoint44Attr !== null ? parseInt(inPoint44Attr, 10) : undefined;
+    const parsedOut = outPoint44Attr !== null ? parseInt(outPoint44Attr, 10) : undefined;
+    const rawLoopMode = frame.getAttribute('soundLoopMode');
+    const loopMode: FrameSound['loopMode'] =
+      rawLoopMode === 'repeat' || rawLoopMode === 'loop' ? rawLoopMode : undefined;
+    const loopAttr = frame.getAttribute('soundLoop');
+    const parsedLoop = loopAttr !== null ? parseInt(loopAttr, 10) : undefined;
+    const loopCount = parsedLoop !== undefined && Number.isFinite(parsedLoop) ? parsedLoop : undefined;
 
     return {
       name: soundName,
       sync: soundSync,
-      inPoint44: inPoint44 ? parseInt(inPoint44) : undefined,
-      outPoint44: outPoint44 ? parseInt(outPoint44) : undefined,
-      loopCount
+      inPoint44: parsedIn !== undefined && Number.isFinite(parsedIn) ? parsedIn : undefined,
+      outPoint44: parsedOut !== undefined && Number.isFinite(parsedOut) ? parsedOut : undefined,
+      ...(loopMode ? { loopMode } : {}),
+      ...(loopCount !== undefined ? { loopCount } : {}),
     };
   }
 
@@ -940,7 +959,7 @@ export class FLAParser {
     const isVisibleAttr = el.getAttribute('isVisible');
     const isVisible = isVisibleAttr === 'false' ? false : undefined; // Only set if explicitly false
 
-    return {
+    const instance: SymbolInstance = {
       type: 'symbol',
       libraryItemName,
       symbolType,
@@ -960,6 +979,8 @@ export class FLAParser {
       ...(z !== undefined && { z }),
       ...(cacheAsBitmap && { cacheAsBitmap })
     };
+    this.onXflSymbol?.(instance, el);
+    return instance;
   }
 
   private parseVideoInstance(el: globalThis.Element): VideoInstance {
@@ -2217,13 +2238,13 @@ export class FLAParser {
       const soundDataHRef = soundEl.getAttribute('soundDataHRef') || undefined;
       const format = soundEl.getAttribute('format') || undefined;
       const sampleCount = soundEl.getAttribute('sampleCount')
-        ? parseInt(soundEl.getAttribute('sampleCount')!)
+        ? Number(soundEl.getAttribute('sampleCount'))
         : undefined;
       // Byte length of the actual stored (e.g. MP3) stream. Adobe appends a
       // low-rate PCM "cache" after the compressed frames inside the same .dat,
       // so this lets us hand only the real stream to the decoder.
       const dataLength = soundEl.getAttribute('dataLength')
-        ? parseInt(soundEl.getAttribute('dataLength')!)
+        ? Number(soundEl.getAttribute('dataLength'))
         : undefined;
 
       // Parse format string to extract sample rate, bit depth, and channels

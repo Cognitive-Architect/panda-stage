@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Copy } from 'lucide-react';
+import { Copy, Unlink } from 'lucide-react';
+import {
+  animationTimeLinkKey,
+  formatAnimationTimeLinkWindow,
+  listAvailableCharacterActionLinks,
+  resolveLayerAnimationTimeLink,
+  setLayerAnimationTimeLink,
+} from '../../../domain/animation-time-link';
+import type { LayerAnimationTimeLink } from '../../../domain/models';
 import { resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { layerStore } from '../../stores/layerStore';
@@ -222,6 +230,27 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
     }
   };
 
+  const updateTimeLink = (nextLink: LayerAnimationTimeLink | undefined): void => {
+    try {
+      assertCurrentSelection();
+      const nextProject = setLayerAnimationTimeLink(
+        snapshot.project,
+        shot.id,
+        layer.id,
+        nextLink,
+      );
+      editorProjectStore.updateProject(
+        nextProject,
+        nextLink ? '设置动画动作联动' : '解除动画动作联动',
+      );
+      setStatus('');
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : '动画动作联动未能更新。',
+      );
+    }
+  };
+
   const commitStartTime = (): void => {
     const activeEdit = activeStartEditRef.current;
     if (!activeEdit) return;
@@ -307,6 +336,12 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
   };
 
   const locked = layer.locked;
+  const resolvedTimeLink = resolveLayerAnimationTimeLink(shot, layer);
+  const availableTimeLinks = listAvailableCharacterActionLinks(snapshot.project, shot);
+  const currentTimeLinkKey = layer.animationTimeLink
+    ? animationTimeLinkKey(layer.animationTimeLink)
+    : '';
+  const timeLinkActive = resolvedTimeLink.status === 'active';
   const animationId = layer.source.animationId;
   const definition = snapshot.project.animations.find(({ id }) => id === animationId);
   const frameCount = definition ? resolveFlaGraphicPreviewTimeline(definition, true).totalFrames : 0;
@@ -333,13 +368,82 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
         </Button>
       </div>
       <div className="animation-playback-fields">
+        <div
+          className="animation-playback-field"
+          data-testid="animation-time-link-field"
+        >
+          <span>跟随动作</span>
+          <div className="animation-playback-link-control">
+            <select
+              aria-label="跟随角色动作"
+              className="animation-playback-link-select"
+              data-testid="animation-time-link-select"
+              disabled={locked}
+              onChange={(event) => {
+                const selectedKey = event.currentTarget.value;
+                if (!selectedKey) {
+                  if (layer.animationTimeLink) updateTimeLink(undefined);
+                  return;
+                }
+                const chosen = availableTimeLinks.find(
+                  (candidate) => candidate.key === selectedKey,
+                );
+                if (chosen) {
+                  updateTimeLink(chosen.link);
+                }
+              }}
+              value={currentTimeLinkKey}
+            >
+              <option value="">独立播放</option>
+              {resolvedTimeLink.status === 'broken' ? (
+                <option disabled value={currentTimeLinkKey}>
+                  关联动作已失效
+                </option>
+              ) : null}
+              {availableTimeLinks.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {`${option.sourceLayerName} · ${option.actionName}（${formatAnimationTimeLinkWindow(option.startMs, option.endMs)}）`}
+                </option>
+              ))}
+              {availableTimeLinks.length === 0 && !layer.animationTimeLink ? (
+                <option disabled value="__empty__">
+                  当前镜头暂无角色动作
+                </option>
+              ) : null}
+            </select>
+            {layer.animationTimeLink ? (
+              <Button
+                aria-label="解除动作联动"
+                className="animation-playback-unlink"
+                data-testid="animation-time-link-clear"
+                disabled={locked}
+                onClick={() => updateTimeLink(undefined)}
+                variant="secondary"
+              >
+                <span className="ui-icon-label">
+                  <DecorativeIcon icon={Unlink} size={14} />
+                  <span>解除</span>
+                </span>
+              </Button>
+            ) : null}
+          </div>
+        </div>
+        {resolvedTimeLink.status === 'broken' ? (
+          <output
+            className="animation-playback-link-broken"
+            data-testid="animation-time-link-broken"
+            role="alert"
+          >
+            关联动作已失效，已回退独立播放；请重选动作或解除。
+          </output>
+        ) : null}
         <label className="animation-playback-time-field">
           <span>开始时间</span>
           <span className="animation-playback-time-control">
             <input
               aria-label="动画开始时间（秒）"
               data-testid="animation-start-seconds"
-              disabled={locked}
+              disabled={locked || timeLinkActive}
               max={shot.durationMs / 1_000}
               min={0}
               onBlur={commitStartTime}

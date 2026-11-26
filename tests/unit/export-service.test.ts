@@ -1,7 +1,9 @@
 import path from 'node:path';
 import { mkdtemp, readFile, readdir, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { planSpriteSheetGrid } from '../../src/shared/export-types';
+import { freezeMp4OutputProfile, freezeVideoOutputProfile } from '../../src/shared/export-output-profile';
 import type { FrameFileSystem } from '../../src/main/services/FileSystemService';
 import {
   ExportJobError,
@@ -23,6 +25,21 @@ import type {
 } from '../../src/shared/export-types';
 import type { FrozenExportInput } from '../../src/main/services/ExportPreparationService';
 import { buildProject } from './domain/testProject';
+
+const spriteManifestWrite = vi.hoisted(() => ({ failPath: null as string | null }));
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...actual,
+    open: (...args: Parameters<typeof actual.open>) => {
+      if (spriteManifestWrite.failPath !== null && args[0] === spriteManifestWrite.failPath) {
+        return Promise.reject(new Error('simulated sprite manifest write failure'));
+      }
+      return actual.open(...args);
+    },
+  };
+});
 
 class MemoryFileSystem implements FrameFileSystem {
   readonly directories = new Map<string, Map<string, Uint8Array>>();
@@ -196,14 +213,106 @@ class MemoryRenderer implements FrameRenderer {
         `simulated missing asset render failure: frame ${request.frameIndex}`,
       );
     }
+    const settings = this.formalLoads.at(-1)?.renderSettings;
+    const width = settings?.width ?? 1920;
+    const height = settings?.height ?? 1080;
+    const pngBytes = Buffer.alloc(26);
+    Buffer.from('89504e470d0a1a0a', 'hex').copy(pngBytes);
+    pngBytes.writeUInt32BE(width, 16);
+    pngBytes.writeUInt32BE(height, 20);
     return {
       ...request,
-      width: 1_920,
-      height: 1_080,
-      pngBytes: new Uint8Array([137, 80, 78, 71, request.frameIndex]),
+      width,
+      height,
+      pngBytes,
     };
   }
 }
+
+it('bounds a single sprite sheet before preparing the renderer', () => {
+  expect(planSpriteSheetGrid(5, 1920, 1080)).toEqual({ columns: 2, rows: 3, width: 3840, height: 3240 });
+  expect(() => planSpriteSheetGrid(100, 1920, 1080)).toThrow('PNG');
+  expect(() => planSpriteSheetGrid(0, 100, 100)).toThrow();
+});
+
+it('assembles a pair from the formal ranged schedule, and leaves no output when cancelled', async () => {
+  const parent = await mkdtemp(path.join(tmpdir(), 'panda-sprite-sheet-'));
+  const fileSystem = new MemoryFileSystem();
+  fileSystem.createJobDirectory = async (jobId) => {
+    const directory = await mkdtemp(path.join(parent, 'staging-'));
+    fileSystem.directories.set(directory, new Map([['job', Buffer.from(jobId)]]));
+    return directory;
+  };
+  const cleanMemory = fileSystem.cleanupJobDirectory.bind(fileSystem);
+  fileSystem.cleanupJobDirectory = async (directory) => {
+    await unlink(path.join(directory, 'sprite-sheet.png')).catch(() => undefined);
+    await rmdir(directory);
+    await cleanMemory(directory);
+  };
+  const header = (width: number, height: number) => {
+    const bytes = Buffer.alloc(26);
+    Buffer.from('89504e470d0a1a0a', 'hex').copy(bytes);
+    bytes.writeUInt32BE(width, 16);
+    bytes.writeUInt32BE(height, 20);
+    bytes[24] = 8;
+    bytes[25] = 6;
+    return bytes;
+  };
+  const renderer = new MemoryRenderer();
+  const render = renderer.renderFrame.bind(renderer);
+  renderer.renderFrame = async (request) => ({ ...await render(request), pngBytes: header(1920, 1080) });
+  const adapter = new MemoryMediaAdapter(fileSystem);
+  const encoder = Object.assign(adapter, {
+    async encodeSpriteSheet(request: { outputPath: string; columns: number; rows: number; frameCount: number }) {
+      expect(request).toMatchObject({ columns: 2, rows: 3, frameCount: 5 });
+      await writeFile(request.outputPath, header(3840, 3240));
+    },
+  });
+  const project = buildProject();
+  const service = new ExportService(renderer, fileSystem, encoder);
+  const output = path.join(parent, 'sprites');
+  const cancelledOutput = path.join(parent, 'sprites-cancelled');
+  const incompleteOutput = path.join(parent, 'sprites-incomplete');
+  const frozen = (targetPath: string) => ({
+    candidate: { project, pngSequence: { shotId: project.shots[0]!.id, spriteSheet: true, transparent: true,
+      range: { startMs: 42, endMs: 290 } }, renderSettings: { width: 1920, height: 1080, fps: 24 },
+      outputIntent: { targetPath }, cameraMode: 'static' }, media: [],
+  }) as unknown as FrozenExportInput;
+  try {
+    const job = service.startPngSequenceExport(frozen(output), async () => {});
+    await expect(job.completion).resolves.toEqual({ outputPath: output });
+    expect((await readdir(output)).sort()).toEqual(['sprite-sheet.json', 'sprite-sheet.png']);
+    const manifest = JSON.parse(await readFile(path.join(output, 'sprite-sheet.json'), 'utf8'));
+    expect(manifest.meta).toEqual({ image: 'sprite-sheet.png', size: { w: 3840, h: 3240 }, fps: 24, origin: 'top-left', units: 'px' });
+    expect(manifest.frames.map(({ timeMs }: { timeMs: number }) => timeMs)).toEqual(
+      renderer.requests.map(({ timeMs }) => timeMs),
+    );
+    expect(manifest.frames[0]).toMatchObject({ index: 0, timeMs: 83, frame: { x: 0, y: 0, w: 1920, h: 1080 } });
+    expect(manifest.frames[4]).toMatchObject({ index: 4, frame: { x: 0, y: 2160, w: 1920, h: 1080 }, trimmed: false, rotated: false });
+    expect(renderer.formalLoads[0]?.solidClear).toBeUndefined();
+
+    spriteManifestWrite.failPath = path.join(incompleteOutput, 'sprite-sheet.json');
+    const failed = service.startPngSequenceExport(frozen(incompleteOutput), async () => {});
+    await expect(failed.completion).rejects.toThrow('simulated sprite manifest write failure');
+    expect(service.getJob(failed.jobId)).toMatchObject({ status: 'failed' });
+    expect(await readdir(parent)).toEqual(['sprites']);
+    spriteManifestWrite.failPath = null;
+
+    const unsubscribe = service.subscribe((update) => {
+      if (update.completedFrames === 1 && update.status === 'running') service.cancelJob(update.jobId);
+    });
+    const cancelled = service.startPngSequenceExport(frozen(cancelledOutput), async () => {});
+    await expect(cancelled.completion).rejects.toBeInstanceOf(ExportJobError);
+    unsubscribe();
+    expect(service.getJob(cancelled.jobId)?.status).toBe('cancelled');
+    expect(await readdir(parent)).toEqual(['sprites']);
+  } finally {
+    spriteManifestWrite.failPath = null;
+    for (const file of await readdir(output).catch(() => [])) await unlink(path.join(output, file));
+    await rmdir(output).catch(() => undefined);
+    await rmdir(parent);
+  }
+});
 
 it('exports contiguous Shot-local PNG frames without FFmpeg and retains a marked partial sequence on cancel', async () => {
   const parent = await mkdtemp(path.join(tmpdir(), 'panda-png-sequence-'));
@@ -331,7 +440,7 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
     const outputPath = String(request.outputPath);
     const outputDirectory = path.dirname(outputPath);
     const isFormalSilentIntermediate =
-      path.basename(outputPath) === 'formal-silent.mp4';
+      /^formal-silent\.(?:mp4|webm)$/u.test(path.basename(outputPath));
     if (
       !isFormalSilentIntermediate &&
       this.fileSystem.directories.has(outputDirectory)
@@ -418,6 +527,83 @@ class MemoryMediaAdapter implements FullProbeMediaAdapter {
 }
 
 describe('ExportService', () => {
+  it('publishes a formal GIF with frozen loop settings and omits project audio', async () => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    const renderSettings = {
+      width: 1280, height: 720, fps: 24, format: 'gif', videoCodec: 'gif', audioCodec: null, loop: false,
+    };
+    media.result = {
+      ...probeResult,
+      codecName: 'gif', pixelFormat: 'bgra', width: 1280, height: 720,
+      fps: 24_000 / 1001, frameCount: 24, durationSeconds: 1,
+      hasAudio: false, audioStreamCount: 0,
+    };
+    const input = {
+      candidate: {
+        attemptId: '10000000-0000-4000-8000-000000000011',
+        snapshotId: '30000000-0000-4000-8000-000000000011',
+        project: { shots: [{
+          id: '50000000-0000-4000-8000-000000000031', durationMs: 1000, audioClips: [{}],
+        }] },
+        projectRoot: '/project',
+        cameraMode: 'static',
+        renderSettings,
+        outputIntent: { targetPath: '/output.gif', overwriteApproved: false },
+      },
+      media: [],
+    } as unknown as FrozenExportInput;
+
+    const service = new ExportService(renderer, fileSystem, media);
+    const result = await service.startFormalExport(input, async () => undefined).completion;
+
+    expect(renderer.formalLoads[0]?.renderSettings).toEqual(renderSettings);
+    expect(media.encodeRequests[0]).toMatchObject({ fps: 24, gifLoop: false });
+    expect(media.muxRequests).toHaveLength(0);
+    expect(result).toMatchObject({ completedFrames: 24, outputPath: '/output.gif' });
+    expect(fileSystem.commitFormalOutputNoReplaceCalls).toBe(1);
+  });
+
+  it.each([[1280, 30], [1920, 60]] as const)('freezes %i-wide at %i fps through rendering, encoding and probe', async (width, fps) => {
+    const renderer = new MemoryRenderer();
+    const fileSystem = new MemoryFileSystem();
+    const media = new MemoryMediaAdapter(fileSystem);
+    const renderSettings = freezeMp4OutputProfile({ width, fps });
+    const frameCount = fps === 30 ? 46 : 91;
+    const secondShot = '50000000-0000-4000-8000-000000000032';
+    media.result = {
+      ...probeResult, width, height: renderSettings.height, fps, frameCount,
+      durationSeconds: frameCount / fps,
+      hasAudio: false, audioStreamCount: 0,
+    };
+    const input = {
+      candidate: {
+        attemptId: '10000000-0000-4000-8000-000000000011',
+        snapshotId: '30000000-0000-4000-8000-000000000011',
+        project: { shots: [
+          { id: '50000000-0000-4000-8000-000000000031', durationMs: 1001, audioClips: [] },
+          { id: secondShot, durationMs: 501, audioClips: [] },
+        ] },
+        projectRoot: '/project',
+        cameraMode: 'static', renderSettings,
+        outputIntent: { targetPath: '/output.mp4', overwriteApproved: false },
+      },
+      media: [],
+    } as unknown as FrozenExportInput;
+    const service = new ExportService(renderer, fileSystem, media);
+    const result = await service.startFormalExport(input, async () => undefined).completion;
+    expect(result.completedFrames).toBe(frameCount);
+    expect(renderer.formalLoads[0]?.renderSettings).toEqual(renderSettings);
+    expect(renderer.requests[fps]).toMatchObject({ frameIndex: fps, timeMs: 1000, shotLocalTimeMs: 1000 });
+    expect(renderer.requests[fps + 1]).toMatchObject({
+      shotId: secondShot,
+      shotLocalTimeMs: Math.floor(1000 / fps) - 1,
+    });
+    expect(renderer.requests.at(-1)?.timeMs).toBe(1500);
+    expect(media.encodeRequests[0]).toMatchObject({ fps });
+    expect(result.probe).toMatchObject({ width, height: renderSettings.height, fps, frameCount });
+  });
   it.each([
     [3_000, 72],
     [5_000, 120],
@@ -724,7 +910,7 @@ describe('ExportService', () => {
     expect(renderer.releasedJobs).toEqual([cancelled.jobId, retry.jobId]);
   });
 
-  it('preflights frozen audio, builds a strict mix plan, muxes once, and commits no-clobber', async () => {
+  it.each(['mp4', 'webm'] as const)('preflights frozen audio and atomically publishes formal %s', async (format) => {
     const renderer = new MemoryRenderer();
     const fileSystem = new MemoryFileSystem();
     const media = new MemoryMediaAdapter(fileSystem);
@@ -735,6 +921,12 @@ describe('ExportService', () => {
       audioDurationSeconds: 9,
       formatDurationSeconds: 9,
       audioStreamCount: 1,
+      ...(format === 'webm' ? {
+        codecName: 'vp9',
+        audioCodecName: 'opus',
+        videoStartSeconds: 0.007,
+        audioStartSeconds: -0.007,
+      } : {}),
     };
     const audioAssetId = '10000000-0000-4000-8000-000000000021';
     const audioClipId = '70000000-0000-4000-8000-000000000021';
@@ -790,9 +982,9 @@ describe('ExportService', () => {
         },
         projectRoot: 'C:\\Panda Stage\\Project',
         cameraMode: 'static',
-        renderSettings: { width: 1_920, height: 1_080, fps: 24 },
+        renderSettings: freezeVideoOutputProfile(format),
         outputIntent: {
-          targetPath: 'C:\\Panda Stage\\Output\\formal-audio.mp4',
+          targetPath: `C:\\Panda Stage\\Output\\formal-audio.${format}`,
           overwriteApproved: false,
         },
       },
@@ -814,7 +1006,7 @@ describe('ExportService', () => {
 
     expect(media.audioProbeRequests).toHaveLength(1);
     expect(media.audioProbeRequests[0]).toContain(audioAssetId);
-    expect(media.encodeRequests[0]?.outputPath).toContain('formal-silent.mp4');
+    expect(media.encodeRequests[0]?.outputPath).toContain(`formal-silent.${format}`);
     expect(media.muxRequests).toHaveLength(1);
     expect(media.muxRequests[0]).toMatchObject({
       overwrite: false,

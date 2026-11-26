@@ -1,3 +1,4 @@
+import { FlaInstanceColorSchema } from './fla-instance-color';
 import { z } from 'zod';
 import { FLA_STATIC_SNAPSHOT_LIMITS, FlaRenderTargetIdSchema } from './fla-static-snapshot-api';
 
@@ -80,6 +81,7 @@ export const FlaPartPreviewUnitSchema = z.object({
   selectedEffectiveChildFrameBasis: z.string().trim().min(1).max(1_000).nullable(),
   localTransform: FlaPartPreviewMatrixSchema,
   worldTransform: FlaPartPreviewMatrixSchema,
+  instanceColor: FlaInstanceColorSchema.optional(),
   determinant: z.number().finite(),
   visible: z.literal(true),
   layer: z.object({

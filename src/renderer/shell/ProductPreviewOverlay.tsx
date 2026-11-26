@@ -25,9 +25,8 @@ import {
 } from 'react';
 import {
   evaluateShotAtTime,
-  evaluateSpeakerFocusCamera,
   mapProjectTime,
-  prepareSpeakerFocusCamera,
+  prepareShotCamera,
   projectDurationMs,
   type CameraView,
   type Project,
@@ -523,12 +522,10 @@ export function ProductPreviewOverlay({
     ? evaluateSubtitleAtTime(cues, evaluatedShot.timeMs)
     : null;
   const cameraPlan = useMemo(
-    () => (autoCameraEnabled && shot ? prepareSpeakerFocusCamera(project, shot) : null),
+    () => shot ? prepareShotCamera(project, shot, autoCameraEnabled ? 'speaker-focus' : 'static') : null,
     [project, shot, autoCameraEnabled],
   );
-  const camera = cameraPlan
-    ? evaluateSpeakerFocusCamera(cameraPlan, activeShotTimeMs)
-    : undefined;
+  const camera = cameraPlan?.(activeShotTimeMs);
   const renderedShot = useMemo(
     () => {
       if (!shot || !evaluatedShot) return evaluatedShot;
@@ -950,7 +947,7 @@ export function ProductPreviewOverlay({
                   ]}
                   value={range}
                 />
-                <button
+                {!shot?.camera && <button
                   aria-pressed={autoCameraEnabled}
                   className="product-preview-speaker-focus"
                   data-testid="product-preview-speaker-focus"
@@ -958,12 +955,13 @@ export function ProductPreviewOverlay({
                   type="button"
                 >
                   自动运镜
-                </button>
+                </button>}
               </div>
               <div
                 className="product-preview-stage"
                 data-preview-image-source="bounded-original"
                 data-preview-stage-fit="contain"
+                data-manual-camera={shot?.camera?.mode === 'manual' || shot?.camera?.mode === 'hybrid' ? 'true' : undefined}
                 data-preview-visual-state={previewVisualState}
               >
                 {initialReadinessError ? (

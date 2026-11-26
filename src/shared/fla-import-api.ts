@@ -152,6 +152,36 @@ export const FlaFrameInstanceIRSchema = z
   })
   .strict();
 
+export const FlaFrameSoundSyncSchema = z.enum(['event', 'start', 'stop', 'stream']);
+export const FlaFrameSoundLoopModeSchema = z.enum(['repeat', 'loop']);
+
+export const FlaFrameSoundIRSchema = z
+  .object({
+    soundId: z.string().min(1).max(200).optional(),
+    name: z.string().trim().min(1).max(260),
+    sync: FlaFrameSoundSyncSchema,
+    inPoint44: z.number().int().nonnegative().optional(),
+    outPoint44: z.number().int().nonnegative().optional(),
+    loopMode: FlaFrameSoundLoopModeSchema.optional(),
+    loopCount: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+export const FlaSymbolPlaybackModeSchema = z.enum(['loop', 'play once', 'single frame']);
+export const FlaSymbolTypeSchema = z.enum(['graphic', 'movieclip', 'button']);
+
+export const FlaSymbolInstancePlacementIRSchema = z
+  .object({
+    libraryItemName: z.string().trim().min(1).max(500),
+    symbolType: FlaSymbolTypeSchema,
+    loop: FlaSymbolPlaybackModeSchema,
+    displaySlot: z.string().optional(),
+    instanceName: z.string().optional(),
+    firstFrame: z.number().int().nonnegative().optional(),
+    lastFrame: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
 export const FlaFrameIRSchema = z
   .object({
     id: z.string().regex(/^fla-frame-[a-z0-9-]{8,160}$/u),
@@ -159,6 +189,8 @@ export const FlaFrameIRSchema = z
     startFrame: z.number().int().nonnegative(),
     duration: z.number().int().positive(),
     instances: z.array(FlaFrameInstanceIRSchema).max(100_000),
+    sound: FlaFrameSoundIRSchema.optional(),
+    symbolInstances: z.array(FlaSymbolInstancePlacementIRSchema).max(10_000).optional(),
   })
   .strict();
 
@@ -178,6 +210,16 @@ export const FlaTimelineIRSchema = z
     id: z.string().regex(/^fla-timeline-[a-z0-9-]{8,160}$/u),
     name: z.string().max(500),
     totalFrames: z.number().int().nonnegative(),
+    layers: z.array(FlaLayerIRSchema).max(10_000),
+  })
+  .strict();
+
+export const FlaSymbolTimelineIRSchema = z
+  .object({
+    name: z.string().trim().min(1).max(500),
+    symbolType: FlaSymbolTypeSchema,
+    totalFrames: z.number().int().nonnegative(),
+    hasActionScript: z.boolean().optional(),
     layers: z.array(FlaLayerIRSchema).max(10_000),
   })
   .strict();
@@ -222,12 +264,39 @@ export const FlaStructuralSummaryIRSchema = z
   })
   .strict();
 
+export const FlaSoundMetadataSchema = z.object({
+  id: z.string().min(1).max(200),
+  name: z.string().trim().min(1).max(260),
+  href: z.string().max(2048),
+  dataHref: z.string().max(2048).optional(),
+  format: z.string().max(200).optional(),
+  sampleCount: z.number().int().optional(),
+  dataLength: z.number().int().optional(),
+}).strict();
+
+export type FlaSoundMetadata = z.infer<typeof FlaSoundMetadataSchema>;
+
+export const FlaVideoMetadataSchema = z.object({
+  name: z.string().trim().min(1).max(500),
+  href: z.string().max(2048),
+  width: z.number().int().nonnegative(),
+  height: z.number().int().nonnegative(),
+  fps: z.number().finite().positive().optional(),
+  duration: z.number().finite().nonnegative().optional(),
+  videoType: z.string().max(200).optional(),
+}).strict();
+
+export type FlaVideoMetadata = z.infer<typeof FlaVideoMetadataSchema>;
+
 export const AnimationImportIRSchema = z
   .object({
     source: FlaSourceIRSchema,
     document: FlaDocumentIRSchema,
     media: z.array(FlaBitmapMediaIRSchema).max(FLA_IMPORT_LIMITS.maxMediaCount),
+    sounds: z.array(FlaSoundMetadataSchema).max(FLA_IMPORT_LIMITS.maxMediaCount).optional(),
+    videos: z.array(FlaVideoMetadataSchema).max(FLA_IMPORT_LIMITS.maxMediaCount).optional(),
     timelines: z.array(FlaTimelineIRSchema).max(10_000),
+    symbolTimelines: z.array(FlaSymbolTimelineIRSchema).max(10_000).optional(),
     compatibility: z.array(FlaCompatibilityEntryIRSchema).max(10_000),
     summary: z
       .object({
@@ -478,3 +547,10 @@ export type FlaWorkerError = z.infer<typeof FlaWorkerErrorSchema>;
 export type FlaDiagnosticCategory = z.infer<typeof FlaDiagnosticCategorySchema>;
 export type FlaDiagnostic = z.infer<typeof FlaDiagnosticSchema>;
 export type FlaStructuralSummary = z.infer<typeof FlaStructuralSummaryIRSchema>;
+export type FlaFrameSoundSync = z.infer<typeof FlaFrameSoundSyncSchema>;
+export type FlaFrameSoundLoopMode = z.infer<typeof FlaFrameSoundLoopModeSchema>;
+export type FlaFrameSoundIR = z.infer<typeof FlaFrameSoundIRSchema>;
+export type FlaSymbolPlaybackMode = z.infer<typeof FlaSymbolPlaybackModeSchema>;
+export type FlaSymbolType = z.infer<typeof FlaSymbolTypeSchema>;
+export type FlaSymbolInstancePlacementIR = z.infer<typeof FlaSymbolInstancePlacementIRSchema>;
+export type FlaSymbolTimelineIR = z.infer<typeof FlaSymbolTimelineIRSchema>;

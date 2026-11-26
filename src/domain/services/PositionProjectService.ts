@@ -251,7 +251,7 @@ export class PositionProjectService {
         : baseMergedLayer;
     const layerChanged = JSON.stringify(nextLayer) !== JSON.stringify(layer);
     if (
-      nextLayer.animationClip?.version === 2 &&
+      (nextLayer.animationClip?.version === 2 || nextLayer.layerMotionTracks?.length) &&
       (layer.scaleX !== nextLayer.scaleX || layer.scaleY !== nextLayer.scaleY)
     ) {
       assertLayerClipFinalScalesInBounds(shot, nextLayer, project);

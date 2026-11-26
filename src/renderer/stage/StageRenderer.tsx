@@ -9,6 +9,8 @@ import {
 import type Konva from 'konva';
 import { Group, Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
 import type { CameraView, EvaluatedShot, Project } from '../../domain';
+import { resolveLayerCameraTransform } from '../../domain/shot-camera';
+import { StageLayerSpace } from './StageLayerSpace';
 import type { SubtitleStyle } from '../../domain';
 import type { ExportDrawMode } from '../../shared/export-draw-mode';
 import {
@@ -521,7 +523,7 @@ export function StageRenderer({
           .filter(([assetId, url]) => assetUrls[assetId] === url)
           .map(([assetId]) => assetId),
       );
-      const model = buildStageRenderModel(project, evaluatedShot, assetUrls, failedImageAssetIds);
+      const model = buildStageRenderModel(project, evaluatedShot, assetUrls, failedImageAssetIds, { camera });
       recordPreviewDuration('stage-render-model', startedAt, {
         timeMs: evaluatedShot.timeMs,
         layerCount: model.layers.length,
@@ -536,7 +538,7 @@ export function StageRenderer({
         error: error instanceof Error ? error : new Error('舞台模型无效。'),
       };
     }
-  }, [assetUrls, evaluatedShot, failedExpressionUrls, project]);
+  }, [assetUrls, camera, evaluatedShot, failedExpressionUrls, project]);
   const layers = modelResult.model?.layers ?? [];
   const imageSourceKey = buildStageImageSourceKey(
     buildStagePartSources(layers, project.id),
@@ -788,13 +790,11 @@ export function StageRenderer({
           <Group
             name="camera-world"
             listening={false}
-            x={displayModel!.width / 2 - (displayCamera?.centerX ?? displayModel!.width / 2) * (displayCamera?.zoom ?? 1)}
-            y={displayModel!.height / 2 - (displayCamera?.centerY ?? displayModel!.height / 2) * (displayCamera?.zoom ?? 1)}
-            scaleX={displayCamera?.zoom ?? 1}
-            scaleY={displayCamera?.zoom ?? 1}
           >
           {displayModel!.layers.map((layer) => {
             const render = layer.render;
+            const projection = resolveLayerCameraTransform(layer, displayCamera, displayModel!.width, displayModel!.height);
+            if (!projection) return null;
             const primaryPart = layer.parts[0];
             if (!primaryPart || !render.visible) {
               return null;
@@ -804,8 +804,8 @@ export function StageRenderer({
             if ((render.isBackground && layer.visual?.kind !== 'fla-graphic') || !layer.visual) {
               if (!image) return null;
               return (
+                <StageLayerSpace key={layer.id} space={layer.parentSpace} projection={projection}>
                 <KonvaImage
-                  key={layer.id}
                   height={render.height}
                   image={image}
                   listening={render.listening}
@@ -819,11 +819,12 @@ export function StageRenderer({
                   x={render.x}
                   y={render.y}
                 />
+                </StageLayerSpace>
               );
             }
             return (
+              <StageLayerSpace key={layer.id} space={layer.parentSpace} projection={projection}>
               <Group
-                key={layer.id}
                 listening={render.listening}
                 opacity={render.opacity}
                 rotation={render.rotationDeg}
@@ -849,6 +850,7 @@ export function StageRenderer({
                   visualBounds={layer.visual.combinedLocalBounds}
                 />
               </Group>
+              </StageLayerSpace>
             );
           })}
           </Group>

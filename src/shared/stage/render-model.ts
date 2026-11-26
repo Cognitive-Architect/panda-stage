@@ -1,5 +1,8 @@
 import {
   resolveLayerVisualParts,
+  compareCameraDrawingLayers,
+  resolveLayerCameraTransform,
+  type CameraView,
   visualPartRenderTransform,
   type EvaluatedFlaGraphicVisual,
   type EvaluatedLayer,
@@ -12,6 +15,7 @@ import {
   buildStageLayerRenderInstruction,
   type StageLayerRenderInstruction,
 } from './layer-render-contract';
+import { parseFlaVideoFrameAssetKey } from '../fla-video-clock';
 
 /**
  * Structural asset accepted by the render model. Decoupled from the
@@ -21,7 +25,7 @@ import {
  */
 export interface RenderModelAsset {
   readonly id: string;
-  readonly kind: 'image' | 'audio';
+  readonly kind: 'image' | 'audio' | 'video';
   readonly name: string;
   readonly relativePath: string;
   readonly mimeType: string;
@@ -98,6 +102,23 @@ function imageAsset(
   assetId: string,
   layerId: string,
 ): RenderModelAsset {
+  const videoFrame = parseFlaVideoFrameAssetKey(assetId);
+  if (videoFrame) {
+    const videoAsset = project.assets.find((candidate) => candidate.id === videoFrame.assetId);
+    if (
+      videoAsset &&
+      videoAsset.kind === 'video' &&
+      videoAsset.width !== undefined &&
+      videoAsset.height !== undefined
+    ) {
+      return {
+        ...videoAsset,
+        id: assetId,
+        kind: 'image',
+        mimeType: 'image/png',
+      };
+    }
+  }
   const asset = project.assets.find((candidate) => candidate.id === assetId);
   if (
     !asset ||
@@ -251,7 +272,7 @@ function buildFormalStageRenderModel(
   evaluatedShot: EvaluatedShot,
   assetUrls: StageAssetUrlMap,
   failedImageAssetIds?: ReadonlySet<string>,
-  options?: { collectCandidates: boolean },
+  options?: { collectCandidates?: boolean; camera?: CameraView },
 ): StageRenderModel {
   const shot = project.shots.find(
     (candidate) => candidate.id === evaluatedShot.shotId,
@@ -263,7 +284,10 @@ function buildFormalStageRenderModel(
     );
   }
 
-  const layers = evaluatedShot.layers.map((layer) => {
+  const drawingLayers = evaluatedShot.layers
+    .filter((layer) => !layer.control && resolveLayerCameraTransform(layer, options?.camera, project.width, project.height) !== null)
+    .sort(compareCameraDrawingLayers);
+  const layers = drawingLayers.map((layer) => {
     const visual = resolveLayerVisualParts(
       project,
       shot,
@@ -326,7 +350,15 @@ function buildFormalStageRenderModel(
         };
       }
       const asset = imageAsset(project, part.assetId!, layer.id);
-      const sourceUrl = sourceUrlFor(assetUrls, asset, layer.id);
+      // Export freezes the structured resources. The baked frame is optional
+      // when none of the frame's drawable nodes use it.
+      const graphic = visual.flaGraphic;
+      const unusedBakedFrame = graphic?.structureFrame && graphic.frameAssetId === asset.id &&
+        !graphic.resourceAssetIds.includes(asset.id);
+      const isVideoFrame = Boolean(parseFlaVideoFrameAssetKey(asset.id));
+      const sourceUrl = (unusedBakedFrame || isVideoFrame)
+        ? (assetUrls[asset.id] ?? '')
+        : sourceUrlFor(assetUrls, asset, layer.id);
       return {
         id: part.partId,
         slot: part.slot,
@@ -387,7 +419,7 @@ export function buildStageRenderModel(
   evaluatedShot: EvaluatedShot,
   assetUrls: StageAssetUrlMap,
   failedImageAssetIds?: ReadonlySet<string>,
-  options?: { collectCandidates: boolean },
+  options?: { collectCandidates?: boolean; camera?: CameraView },
 ): StageRenderModel {
   if (!project.shots.some((shot) => shot.id === evaluatedShot.shotId)) {
     throw new StageAssetError(

@@ -547,6 +547,27 @@ export function validateProjectReferences(
         }
         return;
       }
+      if (layer.source.kind === 'video') {
+        const asset = assets.get(layer.source.assetId);
+        if (!asset || asset.kind !== 'video') {
+          addIssue(
+            context,
+            ['shots', shotIndex, 'layers', layerIndex, 'source', 'assetId'],
+            `Layer references unknown or non-video asset: ${layer.source.assetId}`,
+          );
+        }
+        if (layer.source.audioAssetId) {
+          const audioAsset = assets.get(layer.source.audioAssetId);
+          if (!audioAsset || audioAsset.kind !== 'audio') {
+            addIssue(
+              context,
+              ['shots', shotIndex, 'layers', layerIndex, 'source', 'audioAssetId'],
+              `Video layer references unknown or non-audio asset: ${layer.source.audioAssetId}`,
+            );
+          }
+        }
+        return;
+      }
       if (layer.source.kind === 'animation') {
         const animation = animations.get(layer.source.animationId);
         if (!animation) {
@@ -577,6 +598,7 @@ export function validateProjectReferences(
         }
         return;
       }
+      if (layer.source.kind === 'control') return;
       const characterSource = layer.source;
       const character = characters.get(characterSource.characterId);
       if (!character) {

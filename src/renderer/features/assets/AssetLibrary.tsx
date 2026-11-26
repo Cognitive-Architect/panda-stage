@@ -35,7 +35,7 @@ import {
   thumbnailStateFromResponse,
   type ThumbnailState,
 } from './AssetCard';
-import { AssetImportPanel } from './AssetImportPanel';
+import { AssetImportPanel, selectImportedAudioAssetIds } from './AssetImportPanel';
 import {
   refreshImportedAudioMetadata,
   type AssetMetadataProjectIdentity,
@@ -46,6 +46,7 @@ import {
   paginateAssetLibraryEntries,
 } from './assetLibraryPagination';
 import { applyFlaAssetCommitResponse } from './applyFlaAssetCommitResponse';
+import { applyAssetImportResponse } from './applyAssetImportResponse';
 import { applyFlaFrameSequenceCommitResponse } from './applyFlaFrameSequenceCommitResponse';
 import { applyFlaStaticSnapshotCommitResponse } from './applyFlaStaticSnapshotCommitResponse';
 import { FlaCompatibilityReviewSession } from '../../fla-import/FlaCompatibilityReviewSession';
@@ -926,6 +927,43 @@ export function AssetLibrary({
           }}
           graphicImportDisabledReason={graphicImportDisabledReason}
           snapshot={snapshot}
+          onSoundImported={async (response) => {
+            const outcome = applyAssetImportResponse(response, editorProjectStore);
+            setStatus(outcome.status);
+            const metadata = await refreshAudioMetadataBatch(selectImportedAudioAssetIds(response));
+            const failure = metadata.failures[0];
+            if (failure) throw new Error(failure.message);
+          }}
+          onSceneSoundTimelineImported={(response) => {
+            if (!response.ok) {
+              setStatus(response.error.message);
+              return;
+            }
+            if (!response.projectChanged) return;
+            const currentSnapshot = editorProjectStore.getSnapshot();
+            if (!currentSnapshot) return;
+            const importedSet = new Set(response.importedAssetIds);
+            const importedAssets = response.project.assets.filter((asset) => importedSet.has(asset.id));
+            if (importedAssets.length > 0) {
+              const assetsOnlyProject = {
+                ...currentSnapshot.project,
+                assets: response.project.assets,
+              };
+              editorProjectStore.applyAssetImport(
+                assetsOnlyProject,
+                importedAssets,
+                response.baseRevision,
+                response.savedRevision,
+              );
+            }
+            if (response.createdClipIds.length > 0) {
+              editorProjectStore.updateProject(response.project, 'Recover FLA Scene audio');
+              const updated = editorProjectStore.getSnapshot();
+              if (updated) {
+                editorProjectStore.markSaved(response.project, updated.revision);
+              }
+            }
+          }}
           onCommit={(response) => {
             const outcome = applyFlaAssetCommitResponse(
               response,

@@ -1,4 +1,13 @@
 import {
+  applyFlaRgbaTransform,
+  isZeroAlphaFlaInstanceColor,
+  normalizeFlaInstanceColorToRgba,
+  type FlaInstanceColor,
+  type FlaRgbaTransform,
+} from '../../../shared/fla-instance-color';
+import { layoutFlaStaticText, type FlaStaticTextLayoutResult, type FlaStaticTextMeasurer } from '../../../shared/fla-static-text';
+import { createCanvasStaticTextMeasurer, drawCanvasStaticText } from '../../fla-static-text-canvas';
+import {
   commandsToSvgPathD,
   evaluateFlaGraphicNodeCompositePlan,
   evaluateOpaqueFrameCropNormalizedRect,
@@ -36,6 +45,58 @@ type ParsedSvgGradient =
     };
 
 const parsedGradientDefsCache = new Map<string, ReadonlyMap<string, ParsedSvgGradient>>();
+
+function replaySvgPathDToContext(
+  target: CanvasRenderingContext2D,
+  pathD: string,
+): void {
+  const tokens = pathD.match(/[MLQCZ]|[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[-+]?\d+)?/giu);
+  if (!tokens) return;
+  let index = 0;
+  let command = '';
+  const readNum = (): number => Number(tokens[index++] ?? 'NaN');
+  while (index < tokens.length) {
+    const token = tokens[index]!;
+    if (/^[MLQCZ]$/iu.test(token)) {
+      command = token.toUpperCase();
+      index += 1;
+      if (command === 'Z') {
+        target.closePath();
+        continue;
+      }
+    }
+    if (command === 'M') {
+      const x = readNum();
+      const y = readNum();
+      if (Number.isFinite(x) && Number.isFinite(y)) target.moveTo(x, y);
+      command = 'L';
+    } else if (command === 'L') {
+      const x = readNum();
+      const y = readNum();
+      if (Number.isFinite(x) && Number.isFinite(y)) target.lineTo(x, y);
+    } else if (command === 'Q') {
+      const cx = readNum();
+      const cy = readNum();
+      const x = readNum();
+      const y = readNum();
+      if (Number.isFinite(cx) && Number.isFinite(cy) && Number.isFinite(x) && Number.isFinite(y)) {
+        target.quadraticCurveTo(cx, cy, x, y);
+      }
+    } else if (command === 'C') {
+      const c1x = readNum();
+      const c1y = readNum();
+      const c2x = readNum();
+      const c2y = readNum();
+      const x = readNum();
+      const y = readNum();
+      if ([c1x, c1y, c2x, c2y, x, y].every(Number.isFinite)) {
+        target.bezierCurveTo(c1x, c1y, c2x, c2y, x, y);
+      }
+    } else {
+      break;
+    }
+  }
+}
 
 function readSvgTagAttributes(raw: string): Map<string, string> {
   const attrs = new Map<string, string>();
@@ -291,6 +352,98 @@ function validTransform(
   return matrix.every(Number.isFinite);
 }
 
+function applyGraphicColor(
+  target: CanvasRenderingContext2D,
+  { width, height }: Pick<HTMLCanvasElement, 'width' | 'height'>,
+  color: FlaInstanceColor,
+  coverageCanvas?: HTMLCanvasElement | null,
+): boolean {
+  const rgba = normalizeFlaInstanceColorToRgba(color);
+  const [rm, gm, bm, am] = rgba.multipliers;
+  const [ro, go, bo, ao] = rgba.offsets;
+  const isRgbIdentity = rm === 1 && gm === 1 && bm === 1 && ro === 0 && go === 0 && bo === 0;
+  if (isRgbIdentity && ao === 0) {
+    if (am === 1) return true;
+    if (am >= 0 && am <= 1) {
+      target.save();
+      target.globalAlpha = am;
+      target.globalCompositeOperation = 'destination-in';
+      target.fillStyle = '#000';
+      target.fillRect(0, 0, width, height);
+      target.restore();
+      return true;
+    }
+  }
+  try {
+    const imageData = target.getImageData(0, 0, width, height);
+    const pixels = imageData.data;
+    const coveragePixels = ao > 0 && coverageCanvas
+      ? coverageCanvas.getContext('2d')?.getImageData(0, 0, width, height).data ?? null
+      : null;
+    for (let index = 0; index < pixels.length; index += 4) {
+      const alpha = pixels[index + 3]!;
+      const covAlpha = coveragePixels !== null ? coveragePixels[index + 3]! : 0;
+      const hasCoverage = alpha > 0 || covAlpha > 0;
+      if (!hasCoverage) continue;
+      if (alpha === 0 && coveragePixels && covAlpha > 0) {
+        const [r, g, b, a] = applyFlaRgbaTransform(
+          [coveragePixels[index]!, coveragePixels[index + 1]!, coveragePixels[index + 2]!, 0], rgba,
+        );
+        pixels[index] = Math.round(r);
+        pixels[index + 1] = Math.round(g);
+        pixels[index + 2] = Math.round(b);
+        pixels[index + 3] = Math.round((a * covAlpha) / 255);
+        continue;
+      }
+      const [r, g, b, a] = applyFlaRgbaTransform(
+        [pixels[index]!, pixels[index + 1]!, pixels[index + 2]!, alpha],
+        rgba,
+      );
+      pixels[index] = Math.round(r);
+      pixels[index + 1] = Math.round(g);
+      pixels[index + 2] = Math.round(b);
+      pixels[index + 3] = Math.round(a);
+    }
+    target.putImageData(imageData, 0, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function boundedRasterScale(width: number, height: number, requestedScale: number): number {
+  return Math.min(
+    Math.max(0.0001, requestedScale), 1,
+    MAX_RENDER_EDGE / width, MAX_RENDER_EDGE / height,
+    Math.sqrt(MAX_RENDER_PIXELS / Math.max(1, width * height)),
+  );
+}
+
+function renderColoredBakedFrame(
+  visual: EvaluatedFlaGraphicVisual,
+  source: CanvasImageSource,
+  color: FlaInstanceColor,
+  requestedScale: number,
+): FlaGraphicRaster | null {
+  const { width, height } = visual.frameViewport;
+  const scale = boundedRasterScale(width, height, requestedScale);
+  if (!Number.isFinite(scale) || scale <= 0 || width <= 0 || height <= 0) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.ceil(width * scale));
+  canvas.height = Math.max(1, Math.ceil(height * scale));
+  const context = canvas.getContext('2d');
+  if (!context) return null;
+  context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  applyGraphicColor(context, canvas, color);
+  const rect = {
+    x: visual.frameOffset.x - visual.canvas.width / 2,
+    y: visual.frameOffset.y - visual.canvas.height / 2,
+    width,
+    height,
+  };
+  return { canvas, rect, visibleRect: isZeroAlphaFlaInstanceColor(color) ? null : rect };
+}
+
 /**
  * Raster adapter shared by the editor Stage, hidden export Stage, Definition
  * preview, and Shot thumbnail. Evaluation stays pure in src/domain; this file
@@ -325,8 +478,12 @@ function renderFlaGraphicCanvasUncached(
   images: FlaGraphicImageMap,
   requestedScale: number,
 ): FlaGraphicRaster | null {
-  if (!visual.structureFrame || !visual.layers || typeof document === 'undefined') {
-    return null;
+  if (typeof document === 'undefined') return null;
+  if (!visual.structureFrame || !visual.layers) {
+    const source = visual.instanceColor ? images.get(visual.frameAssetId) : undefined;
+    return source && visual.instanceColor
+      ? renderColoredBakedFrame(visual, source, visual.instanceColor, requestedScale)
+      : null;
   }
   // Include the authored canvas to preserve its anchor, and every drawable
   // evaluated leaf so negative/outside Child transforms are never clipped.
@@ -338,11 +495,17 @@ function renderFlaGraphicCanvasUncached(
   let contentTop = Infinity;
   let contentRight = -Infinity;
   let contentBottom = -Infinity;
+  let measureText: FlaStaticTextMeasurer | undefined;
+  const textLayouts = new Map<EvaluatedFlaGraphicNode, FlaStaticTextLayoutResult>();
   const includeNodes = (nodes: readonly EvaluatedFlaGraphicNode[], visible = true): void => {
     for (const node of nodes) {
       if (!node.renderable) continue;
       const source = node.source;
-      const drawsVisibleContent = visible && evaluateFlaGraphicNodeCompositePlan(node).opacity > 0;
+      const plan = evaluateFlaGraphicNodeCompositePlan(node);
+      const nodeVisibleByColor = plan.rgbaTransform
+        ? !isZeroAlphaFlaInstanceColor({ rgbaTransform: plan.rgbaTransform })
+        : plan.opacity > 0;
+      const drawsVisibleContent = visible && nodeVisibleByColor;
       if (source.type === 'group' || source.type === 'symbol') {
         includeNodes(node.children, drawsVisibleContent);
         continue;
@@ -367,6 +530,20 @@ function renderFlaGraphicCanvasUncached(
           }
         }
       };
+      if (node.staticText) {
+        if (!measureText) {
+          const measurementContext = document.createElement('canvas').getContext('2d');
+          if (!measurementContext) continue;
+          measureText = createCanvasStaticTextMeasurer(measurementContext);
+        }
+        const layout = layoutFlaStaticText(node.staticText, measureText);
+        textLayouts.set(node, layout);
+        if (layout.lines.some((line) => line.fragments.some((fragment) => fragment.text.trim()))) {
+          const { x, y, width, height } = layout.bounds;
+          includeCorners(node.worldTransform, [[x, y], [x + width, y], [x, y + height], [x + width, y + height]]);
+        }
+        continue;
+      }
       if (node.vectorVisual) {
         const bounds = unionFlaShapeRegionBounds(
           node.vectorVisual.regions,
@@ -404,15 +581,7 @@ function renderFlaGraphicCanvasUncached(
     sourceWidth <= 0 ||
     sourceHeight <= 0
   ) return null;
-  const scaleByEdge = Math.min(
-    1,
-    MAX_RENDER_EDGE / sourceWidth,
-    MAX_RENDER_EDGE / sourceHeight,
-  );
-  const scaleByArea = Math.sqrt(
-    MAX_RENDER_PIXELS / Math.max(1, sourceWidth * sourceHeight),
-  );
-  const scale = Math.min(Math.max(0.0001, requestedScale), scaleByEdge, scaleByArea);
+  const scale = boundedRasterScale(sourceWidth, sourceHeight, requestedScale);
   if (!Number.isFinite(scale) || scale <= 0) return null;
   const width = Math.max(1, Math.ceil(sourceWidth * scale));
   const height = Math.max(1, Math.ceil(sourceHeight * scale));
@@ -462,6 +631,16 @@ function renderFlaGraphicCanvasUncached(
     const source = node.source;
     const matrix = affineProduct(rootTransform, node.worldTransform);
     if (!validTransform(matrix)) return false;
+    if (node.staticText) {
+      const layout = textLayouts.get(node);
+      if (!layout) return false;
+      target.save();
+      target.setTransform(...matrix);
+      drawCanvasStaticText(target, layout);
+      target.restore();
+      renderedNodeCount += 1;
+      return true;
+    }
     if (node.vectorVisual) {
       if (
         node.vectorVisual.regions.length === 0 &&
@@ -592,24 +771,107 @@ function renderFlaGraphicCanvasUncached(
     return true;
   };
 
-  const applyRgbTransform = (
-    target: CanvasRenderingContext2D,
-    rgbTransform: { readonly multiplier: number; readonly offset: number } | null,
-  ): boolean => {
-    if (!rgbTransform) return true;
-    const { multiplier, offset } = rgbTransform;
-    try {
-      const imageData = target.getImageData(0, 0, width, height);
-      const pixels = imageData.data;
-      for (let index = 0; index < pixels.length; index += 4) {
-        pixels[index] = Math.min(255, Math.round(pixels[index]! * multiplier + offset));
-        pixels[index + 1] = Math.min(255, Math.round(pixels[index + 1]! * multiplier + offset));
-        pixels[index + 2] = Math.min(255, Math.round(pixels[index + 2]! * multiplier + offset));
+  const drawLeafCoverage = (
+    coverageTarget: CanvasRenderingContext2D,
+    node: EvaluatedFlaGraphicNode,
+  ): void => {
+    const source = node.source;
+    const matrix = affineProduct(rootTransform, node.worldTransform);
+    if (!validTransform(matrix)) return;
+    if (node.staticText) {
+      const layout = textLayouts.get(node);
+      if (!layout) return;
+      coverageTarget.save();
+      coverageTarget.setTransform(...matrix);
+      drawCanvasStaticText(coverageTarget, layout, '#000000');
+      coverageTarget.restore();
+      return;
+    }
+    if (node.vectorVisual) {
+      const Path2DConstructor = globalThis.Path2D;
+      coverageTarget.save();
+      coverageTarget.setTransform(...matrix);
+      coverageTarget.translate(
+        -node.vectorVisual.baseViewBox.x,
+        -node.vectorVisual.baseViewBox.y,
+      );
+      coverageTarget.fillStyle = '#000000';
+      for (const region of node.vectorVisual.regions) {
+        const fillD = region.contours.map((contour) => commandsToSvgPathD(contour.commands)).join(' ');
+        if (Path2DConstructor && fillD) {
+          coverageTarget.fill(new Path2DConstructor(fillD), region.fill.fillRule);
+        } else {
+          coverageTarget.beginPath();
+          for (const contour of region.contours) replayVectorCommands(coverageTarget, contour.commands);
+          coverageTarget.fill(region.fill.fillRule);
+        }
       }
-      target.putImageData(imageData, 0, 0);
-      return true;
-    } catch {
-      return false;
+      coverageTarget.restore();
+      return;
+    }
+    if (source.type === 'opaque' && source.opaqueKind === 'shape' && source.coveragePathData?.length) {
+      const Path2DConstructor = globalThis.Path2D;
+      coverageTarget.save();
+      coverageTarget.setTransform(...matrix);
+      if (source.fallbackScope === 'subtree' && source.fallbackViewBox) {
+        coverageTarget.translate(-source.fallbackViewBox.x, -source.fallbackViewBox.y);
+      }
+      for (const [index, pathD] of source.coveragePathData.entries()) {
+        coverageTarget.fillStyle = source.coverageZeroAlphaColors?.[index] ?? '#000000';
+        if (Path2DConstructor) {
+          try {
+            coverageTarget.fill(new Path2DConstructor(pathD), 'nonzero');
+          } catch {
+            // Skip malformed path cleanly without tinting the whole scratch canvas.
+          }
+        } else {
+          coverageTarget.beginPath();
+          replaySvgPathDToContext(coverageTarget, pathD);
+          coverageTarget.fill('nonzero');
+        }
+      }
+      coverageTarget.restore();
+      return;
+    }
+    if (source.type === 'bitmap') {
+      const image = source.assetId ? images.get(source.assetId) : undefined;
+      if (!image) return;
+      const size = sourceSize(image);
+      if (size.width <= 0 || size.height <= 0) return;
+      // A bitmap instance's own texel rectangle is valid object coverage (including
+      // interior transparent texels), while canvas/filter padding outside stays empty.
+      coverageTarget.save();
+      coverageTarget.setTransform(...matrix);
+      coverageTarget.fillStyle = '#000000';
+      coverageTarget.fillRect(0, 0, size.width, size.height);
+      coverageTarget.restore();
+    }
+  };
+
+  const drawNodeCoverage = (
+    coverageTarget: CanvasRenderingContext2D,
+    node: EvaluatedFlaGraphicNode,
+  ): void => {
+    if (!node.renderable) return;
+    if (node.clipPaths.length > 0) {
+      const clipped = makeScratch();
+      if (!clipped) return;
+      if (node.source.type === 'group' || node.source.type === 'symbol') {
+        for (const child of node.children) drawNodeCoverage(clipped.context, child);
+      } else {
+        drawLeafCoverage(clipped.context, node);
+      }
+      if (!applyNodeClips(clipped.canvas, node)) return;
+      coverageTarget.save();
+      coverageTarget.setTransform(1, 0, 0, 1, 0, 0);
+      coverageTarget.drawImage(clipped.canvas, 0, 0);
+      coverageTarget.restore();
+      return;
+    }
+    if (node.source.type === 'group' || node.source.type === 'symbol') {
+      for (const child of node.children) drawNodeCoverage(coverageTarget, child);
+    } else {
+      drawLeafCoverage(coverageTarget, node);
     }
   };
 
@@ -637,9 +899,29 @@ function renderFlaGraphicCanvasUncached(
     );
     if (!drewContent) return false;
     if (compositePlan.hasClips && !applyNodeClips(scratch.canvas, node)) return false;
-    if (!applyRgbTransform(scratch.context, compositePlan.rgbTransform)) return false;
+    if (compositePlan.rgbaTransform) {
+      let coverageCanvas: HTMLCanvasElement | null = null;
+      if (compositePlan.rgbaTransform.offsets[3] > 0) {
+        const cov = makeScratch();
+        if (cov) {
+          drawNodeCoverage(cov.context, node);
+          if (!compositePlan.hasClips || applyNodeClips(cov.canvas, node)) {
+            coverageCanvas = cov.canvas;
+          }
+        }
+      }
+      if (!applyGraphicColor(scratch.context, scratch.canvas, { rgbaTransform: compositePlan.rgbaTransform }, coverageCanvas)) {
+        return false;
+      }
+    } else if (
+      compositePlan.rgbTransform &&
+      !applyGraphicColor(scratch.context, scratch.canvas, { rgbTransform: compositePlan.rgbTransform })
+    ) {
+      return false;
+    }
     target.save();
     target.globalAlpha = compositePlan.opacity;
+    target.globalCompositeOperation = compositePlan.canvasCompositeOperation;
     target.setTransform(1, 0, 0, 1, 0, 0);
     target.drawImage(scratch.canvas, 0, 0);
     target.restore();
@@ -653,6 +935,21 @@ function renderFlaGraphicCanvasUncached(
     // A structured frame may intentionally degrade to empty when every node
     // is unsafe; the baked frame must not resurrect unsupported content.
     return { ...raster, visibleRect: null };
+  }
+  if (visual.instanceColor) {
+    const effectiveRgba: FlaRgbaTransform = normalizeFlaInstanceColorToRgba(visual.instanceColor);
+    let rootCoverage: HTMLCanvasElement | null = null;
+    if (effectiveRgba.offsets[3] > 0) {
+      const cov = makeScratch();
+      if (cov) {
+        for (const layer of visual.layers) {
+          for (const node of layer.nodes) drawNodeCoverage(cov.context, node);
+        }
+        rootCoverage = cov.canvas;
+      }
+    }
+    applyGraphicColor(context, canvas, visual.instanceColor, rootCoverage);
+    if (isZeroAlphaFlaInstanceColor(visual.instanceColor)) return { ...raster, visibleRect: null };
   }
   return raster;
 }

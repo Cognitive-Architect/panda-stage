@@ -156,6 +156,45 @@ const AudioAssetV22Schema = z
   })
   .strict();
 
+export const VideoTimingMetadataSchema = z
+  .object({
+    codec: z.enum(['h264', 'vp9', 'vp8', 'mpeg4']),
+    streamIndex: z.number().int().nonnegative().optional(),
+    audioStreamIndex: z.number().int().nonnegative().optional(),
+    audioStartOffsetMs: z.number().int().safe().optional(),
+    timeBase: z
+      .object({
+        numerator: z.number().int().positive(),
+        denominator: z.number().int().positive(),
+      })
+      .strict(),
+    startTick: z.number().int().safe(),
+    endTick: z.number().int().safe(),
+    presentationTicks: z.array(z.number().int().safe()).min(1).max(1_200),
+    hasAudio: z.boolean(),
+  })
+  .strict();
+
+export const VideoAssetSchema = z
+  .object({
+    ...AssetBaseShape,
+    kind: z.literal('video'),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    durationMs: PositiveMillisecondsSchema.optional(),
+    videoTiming: VideoTimingMetadataSchema,
+    flaVideoSource: z
+      .object({
+        sourceBasename: z.string().trim().min(1).max(260),
+        sourceSha256: z.string().regex(/^[a-f0-9]{64}$/u),
+        videoItemName: z.string().trim().min(1).max(500),
+        originalEntryName: z.string().trim().min(1).max(500),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 /** Strict audio shape persisted by schema v12 and earlier. */
 export const AudioAssetV12Schema = z
   .object({
@@ -173,6 +212,7 @@ export const AssetV12Schema = z.discriminatedUnion('kind', [
 export const AssetV22Schema = z.discriminatedUnion('kind', [
   ImageAssetV22Schema,
   AudioAssetV22Schema,
+  VideoAssetSchema,
 ]);
 
 export const AssetV16Schema = z.discriminatedUnion('kind', [
@@ -188,6 +228,7 @@ export const AssetSchema = AssetV22Schema;
 
 export type ImageAsset = z.infer<typeof ImageAssetSchema>;
 export type AudioAsset = z.infer<typeof AudioAssetSchema>;
+export type VideoAsset = z.infer<typeof VideoAssetSchema>;
 export type Asset = z.infer<typeof AssetSchema>;
 export type ImageAssetV12 = z.infer<typeof ImageAssetV12Schema>;
 export type AudioAssetV12 = z.infer<typeof AudioAssetV12Schema>;
