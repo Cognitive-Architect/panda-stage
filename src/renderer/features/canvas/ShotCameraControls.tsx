@@ -19,11 +19,13 @@ const poseFields = [
   ['centerX', '中心 X'], ['centerY', '中心 Y'], ['zoom', '倍率'], ['rotationDeg', '旋转 °'],
 ] as const;
 
-export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange }: {
+export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, cameraTool, onToolChange }: {
   shot: Shot;
   timeMs: number;
   throughCamera: boolean;
   onViewChange: (enabled: boolean) => void;
+  cameraTool: boolean;
+  onToolChange: (enabled: boolean) => void;
 }): React.JSX.Element {
   const [error, setError] = useState('');
   const time = resolveTimelineFrameTime(timeMs, shot.durationMs);
@@ -63,7 +65,10 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange }
       </select></label>
       {shot.camera?.mode === 'manual' && <>
         <div className="shot-camera-actions">
+          <Button variant="secondary" aria-pressed={cameraTool} onClick={() => onToolChange(!cameraTool)}>编辑相机框</Button>
           <Button variant="secondary" aria-pressed={throughCamera} onClick={() => onViewChange(!throughCamera)}>相机视角</Button>
+        </div>
+        <div className="shot-camera-actions">
           <Button variant="secondary" disabled={!!key} onClick={() => setKey(undefined)}>添加关键帧</Button>
           <Button variant="secondary" disabled={!key} onClick={() => {
             edit((project) => removeShotCameraKey(project, shot.id, time), '删除相机关键帧');

@@ -32,6 +32,7 @@ import {
   evaluateAnimationClipAtTime,
   evaluateCompositeFacePoseAtTime,
   evaluateManualCamera,
+  setShotCameraKey,
   isValidFrameTime,
   type FlaShapeVertexTarget,
   type Layer,
@@ -76,6 +77,7 @@ import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { CanvasToolbar } from './CanvasToolbar';
 import { ShotCameraControls } from './ShotCameraControls';
+import { ShotCameraFrame } from './ShotCameraFrame';
 import { CanvasViewport } from './CanvasViewport';
 import canvasEmptyStateArt from './assets/canvas-empty-state.png';
 import {
@@ -396,6 +398,8 @@ export function CanvasStage({
       (candidate) => candidate.id === currentShotId,
     ) ?? null;
   const [showCameraView, setShowCameraView] = useState(true);
+  const [cameraToolShotId, setCameraToolShotId] = useState<string | null>(null);
+  const cameraTool = !showCameraView && !armAssembly && shot?.camera?.mode === 'manual' && cameraToolShotId === shot.id;
   const displayCamera = showCameraView && !armAssembly && shot?.camera?.mode === 'manual'
     ? evaluateManualCamera(shot, timelineUi.currentTimeMs)
     : undefined;
@@ -1372,7 +1376,7 @@ export function CanvasStage({
       </div> : null}
       <CanvasViewport
         dropDisabled={!snapshot || !shot}
-        dropInteractionDisabled={temporalInspection || assemblingArm || Boolean(displayCamera)}
+        dropInteractionDisabled={temporalInspection || assemblingArm || Boolean(displayCamera) || cameraTool}
         animationDropTarget={
           snapshot && shot && projectInstanceId !== null
             ? {
@@ -1428,7 +1432,12 @@ export function CanvasStage({
                 shot={shot}
                 timeMs={timelineUi.currentTimeMs}
                 throughCamera={showCameraView}
-                onViewChange={setShowCameraView}
+                cameraTool={cameraTool}
+                onViewChange={(enabled) => { setCameraToolShotId(null); setShowCameraView(enabled); }}
+                onToolChange={(enabled) => {
+                  setCameraToolShotId(enabled ? shot.id : null);
+                  if (enabled) setShowCameraView(false);
+                }}
               /> : null}
               canEnterSelected={Boolean(
                 flaGraphicEditActive &&
@@ -1533,6 +1542,7 @@ export function CanvasStage({
               )}
               data-testid="project-canvas-stage"
               data-camera-view={displayCamera ? JSON.stringify(displayCamera) : ''}
+              data-camera-tool={cameraTool ? 'active' : undefined}
               id="project-canvas-stage"
               ref={canvasStageElementRef}
               onKeyDownCapture={handleFlaGraphicEditKeyDownCapture}
@@ -1555,7 +1565,7 @@ export function CanvasStage({
                     onTap={() => { if (!armAssembly) selectionStore.clear(); }}
                     width={PROJECT_WIDTH}
                   />
-                  <Group listening={!displayCamera} {...cameraWorldTransform(displayCamera, PROJECT_WIDTH, PROJECT_HEIGHT)}>
+                  <Group listening={!cameraTool} {...cameraWorldTransform(displayCamera, PROJECT_WIDTH, PROJECT_HEIGHT)}>
                   {stageModel
                     ? stageModel.layers.map((stageLayer) => {
                         const { layer, render, visual } = stageLayer;
@@ -1611,7 +1621,7 @@ export function CanvasStage({
                             characterMotion={motionCanvasForLayer(layer, characterView)}
                             characterView={characterView}
                             selectedCharacterNodeId={selectedLayerId === layer.id ? selectedCharacterNodeId : null}
-                            directEditingEnabled={!armAssembly && directEditingEnabledForStageLayer(stageLayer)}
+                            directEditingEnabled={!armAssembly && !displayCamera && !cameraTool && directEditingEnabledForStageLayer(stageLayer)}
                             image={image}
                             images={currentReadyImages}
                             imagesByResourceKey={imageState.imagesByResourceKey}
@@ -1827,7 +1837,7 @@ export function CanvasStage({
                                  : render
                              }
                             positionAuthoringSession={
-                               !stageLayer.evaluated.parentSpace &&
+                               !displayCamera && !cameraTool && !stageLayer.evaluated.parentSpace &&
                                positionAuthoringSnapshot?.layerId === layer.id &&
                                selectedLayerId === layer.id
                                  ? positionAuthoringSession
@@ -1862,7 +1872,7 @@ export function CanvasStage({
                   name="transformer-overlay-layer"
                   ref={configureEditorLayer}
                 >
-                  {!displayCamera && transformerVisible && selectedStageLayer ? (
+                  {!displayCamera && !cameraTool && transformerVisible && selectedStageLayer ? (
                     <LayerTransformer
                       locked={
                         selectedStageLayer.layer.locked ||
@@ -1884,10 +1894,30 @@ export function CanvasStage({
                     />
                   ) : null}
                 </KonvaLayer>
+                {cameraTool && snapshot && shot ? (
+                  <KonvaLayer>
+                    <ShotCameraFrame
+                      key={`${projectInstanceId}:${shot.id}:${snapshot.revision}:${timelineUi.currentTimeMs}`}
+                      pose={evaluateManualCamera(shot, timelineUi.currentTimeMs)}
+                      onCommit={(pose) => {
+                        if (editorProjectStore.getSnapshot() !== snapshot ||
+                            shotStore.getCurrentShotId() !== shot.id) return;
+                        try {
+                          editorProjectStore.updateProject(
+                            setShotCameraKey(snapshot.project, shot.id, timelineUi.currentTimeMs, pose),
+                            '编辑相机框',
+                          );
+                        } catch {
+                          setInteractionStatus('无法修改相机。请重试。');
+                        }
+                      }}
+                    />
+                  </KonvaLayer>
+                ) : null}
               </Stage>
               {armAssembly && !waitingForArmVisual && !armVisualUnavailable ? <CharacterArmAssemblyOverlay assembly={armAssembly} scale={transform.scale}
                 update={next => setAssembly?.(current => current === armAssembly ? next : current)} /> : null}
-              {snapshot && shot && selectedLayerId && !armAssembly && !displayCamera && !selectedStageLayer?.evaluated.parentSpace ? <CharacterArmHandle
+              {snapshot && shot && selectedLayerId && !armAssembly && !displayCamera && !cameraTool && !selectedStageLayer?.evaluated.parentSpace ? <CharacterArmHandle
                 key={JSON.stringify([projectInstanceId, shot.id, selectedLayerId, timelineUi.currentTimeMs, snapshot.revision])}
                 snapshot={snapshot}
                 address={{ shotId: shot.id, layerId: selectedLayerId,

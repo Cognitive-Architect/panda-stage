@@ -105,3 +105,20 @@ export function removeShotCameraKey(project: Project, shotId: string, requestedT
     keys: shot.camera.keys.filter((key) => key.timeMs !== resolveTimelineFrameTime(requestedTimeMs, shot.durationMs)),
   });
 }
+
+/** Retime adjacent segments in place, keeping their normalized easing shapes. */
+export function moveShotCameraKey(project: Project, shotId: string, timeMs: number, requestedTimeMs: number): Project {
+  const shot = project.shots.find(({ id }) => id === shotId);
+  const camera = shot?.camera;
+  const index = camera?.keys.findIndex((key) => key.timeMs === timeMs) ?? -1;
+  if (!shot || camera?.mode !== 'manual' || index < 0) return project;
+  const nextTime = resolveTimelineFrameTime(requestedTimeMs, shot.durationMs);
+  const previous = camera.keys[index - 1];
+  const next = camera.keys[index + 1];
+  if (nextTime === timeMs || (previous && nextTime <= previous.timeMs) || (next && nextTime >= next.timeMs)) {
+    return project;
+  }
+  return editCamera(project, shotId, () => ({
+    ...camera, keys: camera.keys.map((key, i) => i === index ? { ...key, timeMs: nextTime } : key),
+  }));
+}

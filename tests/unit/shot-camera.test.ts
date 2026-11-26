@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import demo from '../../demo-project/project-v1.example.json';
 import {
-  cameraWorldTransform, evaluateManualCamera, migrateProject, prepareShotCamera, removeShotCameraKey,
+  cameraWorldTransform, evaluateManualCamera, migrateProject, moveShotCameraKey, prepareShotCamera, removeShotCameraKey,
   setShotCameraKey, setShotCameraMode, ShotService,
 } from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -74,6 +74,11 @@ describe('Shot camera', () => {
     });
     const full = setShotCameraKey(from, id, 2_000, { zoom: 3, rotationDeg: 720 });
     const split = setShotCameraKey(full, id, 750);
+    const moved = moveShotCameraKey(split, id, 750, 1000);
+    const originalKey = split.shots[0]!.camera!.keys[1]!;
+    expect(moved.shots[0]!.camera!.keys[1]).toEqual({ ...originalKey, timeMs: 1000 });
+    expect(moved.shots[0]!.camera!.keys[0]).toEqual(split.shots[0]!.camera!.keys[0]);
+    expect(moveShotCameraKey(moved, id, 1000, 2000)).toBe(moved);
     for (const time of [0, 250, 749, 750, 751, 1_500, 2_000]) {
       const before = evaluateManualCamera(full.shots[0]!, time);
       const after = evaluateManualCamera(split.shots[0]!, time);
