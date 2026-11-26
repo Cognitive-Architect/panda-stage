@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  availableAnimationPropertyFrames, editAnimationPropertyRange, resolveTimelineFrameTime,
+  availableAnimationPropertyFrames, editAnimationPropertyRange, placeAnimationPropertyKeys, resolveTimelineFrameTime,
   type AnimationKey, type AnimationPropertyRangeEdit, type AnimationTrack,
 } from '../../../domain';
 import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
@@ -22,7 +22,7 @@ export function AnimationKeyRangeControls({
 }): React.JSX.Element {
   const [count, setCount] = useState(1);
   const [copy, setCopy] = useState<{ property: AnimationTrack['property']; keys: readonly AnimationKey[] }>();
-  const [overwrite, setOverwrite] = useState(false);
+  const [overwriteAt, setOverwriteAt] = useState<{ timeMs: number; track: AnimationTrack; revision: number }>();
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState<{ revision: number; track: AnimationTrack; startMs: number; endMs: number }>();
   const selected = track.keys.filter(({ timeMs }) => timeMs >= startMs && timeMs <= endMs);
@@ -31,6 +31,11 @@ export function AnimationKeyRangeControls({
   const confirmDelete = deleting?.revision === snapshot.revision && deleting.track === track &&
     deleting.startMs === startMs && deleting.endMs === endMs;
   const destination = resolveTimelineFrameTime(currentTimeMs, durationMs);
+  const pasted = copy?.property === track.property ? placeAnimationPropertyKeys(copy.keys, destination) : [];
+  const pasteEnd = pasted.at(-1)?.timeMs ?? destination;
+  const collisionCount = pasted.length ? track.keys.filter(({ timeMs }) => timeMs >= destination && timeMs <= pasteEnd).length : 0;
+  const overwrite = overwriteAt?.timeMs === destination && overwriteAt.track === track && overwriteAt.revision === snapshot.revision;
+  const validPasteRange = destination > 0 && pasteEnd <= durationMs;
   const instance = editorProjectStore.getProjectInstanceId();
 
   function apply(edit: AnimationPropertyRangeEdit, label: string): void {
@@ -64,13 +69,15 @@ export function AnimationKeyRangeControls({
     {confirmDelete ? <Button variant="secondary" onClick={() => setDeleting(undefined)}>取消删除</Button> : null}
     <Button disabled={disabled || selected.length < 2} onClick={() => {
       setCopy({ property: track.property, keys: selected });
-      setOverwrite(false);
+      setOverwriteAt(undefined);
       setError('');
     }}>复制选段（{selected.length} 帧）</Button>
     {copy?.property === track.property ? <>
-      <label><input type="checkbox" checked={overwrite}
-        onChange={(event) => setOverwrite(event.target.checked)} />覆盖目标区段已有关键帧</label>
-      <Button disabled={disabled || destination === 0}
+      {validPasteRange && collisionCount > 0 ? (
+        <label><input type="checkbox" checked={overwrite} onChange={(event) => setOverwriteAt(event.target.checked
+          ? { timeMs: destination, track, revision: snapshot.revision } : undefined)} />覆盖目标区段 {collisionCount} 枚关键帧</label>
+      ) : null}
+      <Button disabled={disabled || !validPasteRange || (collisionCount > 0 && !overwrite)}
         onClick={() => apply({ kind: 'paste', timeMs: destination, keys: copy.keys, overwrite }, '粘贴属性关键帧')}>
         粘贴 {copy.keys.length} 帧到播放头
       </Button>

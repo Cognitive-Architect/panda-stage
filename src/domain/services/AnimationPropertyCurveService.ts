@@ -178,13 +178,22 @@ export type AnimationPropertyRangeEdit =
   | { kind: 'delete'; startMs: number; endMs: number }
   | { kind: 'paste'; timeMs: number; keys: readonly AnimationKey[]; overwrite: boolean };
 
+const animationFrameIndex = (timeMs: number): number => Math.round(timeMs * TIMELINE_FPS / 1_000);
+
+export function placeAnimationPropertyKeys(keys: readonly AnimationKey[], timeMs: number): AnimationKey[] {
+  const sourceStart = animationFrameIndex(keys[0]?.timeMs ?? 0);
+  const destinationStart = animationFrameIndex(timeMs);
+  return keys.map((key) => ({
+    ...key, timeMs: frameTimeMs(destinationStart + animationFrameIndex(key.timeMs) - sourceStart),
+  }));
+}
+
 export function availableAnimationPropertyFrames(
   keys: readonly AnimationKey[], startMs: number, endMs: number,
 ): number[] {
   const occupied = new Set(keys.map(({ timeMs }) => timeMs));
-  const timeToFrame = (timeMs: number) => Math.round(timeMs * TIMELINE_FPS / 1_000);
   const available: number[] = [];
-  for (let frame = timeToFrame(startMs) + 1; frame < timeToFrame(endMs); frame += 1) {
+  for (let frame = animationFrameIndex(startMs) + 1; frame < animationFrameIndex(endMs); frame += 1) {
     const timeMs = frameTimeMs(frame);
     if (!occupied.has(timeMs)) available.push(timeMs);
   }
@@ -205,13 +214,10 @@ export function editAnimationPropertyRange(
   let keys = track.keys;
   let checkTimes: number[];
   if (edit.kind === 'paste') {
-    const sourceStart = edit.keys[0]?.timeMs ?? 0;
     if (!isValidFrameTime(edit.timeMs) || edit.timeMs < 0 || !edit.keys.length ||
       edit.keys.some(({ timeMs }, index) => !isValidFrameTime(timeMs) ||
         (index > 0 && timeMs <= edit.keys[index - 1]!.timeMs))) throw new Error('复制的关键帧或粘贴起点无效。');
-    const toFrame = (timeMs: number) => Math.round(timeMs * TIMELINE_FPS / 1_000);
-    const pasted = edit.keys.map((key) => ({ ...key, timeMs: frameTimeMs(toFrame(edit.timeMs) +
-      toFrame(key.timeMs) - toFrame(sourceStart)) }));
+    const pasted = placeAnimationPropertyKeys(edit.keys, edit.timeMs);
     const end = pasted.at(-1)!.timeMs;
     if (pasted[0]!.timeMs === 0 || end > shot.durationMs) throw new Error('粘贴会覆盖固定零帧或超出镜头范围。');
     const colliding = keys.filter(({ timeMs }) => timeMs >= edit.timeMs && timeMs <= end);
@@ -222,8 +228,8 @@ export function editAnimationPropertyRange(
     const endChanges = last.value !== evaluateAnimationTrackAtTime(track, end);
     // A replaced endpoint may jump. Preserve the original curve as far as the
     // adjacent frame outside the paste, and isolate the jump to a one-frame bridge.
-    const leftTime = startChanges ? frameTimeMs(toFrame(first.timeMs) - 1) : first.timeMs;
-    const rightTime = endChanges ? frameTimeMs(toFrame(end) + 1) : end;
+    const leftTime = startChanges ? frameTimeMs(animationFrameIndex(first.timeMs) - 1) : first.timeMs;
+    const rightTime = endChanges ? frameTimeMs(animationFrameIndex(end) + 1) : end;
     const left = insertAnimationTrackSample(keys, leftTime).filter(({ timeMs }) => timeMs < first.timeMs);
     if (startChanges) {
       left[left.length - 1] = { ...left.at(-1)!, interpolationToNext: 'step', curveToNext: undefined };

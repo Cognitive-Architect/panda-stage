@@ -381,3 +381,28 @@ describe('AnimationCurvePanel Rich Easing (#1292 C01)', () => {
     expect(editorProjectStore.getSnapshot()!.project).toEqual(beforeProject);
   });
 });
+
+it('shows paste collisions before editing and restores the range with one Undo', async () => {
+  const original = editorProjectStore.getSnapshot()!;
+  const rangeControl = container.querySelector('[data-testid="animation-key-range-controls"]')!;
+  const button = (title: string) => Array.from(rangeControl.querySelectorAll('button'))
+    .find((candidate) => candidate.textContent?.includes(title))!;
+  const confirm = () => rangeControl.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  await act(async () => button('复制选段').click());
+  await act(async () => timelineUiStore.seek(500, 3000));
+  expect(rangeControl.textContent).toContain('覆盖目标区段 2 枚关键帧');
+  expect(button('粘贴').disabled).toBe(true);
+  expect(editorProjectStore.getSnapshot()).toBe(original);
+  await act(async () => confirm().click());
+  expect(button('粘贴').disabled).toBe(false);
+  await act(async () => timelineUiStore.seek(1000, 3000));
+  expect(confirm().checked).toBe(false);
+  expect(button('粘贴').disabled).toBe(true);
+  await act(async () => confirm().click());
+  await act(async () => button('粘贴').click());
+  expect(editorProjectStore.getSnapshot()!.project).not.toEqual(original.project);
+  expect(editorProjectStore.getSnapshot()!.revision).toBe(original.revision + 1);
+  expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+  await act(async () => { editorProjectStore.undo(); });
+  expect(editorProjectStore.getSnapshot()!.project).toEqual(original.project);
+});
