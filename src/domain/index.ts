@@ -28,6 +28,7 @@ export {
   assertLayerClipFinalScalesInBounds,
   evaluateLayerPreTrackState,
   evaluateShotAtTime,
+  normalizeShotTimeMs,
   resolveEffectiveMouthCue,
 } from './evaluate-shot-at-time';
 export type {

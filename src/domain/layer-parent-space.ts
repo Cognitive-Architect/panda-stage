@@ -1,5 +1,9 @@
 import { invertAffineMatrix, multiplyAffineMatrices, type AffineMatrix2D } from '../shared/affine-matrix';
-import { resolveLayerAttachmentLocalMatrix } from './layer-attachment';
+import {
+  buildLayerAttachmentTargetLookup,
+  resolveLayerAttachmentLocalMatrix,
+  type LayerAttachmentTargetLookup,
+} from './layer-attachment';
 import { resolveCharacterActionRenderTransform } from './selectors/visualParts';
 import { evaluateAnimationTrackAtTime } from './evaluate-animation-core';
 import type { EvaluatedLayer } from './evaluate-shot-at-time';
@@ -129,6 +133,8 @@ export function applyLayerParenting(project: Project, shot: Shot, layers: Evalua
   )) return layers;
   const evaluated = new Map(layers.map((layer) => [layer.id, layer]));
   const usingAttachmentFallback = new Set<string>();
+  // Per-invocation, per-owner-Layer-instance attachment lookup (no cross-frame cache).
+  const attachmentLookups = new Map<string, LayerAttachmentTargetLookup>();
   const authored = new Map(shot.layers.map((layer) => [layer.id, layer]));
   const bindings = new Map(shot.layers.map((layer) => [layer.id, resolveLayerParentBindingAtTime(layer, timeMs)]));
   const local = new Map(layers.map((layer) => [layer.id, layerPoseMatrix(layer)]));
@@ -183,7 +189,20 @@ export function applyLayerParenting(project: Project, shot: Shot, layers: Evalua
       if (parent && parentId && binding?.parentAttachment) {
         const owner = authored.get(parentId)!;
         const ownerPose = evaluated.get(parentId)!;
-        const targetLocal = resolveLayerAttachmentLocalMatrix(project, owner, ownerPose, binding.parentAttachment.target);
+        const targetLocal = resolveLayerAttachmentLocalMatrix(
+          project,
+          owner,
+          ownerPose,
+          binding.parentAttachment.target,
+          () => {
+            let lookup = attachmentLookups.get(parentId);
+            if (!lookup) {
+              lookup = buildLayerAttachmentTargetLookup(project, owner, ownerPose);
+              attachmentLookups.set(parentId, lookup);
+            }
+            return lookup;
+          },
+        );
         if (!targetLocal) usingAttachmentFallback.add(entry);
         targetWorld = layerAttachmentWorldMatrix(
           ownerPose, targetLocal ?? binding.parentAttachment.ownerLocalFallback, spaces.get(parentId),

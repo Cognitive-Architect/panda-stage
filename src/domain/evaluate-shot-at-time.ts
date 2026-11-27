@@ -752,6 +752,17 @@ export function assertLayerClipFinalScalesInBounds(
 }
 
 /**
+ * Normalizes a requested Shot timestamp to an integer millisecond value
+ * clamped within `[0, durationMs]`, matching `evaluateShotAtTime`.
+ */
+export function normalizeShotTimeMs(
+  requestedTimeMs: number,
+  durationMs: number,
+): number {
+  return Math.max(0, Math.min(Math.round(requestedTimeMs), durationMs));
+}
+
+/**
  * Deterministic point-state resolver for authored Mouth Cues (`rest | open | none`).
  * Depends strictly on `shot.timelineEvents`, `layerId`, and `requestedTimeMs`.
  */
@@ -760,10 +771,7 @@ export function resolveEffectiveMouthCue(
   layerId: string,
   requestedTimeMs: number,
 ): MouthCueState | 'none' {
-  const timeMs = Math.max(
-    0,
-    Math.min(Math.round(requestedTimeMs), shot.durationMs),
-  );
+  const timeMs = normalizeShotTimeMs(requestedTimeMs, shot.durationMs);
   const effective = shot.timelineEvents
     .filter(
       (event): event is MouthCueEvent =>
@@ -827,10 +835,7 @@ export function evaluateShotAtTime(
   project: Project,
   options?: { graphicFrameTimeMs?: number; includeShake?: boolean },
 ): EvaluatedShot {
-  const timeMs = Math.max(
-    0,
-    Math.min(Math.round(requestedTimeMs), shot.durationMs),
-  );
+  const timeMs = normalizeShotTimeMs(requestedTimeMs, shot.durationMs);
 
   const eventsByLayer = new Map<string, TimelineEvent[]>();
   for (const event of shot.timelineEvents) {
