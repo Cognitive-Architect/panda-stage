@@ -91,7 +91,11 @@ export function LayerDepthControl({ layer, shot, snapshot }: {
     ? formattedEffectiveDepth
     : hasKeys || depthSource.kind === 'dynamic-preserve'
       ? formattedEffectiveDepth
-      : layer.depth ?? '';
+      : isInheriting
+        ? ''
+        : layer.depth !== undefined
+          ? formatDepthNumber(layer.depth)
+          : '';
 
   useEffect(() => {
     return () => {
@@ -283,7 +287,11 @@ export function LayerDepthControl({ layer, shot, snapshot }: {
             if (!isContextCurrent()) return;
             try {
               const depth = input.value === '' ? undefined : input.valueAsNumber;
-              if (!input.validity.valid || (hasKeys && depth === undefined)) {
+              if (
+                !input.validity.valid ||
+                (hasKeys && depth === undefined) ||
+                (depthSource.kind === 'dynamic-preserve' && !depthSource.parentLayerId && depth === undefined)
+              ) {
                 throw new Error('请输入范围内的深度数值。');
               }
               commitDepth(depth);

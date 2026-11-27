@@ -158,7 +158,7 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
       ? 'custom'
       : (key?.interpolationToNext ?? 'linear');
 
-  const selectedOverride = resolveSelectedCameraOverride(shot, selectedOverrideId, time) ?? overrides[0];
+  const selectedOverride = resolveSelectedCameraOverride(shot, selectedOverrideId, time);
   const newOverrideBounds = mode === 'hybrid' ? resolveNewOverrideBounds(shot, time, overrides) : null;
   const targetableLayers = shot.layers.filter((layer) => layer.cameraSpace !== 'screen');
 
@@ -371,20 +371,22 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
               shotStore.selectCameraOverride(null);
             }}>删除接管段</Button>
           </div>
-          {overrides.length > 0 && selectedOverride && <>
-            <label>接管段<select aria-label="接管段" value={selectedOverride.id} onChange={(event) => {
+          {overrides.length > 0 && <>
+            <label>接管段<select aria-label="接管段" value={selectedOverride?.id ?? ''} onChange={(event) => {
               const nextId = event.currentTarget.value;
+              if (!nextId) return;
               shotStore.selectCameraOverride(nextId);
               const target = overrides.find((override) => override.id === nextId);
               if (target) timelineUiStore.seek(target.startMs, shot.durationMs);
             }}>
+              {!selectedOverride && <option value="" disabled>未选中接管段</option>}
               {overrides.map((override, overrideIndex) => (
                 <option key={override.id} value={override.id}>
                   {`${overrideIndex + 1}. ${formatTimecode(override.startMs)}–${formatTimecode(override.endMs)}`}
                 </option>
               ))}
             </select></label>
-            <div className="shot-camera-fields">
+            {selectedOverride && <div className="shot-camera-fields">
               {overrideTimeFields.map(([field, label]) => <label key={field}>{label}
                 <input key={`${selectedOverride.id}-${field}-${selectedOverride[field]}`} type="number" step="1" min={0}
                   max={shot.durationMs} defaultValue={selectedOverride[field]}
@@ -403,7 +405,7 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
                     }
                   }} />
               </label>)}
-            </div>
+            </div>}
           </>}
         </>}
         <div className="shot-camera-actions">

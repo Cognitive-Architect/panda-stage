@@ -422,9 +422,23 @@ export function CanvasStage({
       setCameraCurveDraft((current) => (current === cameraCurveDraft ? null : current));
     }
   }, [activeCameraCurveDraft, cameraCurveDraft]);
-  const effectiveCameraProject = activeCameraCurveDraft?.project ?? snapshot?.project ?? null;
+  const activeDepthPreview = !armAssembly && depthPreview &&
+    depthPreview.projectInstanceId === projectInstanceId &&
+    depthPreview.projectId === snapshot?.project.id &&
+    depthPreview.projectRoot === snapshot?.projectRoot &&
+    depthPreview.revision === snapshot?.revision &&
+    depthPreview.shotId === currentShotId &&
+    depthPreview.layerId === selectedLayerId &&
+    depthPreview.timeMs === timelineUi.currentTimeMs
+    ? depthPreview
+    : null;
+  const effectiveCameraProject =
+    activeCameraCurveDraft?.project ??
+    activeDepthPreview?.previewProject ??
+    snapshot?.project ??
+    null;
   const effectiveCameraShot =
-    activeCameraCurveDraft?.project.shots.find(({ id }) => id === currentShotId) ?? shot;
+    effectiveCameraProject?.shots.find(({ id }) => id === currentShotId) ?? shot;
   const effectiveCameraTimeMs = activeCameraCurveDraft?.timeMs ?? timelineUi.currentTimeMs;
   const hasManualCameraTrack = shot?.camera?.mode === 'manual' || shot?.camera?.mode === 'hybrid';
   const cameraTool = !showCameraView && !armAssembly && hasManualCameraTrack && cameraToolShotId === shot.id;
@@ -446,16 +460,18 @@ export function CanvasStage({
   const activeCurveDraft = !cameraViewActive && !armAssembly && curveDraft?.projectInstanceId === projectInstanceId &&
     curveDraft?.revision === snapshot?.revision && curveDraft?.shotId === currentShotId &&
     curveDraft?.layerId === selectedLayerId ? curveDraft : null;
-  const activeDepthPreview = !armAssembly && depthPreview &&
-    depthPreview.projectInstanceId === projectInstanceId &&
-    depthPreview.projectId === snapshot?.project.id &&
-    depthPreview.projectRoot === snapshot?.projectRoot &&
-    depthPreview.revision === snapshot?.revision &&
-    depthPreview.shotId === currentShotId &&
-    depthPreview.layerId === selectedLayerId &&
-    depthPreview.timeMs === timelineUi.currentTimeMs
-    ? depthPreview
-    : null;
+  const effectivePreviewTimeMs =
+    activeCurveDraft?.timeMs ??
+    activeCameraCurveDraft?.timeMs ??
+    timelineUi.currentTimeMs;
+  const effectivePreviewProject =
+    activeDepthPreview?.previewProject ??
+    activeCameraCurveDraft?.project ??
+    activeCurveDraft?.project ??
+    snapshot?.project ??
+    null;
+  const effectivePreviewShot =
+    effectivePreviewProject?.shots.find(({ id }) => id === currentShotId) ?? shot;
   const editContextKey = snapshot && shot && projectInstanceId !== null
     ? JSON.stringify([projectInstanceId, snapshot.project.id, snapshot.projectRoot, shot.id])
     : null;
@@ -822,15 +838,15 @@ export function CanvasStage({
     [shot],
   );
   const activeCue = useMemo(
-    () => evaluateSubtitleAtTime(subtitleCues, timelineUi.currentTimeMs),
-    [subtitleCues, timelineUi.currentTimeMs],
+    () => evaluateSubtitleAtTime(subtitleCues, effectivePreviewTimeMs),
+    [subtitleCues, effectivePreviewTimeMs],
   );
   const temporalContextKey =
     snapshot && shot && editorProjectStore.getProjectInstanceId() !== null
       ? `${snapshot.project.id}:${snapshot.projectRoot}:${editorProjectStore.getProjectInstanceId()}:${shot.id}`
       : null;
   const continuityMode: EditorTemporalContinuityMode =
-    cameraViewActive ? 'temporal' : editorTemporalContinuityMode(timelineUi.currentTimeMs);
+    cameraViewActive ? 'temporal' : editorTemporalContinuityMode(effectivePreviewTimeMs);
   const temporalContinuityRef = useRef(
     createEditorTemporalContinuityState(),
   );
@@ -851,7 +867,7 @@ export function CanvasStage({
     }
     return [...assets.values()];
   }, [previousTemporalVisuals, structuredEditAssets]);
-  const imageState = useCanvasImages(snapshot, shot, retainedAssets, activeCurveDraft?.timeMs ?? activeCameraCurveDraft?.timeMs ?? timelineUi.currentTimeMs);
+  const imageState = useCanvasImages(snapshot, shot, retainedAssets, effectivePreviewTimeMs);
   const handleMoveFlaShapeVertex = useCallback((
     nodePath: readonly string[],
     regionRef: string,
@@ -908,19 +924,19 @@ export function CanvasStage({
 
   const temporalCanvasModel = useMemo(
     () =>
-      snapshot && shot
+      snapshot && shot && effectivePreviewProject && effectivePreviewShot
         ? buildEditorTemporalCanvasModel({
             activeDialogueId: activeCue?.id ?? null,
             cameraViewActive,
             dialogueSilence,
-            currentTimeMs: activeCurveDraft?.timeMs ?? activeCameraCurveDraft?.timeMs ?? timelineUi.currentTimeMs,
+            currentTimeMs: effectivePreviewTimeMs,
             previousVisuals: previousTemporalVisuals,
-            project: activeDepthPreview?.previewProject ?? activeCurveDraft?.project ?? snapshot.project,
+            project: effectivePreviewProject,
             readyAssetIds: new Set(imageState.images.keys()),
             readyAssetSourceKeys: imageState.sourceKeys,
             readyResourceKeys: imageState.readyResourceKeys,
             missingAssetIds: imageState.missing,
-            shot: (activeDepthPreview?.previewProject ?? activeCurveDraft?.project)?.shots.find(({ id }) => id === shot.id) ?? shot,
+            shot: effectivePreviewShot,
             positionDraft: !cameraViewActive && positionAuthoringSnapshot
               ? {
                   layerId: positionAuthoringSnapshot.layerId,
@@ -931,19 +947,20 @@ export function CanvasStage({
         : null,
     [
       activeCue?.id,
-      activeCameraCurveDraft,
-      activeCurveDraft,
-      activeDepthPreview,
       cameraViewActive,
       dialogueSilence,
+      effectivePreviewProject,
+      effectivePreviewShot,
+      effectivePreviewTimeMs,
       imageState.images,
+      imageState.missing,
       imageState.readyResourceKeys,
+      imageState.sourceKeys,
       previousTemporalVisuals,
       positionAuthoringSnapshot,
       shot,
       snapshot,
       temporalContextKey,
-      timelineUi.currentTimeMs,
     ],
   );
   useEffect(() => {

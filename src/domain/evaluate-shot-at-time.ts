@@ -534,8 +534,9 @@ export function evaluateLayerPreTrackState(
     ? activeTimeLink.startMs
     : (layer.startTimeMs ?? 0);
   const insideTimeLinkWindow = activeTimeLink
-    ? graphicTimeMs >= activeTimeLink.startMs &&
-      graphicTimeMs < activeTimeLink.endMs
+    ? !activeTimeLink.outOfShotBounds &&
+      graphicTimeMs >= activeTimeLink.visibleStartMs &&
+      graphicTimeMs < activeTimeLink.visibleEndMs
     : true;
   const events = [...(eventsOverride ?? shot.timelineEvents.filter((event) => event.layerId === layer.id))].sort(
     (left, right) =>

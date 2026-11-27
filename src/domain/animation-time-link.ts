@@ -7,6 +7,12 @@ import {
   type Project,
   type Shot,
 } from './models';
+import {
+  isValidFrameTime,
+  isValidSignedFrameTime,
+  signedFrameOffsetMs,
+  TIMELINE_FPS,
+} from './timeline/frame-grid';
 
 export type ResolvedLayerAnimationTimeLink =
   | { readonly status: 'none' }
@@ -62,16 +68,43 @@ export function formatAnimationTimeLinkOffset(offsetMs: number): string {
   return rounded > 0 ? `+${rounded}ms` : `${rounded}ms`;
 }
 
+function shiftAnimationTimeLinkWindow(
+  sourceStartMs: number,
+  sourceEndMs: number,
+  offsetMs: number,
+): { readonly startMs: number; readonly endMs: number } {
+  if (offsetMs === 0) {
+    return { startMs: sourceStartMs, endMs: sourceEndMs };
+  }
+  if (isValidFrameTime(sourceStartMs) && isValidSignedFrameTime(offsetMs)) {
+    const offsetFrames = Math.round((offsetMs * TIMELINE_FPS) / 1_000);
+    const startFrame =
+      Math.round((sourceStartMs * TIMELINE_FPS) / 1_000) + offsetFrames;
+    const startMs = signedFrameOffsetMs(startFrame);
+    if (isValidFrameTime(sourceEndMs)) {
+      const endFrame =
+        Math.round((sourceEndMs * TIMELINE_FPS) / 1_000) + offsetFrames;
+      return { startMs, endMs: signedFrameOffsetMs(endFrame) };
+    }
+    return { startMs, endMs: startMs + (sourceEndMs - sourceStartMs) };
+  }
+  return {
+    startMs: sourceStartMs + offsetMs,
+    endMs: sourceEndMs + offsetMs,
+  };
+}
+
 /**
  * Resolves an animation layer's optional character-action time link against
  * the current Shot state. Never throws on deleted/missing targets: broken links
  * return `{ status: 'broken', link }` so evaluation can fall back to the
  * layer's independent startTimeMs and UI can offer repair or unlink.
  *
- * When `link.offsetMs` is set, the active window `[s, e)` shifts to
- * `[s + offsetMs, e + offsetMs)` while preserving duration. Crossing the Shot
- * boundaries clips only `visibleStartMs`/`visibleEndMs`; completely
- * out-of-bounds shifted windows remain `status: 'active'` with
+ * When `link.offsetMs` is set, author-frame-aligned inputs shift by exact
+ * frame indices (preserving frame span without integer rounding drift), while
+ * arbitrary millisecond offsets shift `[s, e)` to `[s + offsetMs, e + offsetMs)`
+ * directly. Crossing the Shot boundaries clips only `visibleStartMs`/`visibleEndMs`;
+ * completely out-of-bounds shifted windows remain `status: 'active'` with
  * `outOfShotBounds: true` (never misclassified as broken).
  */
 export function resolveLayerAnimationTimeLink(
@@ -100,8 +133,11 @@ export function resolveLayerAnimationTimeLink(
     return { status: 'broken', link };
   }
   const offsetMs = link.offsetMs ?? 0;
-  const startMs = event.startMs + offsetMs;
-  const endMs = event.endMs + offsetMs;
+  const { startMs, endMs } = shiftAnimationTimeLinkWindow(
+    event.startMs,
+    event.endMs,
+    offsetMs,
+  );
   const visibleStartMs = Math.max(0, startMs);
   const visibleEndMs = Math.min(shot.durationMs, endMs);
   return {
