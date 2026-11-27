@@ -38,7 +38,7 @@ export interface IconButtonProps
   icon: ReactNode;
 }
 
-/** An icon-only button with an explicit accessible name and 44px target. */
+/** An icon-only button with an explicit accessible name. */
 export function IconButton({
   icon,
   ...props

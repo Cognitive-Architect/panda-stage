@@ -39,18 +39,6 @@
 
 .layer-position-panel input {
   width: 100%;
-  min-width: 0;
-  padding: 7px 8px;
-  border: 1px solid rgb(154 216 172 / 25%);
-  border-radius: 8px;
-  color: #eef6f0;
-  background: #0b100e;
-  font: inherit;
-}
-
-.layer-position-panel input:disabled {
-  color: #77847c;
-  background: #161b18;
 }
 
 .layer-position-panel .layer-lock-control {

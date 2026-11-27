@@ -190,10 +190,10 @@ describe('Issue #775 C03 preserves the Stage D render runners in one workbench',
 
   it('keeps the G009 icon target, compact footer, and same-window spacing evidence bounded', () => {
     expect(styles).toMatch(
-      /\.fla-frame-sequence-review-unified-preview \.fla-c03-sequence-actions \.fla-frame-sequence-playback-button\s*\{[^}]*width:\s*44px;[^}]*min-width:\s*44px;[^}]*min-height:\s*44px;/u,
+      /\.fla-frame-sequence-review-unified-preview \.fla-c03-sequence-actions \.fla-frame-sequence-playback-button\s*\{[^}]*width:\s*var\(--ui-touch-icon\);[^}]*min-width:\s*var\(--ui-touch-icon\);[^}]*min-height:\s*var\(--ui-touch-regular\);/u,
     );
     expect(styles).toMatch(
-      /\.fla-c03-footer-actions \.fla-c03-import-primary\s*\{[^}]*min-height:\s*44px;/u,
+      /\.fla-c03-footer-actions \.fla-c03-import-primary\s*\{[^}]*min-height:\s*var\(--ui-touch-regular\);/u,
     );
     expect(styles).toContain('min-height: 112px;');
     expect(styles).toContain("'inputs summary'\n      'actions actions'\n      'error error'");

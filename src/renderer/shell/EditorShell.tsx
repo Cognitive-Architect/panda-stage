@@ -90,8 +90,6 @@ import {
   safeExportFailureMessage,
   shouldRestoreExportTask,
 } from './exportTaskState';
-import { AdaptiveWorkspaceSwitcher } from './AdaptiveWorkspaceSwitcher';
-import { BottomWorkspace } from './BottomWorkspace';
 import { CanvasWorkspace } from './CanvasWorkspace';
 import {
   CompactProjectBar,
@@ -104,16 +102,13 @@ import { useDesktopAutomation } from './useDesktopAutomation';
 import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
-import { RightInspector } from './RightInspector';
-import { RightWorkspace, type RightWorkspaceHandle } from './RightWorkspace';
+import { RightInspector, focusLayerParentBinding } from './RightInspector';
+import { RightWorkspace } from './RightWorkspace';
+import { EditorWorkbench, type WorkbenchControls } from './EditorWorkbench';
+import { ShotLayerListPanel } from '../features/properties/ShotLayerListPanel';
+import { TimelineDock } from '../features/timeline/TimelineDock';
+import { DockedAnimationCurve } from '../features/timeline/DockedAnimationCurve';
 import { CharacterFloatHost, type FloatingCharacterMode } from '../features/characters/characterFloatHost';
-import type { ResourceActivity } from './ResourceActivityDock';
-import {
-  reconcileEditorWorkspace,
-  useEditorShellLayoutMode,
-  type EditorDeviceMode,
-  type EditorWorkspace,
-} from './adaptiveEditorShell';
 import { useDebugFlag } from './useDebugFlag';
 import {
   CLOSE_PROJECT_DIRTY_PROMPT,
@@ -139,7 +134,6 @@ export type EditorShellSessionRegion =
   | 'start-screen'
   | 'editor-layout';
 export type EditorShellPage = 'project-center' | 'editor';
-type PortraitCanvasSurface = 'none' | 'shots';
 
 export function getEditorShellState(
   snapshot: EditorProjectSnapshot | null,
@@ -516,7 +510,7 @@ export function EditorShell({
 }: EditorShellProps): React.JSX.Element {
   const [characterFloatTarget, setCharacterFloatTarget] = useState<HTMLElement | null>(null);
   const [characterFloatMode, setCharacterFloatMode] = useState<FloatingCharacterMode | null>(null);
-  const rightWorkspaceRef = useRef<RightWorkspaceHandle>(null);
+  const workbench = useRef<WorkbenchControls>(null);
   const projectSnapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
@@ -793,17 +787,6 @@ export function EditorShell({
     flaCharacterRecoveryRecord.kind === 'none' ? 'terminal' : 'unknown',
   );
   const safeFlaCharacterCloseArmedRef = useRef<string | null>(null);
-  // Cloud Touch is the sole product route. This presentation value is kept
-  // only as a DOM/CSS contract; it never enters Project, History, autosave,
-  // or any cross-process contract.
-  const deviceMode: EditorDeviceMode = 'cloud-touch';
-  const layoutMode = useEditorShellLayoutMode(deviceMode);
-  const [portraitWorkspace, setPortraitWorkspace] =
-    useState<EditorWorkspace>('canvas');
-  const [portraitResourceActivity, setPortraitResourceActivity] =
-    useState<ResourceActivity>('shots');
-  const [portraitCanvasSurface, setPortraitCanvasSurface] =
-    useState<PortraitCanvasSurface>('none');
   const flaCharacterCommitActiveRef = useRef(
     flaCharacterRecoveryRecord.kind !== 'none',
   );
@@ -862,9 +845,6 @@ export function EditorShell({
   const assemblyKind = activeAssemblySession
     ? activeAssemblySession.kind ?? 'composite'
     : 'none';
-  const assemblyHidesResourceDrawer = assemblyKind === 'adaptive-parts';
-  const legacyCompositeAssemblyActive =
-    assemblyActive && assemblyKind === 'composite';
   const recoveryCandidate = getEditorShellRecoveryCandidate(
     shellState,
     sessionSnapshot,
@@ -881,7 +861,6 @@ export function EditorShell({
           : 'saved';
   const { debug, gateA } = useDebugFlag();
   const renderProductSurface = shouldRenderProductSurface(gateA);
-  const isPortrait = layoutMode === 'portrait';
 
   const setExportTaskState = (next: ExportTaskState): void => {
     exportTaskRef.current = next;
@@ -1486,16 +1465,12 @@ export function EditorShell({
   }, [autoCameraEnabled]);
 
   useEffect(() => {
-    setPortraitWorkspace((current) =>
-      reconcileEditorWorkspace(layoutMode, current),
-    );
-  }, [layoutMode]);
+    if (assemblyActive || characterFloatMode) workbench.current?.show('stage');
+  }, [assemblyActive, characterFloatMode]);
 
   useEffect(() => {
-    setPortraitCanvasSurface(
-      isPortrait && portraitWorkspace === 'canvas' ? 'shots' : 'none',
-    );
-  }, [isPortrait, portraitWorkspace]);
+    if (page === 'editor' && flaCharacterRecoveryRecord.kind !== 'none') workbench.current?.show('assets');
+  }, [page, flaCharacterRecoveryRecord.kind]);
 
   useEffect(() => {
     // Electron uses the renderer document title for the native window title.
@@ -2833,65 +2808,6 @@ export function EditorShell({
     }
   };
 
-  const selectPortraitWorkspace = (workspace: EditorWorkspace): void => {
-    if (flaCharacterCommitActiveRef.current) return;
-    setPortraitWorkspace(workspace);
-    setPortraitCanvasSurface(workspace === 'canvas' ? 'shots' : 'none');
-    if (workspace === 'assets') {
-      setPortraitResourceActivity('assets');
-    } else if (workspace === 'canvas') {
-      setPortraitResourceActivity('shots');
-    }
-  };
-
-  const closePortraitCanvasSurface = (): void => {
-    if (flaCharacterCommitActiveRef.current) return;
-    setPortraitCanvasSurface('none');
-  };
-
-  const handlePortraitResourceActivityChange = (
-    activity: ResourceActivity,
-  ): void => {
-    if (!isPortrait || flaCharacterCommitActiveRef.current) return;
-    setPortraitResourceActivity(activity);
-    if (activity === 'assets') {
-      setPortraitWorkspace('assets');
-      setPortraitCanvasSurface('none');
-    } else {
-      setPortraitWorkspace('canvas');
-      setPortraitCanvasSurface('shots');
-    }
-  };
-
-  const portraitCanvasVisible =
-    !isPortrait ||
-    portraitWorkspace === 'canvas' ||
-    portraitWorkspace === 'properties' ||
-    portraitWorkspace === 'timeline';
-  const portraitResourcesVisible =
-    !isPortrait ||
-    portraitWorkspace === 'assets' ||
-    (portraitWorkspace === 'canvas' && portraitCanvasSurface === 'shots');
-  const portraitResourcesSlotVisible =
-    (portraitResourcesVisible &&
-      !(isPortrait && assemblyHidesResourceDrawer)) ||
-    (isPortrait && legacyCompositeAssemblyActive);
-  const portraitPropertiesVisible =
-    !isPortrait ||
-    portraitWorkspace === 'properties';
-  const portraitContextSurface =
-    isPortrait && portraitWorkspace === 'canvas'
-      ? portraitCanvasSurface
-      : isPortrait && portraitWorkspace === 'properties'
-        ? 'properties'
-        : isPortrait && portraitWorkspace === 'timeline'
-          ? 'timeline'
-        : 'none';
-  // Keep the CanvasStage mounted as the sole Canvas owner, but expose its
-  // existing toolbar only for the active portrait Canvas workspace.
-  const canvasToolbarVisible =
-    !isPortrait || portraitWorkspace === 'canvas';
-
   useDesktopAutomation({
     isBusy: () => busy || closeConfirmOpen || flaCharacterCommitActiveRef.current,
     previewDraft: (project, shotId) => {
@@ -2905,8 +2821,8 @@ export function EditorShell({
     <main
       className="app-shell editor-shell"
       data-debug={debug ? 'enabled' : 'disabled'}
-      data-editor-device-mode={deviceMode}
-      data-editor-shell-layout={layoutMode}
+      data-editor-device-mode="desktop"
+      data-editor-shell-layout="desktop"
       data-editor-shell-state={shellState}
       data-editor-shell-region={sessionRegion}
       data-editor-page={page}
@@ -2958,11 +2874,11 @@ export function EditorShell({
         />
       ) : projectSnapshot ? (
         <div
-          className="editor-layout"
-          data-active-workspace={portraitWorkspace}
+          className="editor-layout editor-workbench"
           data-preview-surface-active={productPreviewSurfaceActive ? 'true' : 'false'}
-          data-shell-mode={layoutMode}
-          data-top-region-layout={isPortrait ? 'flow' : 'overlay'}
+          data-shell-mode="desktop"
+          data-project-revision={projectSnapshot.revision}
+          data-top-region-layout="flow"
           data-testid="editor-layout"
         >
           <div
@@ -2978,12 +2894,6 @@ export function EditorShell({
                 onRestore={restoreRecovery}
               />
             ) : null}
-            {isPortrait ? (
-              <AdaptiveWorkspaceSwitcher
-                onChange={selectPortraitWorkspace}
-                value={portraitWorkspace}
-              />
-            ) : null}
             <ExportTaskSurface
               onCancel={() => void cancelExportTask()}
               onRetryCurrentContent={retryCurrentExportContent}
@@ -2996,186 +2906,121 @@ export function EditorShell({
             />
           </div>
           <PendingDialoguePlacementProvider>
-            <div
-              className="editor-body"
-              inert={productPreviewOpen || undefined}
-              data-active-workspace={isPortrait ? portraitWorkspace : 'canvas'}
-              data-portrait-surface={portraitContextSurface}
-              data-shell-mode={layoutMode}
-              data-testid="editor-body"
-            >
-              <CompactProjectBar
-                busy={busy}
-                closeConfirmOpen={closeConfirmOpen}
-                exportBusy={exportTaskIsActive(exportTask)}
-                exportSurfaceOpen={exportSurfaceOpen}
-                key={`quick-action-drawer:${projectSnapshot.projectRoot}`}
-                onExportVideo={onExportVideo}
-                onOpenExportSettings={() => setExportOptionsOpen(true)}
-                onOpenProductPreview={openProductPreview}
-                onOpenProjectCenter={openProjectCenter}
-                onOpenProjectFolder={openProjectFolder}
-                onRequestCloseProject={requestCloseProject}
-                onSaveProject={saveProject}
-                productPreviewOpen={productPreviewOpen}
-                projectSnapshot={projectSnapshot}
-                saveState={saveState}
-                status={status}
-                presentation={layoutMode}
-              />
-            <div
-              aria-hidden={!portraitResourcesSlotVisible}
-              className="editor-workspace-slot editor-workspace-slot-resources"
-              data-active={portraitResourcesSlotVisible}
-              data-workspace-owner="resources"
-              hidden={!portraitResourcesSlotVisible}
-            >
-              <CharacterFloatHost.Provider value={{ target: characterFloatTarget, setMode: setCharacterFloatMode }}>
-              <LeftWorkspace
-                adaptivePartsActionsRef={adaptivePartsActionsRef}
-                onCreateFlaCharacter={createFlaCharacter}
-                onCreateCharacterFromGraphic={createFlaCharacterFromGraphic}
-                onImportGraphicInstance={importFlaGraphicInstance}
-                onQueryFlaCharacterCreateStatus={queryFlaCreateStatus}
-                flaCharacterRecoveryRecord={flaCharacterRecoveryRecord}
-                onQueryPendingFlaCharacterCreateStatus={queryPendingFlaCreateStatus}
-                onResolvePendingFlaCharacterRecovery={resolvePendingFlaCharacterRecovery}
-                onFlaCharacterRecoveryCredentialChange={setFlaCharacterRecoveryCredential}
-                onFlaCharacterOperationStateChange={setFlaCharacterOperationState}
-                onSafeFlaCharacterExit={armSafeFlaCharacterClose}
-                flaCharacterRecoveryAction={
-                  recoveryCandidate && projectSnapshot ? (
-                    <RecoveryCandidateBanner
+            <GraphicFrameTargetProvider>
+              <div className="workbench-body" data-testid="editor-body" inert={productPreviewOpen || undefined}>
+                <EditorWorkbench
+                  controls={workbench}
+                  canHide={(panel) => {
+                    if (panel === 'assets') return !assemblyActive && !characterFloatMode && !flaCharacterCommitActiveRef.current;
+                    if (panel === 'stage') return !assemblyActive && !characterFloatMode;
+                    return true;
+                  }}
+                  header={<>
+                    <span className="workbench-project-name" title={projectSnapshot.project.name}>{projectSnapshot.project.name}</span>
+                    <select aria-label="切换镜头" value={currentShotId ?? ''}
+                      disabled={busy || assemblyActive || Boolean(characterFloatMode) || flaCharacterRecoveryRecord.kind !== 'none'}
+                      onChange={(event) => shotStore.select(event.target.value)}>
+                      {projectSnapshot.project.shots.map((shot) => <option key={shot.id} value={shot.id}>{shot.name}</option>)}
+                    </select>
+                    <CompactProjectBar
+                      docked
                       busy={busy}
-                      candidate={recoveryCandidate}
-                      onIgnore={ignoreRecovery}
-                      onRestore={restoreRecovery}
+                      closeConfirmOpen={closeConfirmOpen}
+                      exportBusy={exportTaskIsActive(exportTask)}
+                      exportSurfaceOpen={exportSurfaceOpen}
+                      key={`quick-action-drawer:${projectSnapshot.projectRoot}`}
+                      onExportVideo={onExportVideo}
+                      onOpenExportSettings={() => setExportOptionsOpen(true)}
+                      onOpenProductPreview={openProductPreview}
+                      onOpenProjectCenter={openProjectCenter}
+                      onOpenProjectFolder={openProjectFolder}
+                      onRequestCloseProject={requestCloseProject}
+                      onSaveProject={saveProject}
+                      productPreviewOpen={productPreviewOpen}
+                      projectSnapshot={projectSnapshot}
+                      saveState={saveState}
+                      status={status}
                     />
-                  ) : null
-                }
-                flaCharacterRecoveryBusy={busy}
-                onFlaCharacterCommitStateChange={setFlaCharacterCommitActive}
-                onFlaCharacterImportStart={() => {
-                  setPortraitWorkspace('canvas');
-                  setPortraitResourceActivity('characters');
-                  setPortraitCanvasSurface('shots');
-                }}
-                activeActivity={
-                  isPortrait
-                    ? assemblyActive
-                      ? 'characters'
-                      : portraitResourceActivity
-                    : undefined
-                }
-                drawerOpen={
-                  assemblyActive || (isPortrait && portraitResourcesVisible)
-                    ? true
-                    : undefined
-                }
-                onDrawerOpenChange={(open) => {
-                  if (!isPortrait || open || flaCharacterCommitActiveRef.current) return;
-                  if (portraitWorkspace === 'assets') {
-                    setPortraitWorkspace('canvas');
-                    setPortraitResourceActivity('shots');
-                  } else {
-                    closePortraitCanvasSurface();
-                  }
-                }}
-                onActiveActivityChange={handlePortraitResourceActivityChange}
-                onOpenRecentProject={switchToRecentProject}
-                projectSnapshot={projectSnapshot}
-                recentRefreshToken={recentRefreshToken}
-                shellMode={layoutMode}
-              />
-              </CharacterFloatHost.Provider>
-            </div>
-            <div
-              aria-hidden={!portraitCanvasVisible && !assemblyActive}
-              className="editor-workspace-slot editor-workspace-slot-canvas"
-              data-active={portraitCanvasVisible || assemblyActive}
-              data-workspace-owner="canvas"
-              data-character-assembly-active={assemblyActive ? 'true' : 'false'}
-              hidden={!portraitCanvasVisible && !assemblyActive}
-            >
-              <div
-                aria-hidden={Boolean(characterFloatMode) || assemblyActive || !portraitCanvasVisible}
-                className="character-assembly-canvas-owner"
-                data-character-assembly-inactive={assemblyActive ? 'true' : 'false'}
-                hidden={!portraitCanvasVisible && !assemblyActive}
-                inert={Boolean(characterFloatMode) || assemblyActive || undefined}
-              >
-                <CanvasWorkspace
-                  showHeading={false}
-                  showToolbar={canvasToolbarVisible}
-                  dialogueSilence={dialogueSilence}
-                  onCharacterPartSelected={() => rightWorkspaceRef.current?.openPropertiesIfIdle()}
-                  curveDraft={animationCurveDraft}
-                  curveMotionDraft={curveMotionStageDraft}
+                  </>}
+                  panels={{
+                    assets: (
+                      <CharacterFloatHost.Provider value={{ target: characterFloatTarget, setMode: setCharacterFloatMode }}>
+                        <LeftWorkspace
+                          docked
+                          drawerOpen
+                          onDrawerOpenChange={(open) => { if (!open) workbench.current?.close('assets'); }}
+                          adaptivePartsActionsRef={adaptivePartsActionsRef}
+                          onCreateFlaCharacter={createFlaCharacter}
+                          onCreateCharacterFromGraphic={createFlaCharacterFromGraphic}
+                          onImportGraphicInstance={importFlaGraphicInstance}
+                          onQueryFlaCharacterCreateStatus={queryFlaCreateStatus}
+                          flaCharacterRecoveryRecord={flaCharacterRecoveryRecord}
+                          onQueryPendingFlaCharacterCreateStatus={queryPendingFlaCreateStatus}
+                          onResolvePendingFlaCharacterRecovery={resolvePendingFlaCharacterRecovery}
+                          onFlaCharacterRecoveryCredentialChange={setFlaCharacterRecoveryCredential}
+                          onFlaCharacterOperationStateChange={setFlaCharacterOperationState}
+                          onSafeFlaCharacterExit={armSafeFlaCharacterClose}
+                          flaCharacterRecoveryAction={
+                            recoveryCandidate && projectSnapshot ? (
+                              <RecoveryCandidateBanner
+                                busy={busy}
+                                candidate={recoveryCandidate}
+                                onIgnore={ignoreRecovery}
+                                onRestore={restoreRecovery}
+                              />
+                            ) : null
+                          }
+                          flaCharacterRecoveryBusy={busy}
+                          onFlaCharacterCommitStateChange={setFlaCharacterCommitActive}
+                          onFlaCharacterImportStart={() => workbench.current?.show('assets')}
+                        onOpenRecentProject={switchToRecentProject}
+                        projectSnapshot={projectSnapshot}
+                        recentRefreshToken={recentRefreshToken}
+                        />
+                      </CharacterFloatHost.Provider>
+                    ),
+                    layers: <div className="workbench-scroll" inert={assemblyActive || Boolean(characterFloatMode) || undefined}>
+                      <ShotLayerListPanel onFocusParentBinding={() => {
+                        workbench.current?.show('props');
+                        requestAnimationFrame(focusLayerParentBinding);
+                      }} />
+                    </div>,
+                    stage: <div className="workbench-stage editor-workspace-slot-canvas"
+                      data-character-assembly-active={assemblyActive ? 'true' : 'false'}>
+                      <div className="character-assembly-canvas-owner"
+                        aria-hidden={Boolean(characterFloatMode) || assemblyActive}
+                        data-character-assembly-inactive={assemblyActive ? 'true' : 'false'}
+                        inert={Boolean(characterFloatMode) || assemblyActive || undefined}>
+                        <CanvasWorkspace showHeading={false} dialogueSilence={dialogueSilence}
+                          onCharacterPartSelected={() => workbench.current?.show('props')}
+                          curveDraft={animationCurveDraft} curveMotionDraft={curveMotionStageDraft} />
+                      </div>
+                      <div className="character-float-host" ref={setCharacterFloatTarget} />
+                      {activeAssemblySession && characterFloatMode !== 'composite' ? (
+                        <CharacterAssemblyWorkbench adaptivePartsActionsRef={adaptivePartsActionsRef}
+                          projectSnapshot={projectSnapshot}
+                          savedProjectSnapshot={editorProjectStore.getSavedProjectSnapshot()}
+                          session={activeAssemblySession} />
+                      ) : null}
+                    </div>,
+                    props: <div className="workbench-properties" inert={assemblyActive || Boolean(characterFloatMode) || undefined}>
+                      <RightWorkspace docked autoCameraEnabled={autoCameraEnabled}
+                        key={projectSnapshot.projectRoot}
+                        onAutoCameraChange={setAutoCameraEnabled} onPreviewDraft={openDraftPreview}
+                        onCurveMotionDraft={setCurveMotionStageDraft} />
+                      <RightInspector drawerOpen embedded layerListDocked shellMode="landscape" />
+                    </div>,
+                    curve: <div className="workbench-scroll" inert={assemblyActive || Boolean(characterFloatMode) || undefined}>
+                      <DockedAnimationCurve />
+                    </div>,
+                    timeline: <div className="workbench-timeline" inert={assemblyActive || Boolean(characterFloatMode) || undefined}>
+                      <TimelineDock docked presentation="desktop" productPreviewOpen={productPreviewOpen}
+                        onOpenCurve={() => workbench.current?.show('curve')} />
+                    </div>,
+                  }}
                 />
               </div>
-              <div className="character-float-host" ref={setCharacterFloatTarget} />
-              {activeAssemblySession && projectSnapshot && characterFloatMode !== 'composite' ? (
-                <CharacterAssemblyWorkbench
-                  adaptivePartsActionsRef={adaptivePartsActionsRef}
-                  projectSnapshot={projectSnapshot}
-                  savedProjectSnapshot={editorProjectStore.getSavedProjectSnapshot()}
-                  session={activeAssemblySession}
-                />
-              ) : null}
-            </div>
-            <div
-              aria-hidden={!portraitPropertiesVisible || assemblyActive || Boolean(characterFloatMode)}
-              className={`editor-workspace-slot editor-workspace-slot-properties${assemblyActive ? ' is-character-assembly-inactive' : ''}`}
-              data-active={portraitPropertiesVisible || assemblyActive}
-              data-workspace-owner="properties"
-              data-character-assembly-inactive={assemblyActive ? 'true' : 'false'}
-              hidden={!portraitPropertiesVisible || (isPortrait && assemblyActive)}
-              inert={Boolean(characterFloatMode) || assemblyActive || undefined}
-            >
-              <GraphicFrameTargetProvider>
-              {isPortrait ? (
-                <RightInspector
-                compact={isPortrait ? portraitPropertiesVisible : undefined}
-                dialogueSelectionVisible={
-                  !isPortrait || portraitWorkspace !== 'timeline'
-                }
-                drawerOpen={
-                  isPortrait && portraitPropertiesVisible ? true : undefined
-                }
-                onDrawerOpenChange={(open) => {
-                  if (!isPortrait || open) return;
-                  if (portraitWorkspace === 'properties') {
-                    setPortraitWorkspace('canvas');
-                  } else {
-                    closePortraitCanvasSurface();
-                  }
-                }}
-                shellMode={layoutMode}
-                />
-              ) : (
-                <RightWorkspace
-                  ref={rightWorkspaceRef}
-                  autoCameraEnabled={autoCameraEnabled}
-                  key={`right-workspace:${projectSnapshot.projectRoot}`}
-                  onAutoCameraChange={setAutoCameraEnabled}
-                  onPreviewDraft={openDraftPreview}
-                  onCurveMotionDraft={setCurveMotionStageDraft}
-                />
-              )}
-              </GraphicFrameTargetProvider>
-            </div>
-            {/* 右侧检查器由 RightInspector 作为唯一属性所有者渲染。 */}
-            </div>
-            <BottomWorkspace
-              productPreviewOpen={productPreviewOpen}
-              hidden={
-                isPortrait && portraitWorkspace !== 'timeline' && !assemblyActive
-              }
-              assemblyInactive={assemblyActive || Boolean(characterFloatMode)}
-              presentation={layoutMode}
-              resizable={layoutMode === 'landscape'}
-              showHistoryControls={false}
-            />
+            </GraphicFrameTargetProvider>
           </PendingDialoguePlacementProvider>
           {productPreviewOpen ? (
             <ProductPreviewOverlay

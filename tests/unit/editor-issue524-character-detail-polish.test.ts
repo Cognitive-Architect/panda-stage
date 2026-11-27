@@ -88,7 +88,7 @@ describe('Issue #524 R8 Character Detail visual polish', () => {
 
     expect(polishStart).toBeGreaterThanOrEqual(0);
     expect(polish).toContain('grid-template-columns: 80px minmax(0, 1fr)');
-    expect(polish).toContain('background: rgb(45 104 62 / 62%)');
+    expect(polish).toContain('background: var(--ui-color-selected-surface)');
     expect(polish).toContain('align-self: start');
     expect(polish).toContain('height: 84px');
     expect(polish).toContain(

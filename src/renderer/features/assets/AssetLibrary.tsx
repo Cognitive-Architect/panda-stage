@@ -36,6 +36,7 @@ import {
   type ThumbnailState,
 } from './AssetCard';
 import { AssetImportPanel, selectImportedAudioAssetIds } from './AssetImportPanel';
+import type { AssetDropHandlers } from './useAssetDrop';
 import {
   refreshImportedAudioMetadata,
   type AssetMetadataProjectIdentity,
@@ -78,6 +79,7 @@ export interface AssetLibraryProps {
   closeRequestToken?: number;
   hideHeading?: boolean;
   showFlaAction?: boolean;
+  compactImport?: boolean;
   onImportGraphicInstance?: ImportFlaGraphicInstance;
   onCreateCharacterFromGraphic?: CreateAdaptiveCharacterFromGraphic;
   onGraphicCharacterCreated?(
@@ -95,6 +97,7 @@ export function AssetLibrary({
   closeRequestToken,
   hideHeading = false,
   showFlaAction = true,
+  compactImport = false,
   onImportGraphicInstance,
   onCreateCharacterFromGraphic,
   onGraphicCharacterCreated,
@@ -109,6 +112,7 @@ export function AssetLibrary({
     : !liveSnapshot
       ? '请先打开项目。'
       : null;
+  const importDropRef = useRef<AssetDropHandlers>(null);
   const resolvedPresentation =
     presentation ?? (hideHeading ? 'portrait' : 'default');
   const [category, setCategory] = useState<AssetLibraryFilter>(() =>
@@ -880,6 +884,10 @@ export function AssetLibrary({
         }
       }}
       onDragOver={(event) => {
+        if (compactImport && importDropRef.current && event.dataTransfer.types.includes('Files')) {
+          importDropRef.current.onDragOver(event);
+          return;
+        }
         if (
           draggingAssetId ||
           Array.from(event.dataTransfer.types).includes(
@@ -892,6 +900,10 @@ export function AssetLibrary({
         }
       }}
       onDrop={(event) => {
+        if (compactImport && importDropRef.current && event.dataTransfer.files.length > 0) {
+          importDropRef.current.onDrop(event);
+          return;
+        }
         if (draggingAssetId) {
           event.preventDefault();
           setStatus(
@@ -989,7 +1001,8 @@ export function AssetLibrary({
       ) : (
         <>
           <AssetImportPanel
-            compact={hideHeading}
+            ref={compactImport ? importDropRef : undefined}
+            compact={hideHeading || compactImport}
             showFlaAction={showFlaAction}
             importRequestToken={importRequestToken}
             onImportFla={openFlaReview}

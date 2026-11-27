@@ -14,13 +14,13 @@
 
 .project-center-screen .project-launcher-header {
   padding-bottom: 24px;
-  border-bottom-color: rgb(154 216 172 / 18%);
+  border-bottom-color: var(--ui-color-border);
 }
 
 .project-center-screen .project-launcher-lede {
   display: flex;
   margin-top: 14px;
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   font-size: 16px;
   line-height: 1.5;
   flex-wrap: wrap;
@@ -28,7 +28,7 @@
 }
 
 .project-center-screen .project-launcher-state-copy {
-  color: var(--ui-color-text-primary, #eef6f0);
+  color: var(--ui-color-text-primary);
   font-weight: 700;
 }
 
@@ -37,26 +37,11 @@
   min-height: 160px;
   padding: 28px 32px;
   overflow: hidden;
-  border-color: rgb(127 199 148 / 50%);
-  border-radius: 18px;
-  background:
-    radial-gradient(circle at 88% 50%, rgb(83 177 106 / 20%), transparent 30%),
-    linear-gradient(112deg, rgb(37 87 57 / 48%), rgb(17 35 24 / 92%)),
-    var(--ui-color-surface-panel, #112318);
+  border-color: var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
+  background: var(--ui-color-surface-panel);
   box-shadow: 0 18px 40px rgb(0 0 0 / 20%);
   gap: 28px;
-}
-
-.project-center-screen .launcher-current-project::after {
-  position: absolute;
-  width: 260px;
-  height: 260px;
-  right: 8%;
-  bottom: -170px;
-  border: 1px solid rgb(154 230 172 / 12%);
-  border-radius: 50%;
-  content: '';
-  pointer-events: none;
 }
 
 .project-center-screen .launcher-current-project-copy {
@@ -67,7 +52,7 @@
 }
 
 .project-center-screen .launcher-current-project-copy .eyebrow {
-  color: #b5e3bf;
+  color: var(--ui-color-text-secondary);
   font-size: 12px;
   letter-spacing: 0.12em;
 }
@@ -93,7 +78,7 @@
   > .project-center-current-path {
   display: block;
   max-width: min(72ch, 100%);
-  color: var(--ui-color-text-muted, #84958b);
+  color: var(--ui-color-text-muted);
   font-size: 13px;
 }
 
@@ -102,19 +87,7 @@
   position: relative;
   z-index: 1;
   min-width: 184px;
-  min-height: var(--ui-touch-emphasized, 56px);
-  padding: 14px 22px;
-  border-color: rgb(154 230 172 / 76%);
-  border-radius: 12px;
-  font-size: 16px;
-  box-shadow: 0 10px 24px rgb(21 69 37 / 28%);
   gap: 10px;
-}
-
-.project-center-screen .launcher-continue-button:hover:not(:disabled),
-.project-center-screen .launcher-continue-button:focus-visible {
-  background: #39814f;
-  box-shadow: 0 12px 28px rgb(21 69 37 / 34%);
 }
 
 .project-center-screen .project-launcher-welcome {
@@ -122,24 +95,10 @@
   min-height: 136px;
   padding: 24px 28px;
   overflow: hidden;
-  border-color: rgb(127 199 148 / 34%);
-  border-radius: 18px;
-  background:
-    radial-gradient(circle at 92% 16%, rgb(65 145 87 / 16%), transparent 28%),
-    linear-gradient(105deg, rgb(17 35 24 / 92%), rgb(14 27 19 / 70%));
+  border-color: var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
+  background: var(--ui-color-surface-panel);
   gap: 18px;
-}
-
-.project-center-screen .project-launcher-welcome::after {
-  position: absolute;
-  width: 220px;
-  height: 220px;
-  right: 8%;
-  bottom: -160px;
-  border: 1px solid rgb(154 230 172 / 10%);
-  border-radius: 50%;
-  content: '';
-  pointer-events: none;
 }
 
 .project-center-screen .project-launcher-welcome-mark {
@@ -148,9 +107,9 @@
   width: 56px;
   min-width: 56px;
   height: 56px;
-  border-color: rgb(154 216 172 / 52%);
-  border-radius: 18px;
-  background: rgb(45 104 64 / 34%);
+  border-color: var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
+  background: var(--ui-color-surface-work);
 }
 
 .project-center-screen .project-launcher-welcome-content {
@@ -166,7 +125,7 @@
 
 .project-center-screen .project-launcher-welcome p:last-child {
   margin-top: 8px;
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   font-size: 14px;
   line-height: 1.5;
 }
@@ -180,8 +139,8 @@
 .project-center-screen .project-launcher-actions button.launcher-action-tile {
   display: grid;
   width: 100%;
-  min-height: 96px;
-  padding: 16px 18px;
+  min-height: 56px;
+  padding: 8px 12px;
   align-items: center;
   justify-self: stretch;
   grid-template-columns: auto minmax(0, 1fr);
@@ -191,15 +150,7 @@
 }
 
 .project-center-screen .launcher-action-icon {
-  display: grid;
-  width: 42px;
-  min-width: 42px;
-  height: 42px;
-  border: 1px solid rgb(154 216 172 / 42%);
-  border-radius: 13px;
-  color: #b9efc8;
-  background: rgb(45 104 64 / 30%);
-  place-items: center;
+  display: inline-flex;
 }
 
 .project-center-screen .launcher-action-copy {
@@ -209,46 +160,16 @@
 }
 
 .project-center-screen .launcher-action-copy strong {
-  color: var(--ui-color-text-primary, #eef6f0);
+  color: inherit;
   font-size: 16px;
   line-height: 1.25;
 }
 
 .project-center-screen .launcher-action-copy small {
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: inherit;
   font-size: 14px;
   font-weight: 400;
   line-height: 1.4;
-}
-
-.project-center-screen .project-launcher-actions
-  button.launcher-action-primary {
-  border-color: rgb(154 230 172 / 74%);
-  background:
-    linear-gradient(110deg, rgb(45 104 64 / 92%), rgb(31 79 47 / 96%)),
-    var(--ui-color-action-primary, #1d4d31);
-  box-shadow: 0 10px 24px rgb(21 69 37 / 20%);
-}
-
-.project-center-screen .project-launcher-actions
-  button.launcher-action-primary:hover:not(:disabled),
-.project-center-screen .project-launcher-actions
-  button.launcher-action-primary:focus-visible {
-  background: #39814f;
-}
-
-.project-center-screen .project-launcher-actions
-  button.launcher-action-open {
-  border-color: rgb(127 199 148 / 42%);
-  background: linear-gradient(110deg, rgb(24 52 34 / 94%), rgb(18 35 25 / 94%));
-}
-
-.project-center-screen .project-launcher-actions
-  button.launcher-action-open:hover:not(:disabled),
-.project-center-screen .project-launcher-actions
-  button.launcher-action-open:focus-visible {
-  border-color: rgb(154 230 172 / 62%);
-  background: rgb(45 104 64 / 34%);
 }
 
 .project-center-screen .launcher-advanced-open {
@@ -257,9 +178,9 @@
 }
 
 .project-center-screen .launcher-advanced-open summary {
-  min-height: var(--ui-touch-icon, 44px);
+  min-height: var(--ui-touch-icon);
   padding: 8px 2px;
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   font-size: 14px;
   font-weight: 700;
   gap: 8px;
@@ -270,7 +191,7 @@
 }
 
 .project-center-screen .launcher-advanced-open summary::after {
-  color: #83d39a;
+  color: var(--ui-color-text-secondary);
   content: '⌄';
   font-size: 16px;
   line-height: 1;
@@ -284,9 +205,9 @@
 .project-center-screen .launcher-advanced-open .recovery-open-row {
   display: grid;
   padding: 16px;
-  border: 1px solid rgb(127 199 148 / 24%);
-  border-radius: 14px;
-  background: rgb(17 35 24 / 72%);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
+  background: var(--ui-color-surface-work);
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: end;
   gap: 10px;
@@ -295,14 +216,14 @@
 .project-center-screen .launcher-advanced-open .recovery-open-row label {
   display: grid;
   min-width: 0;
-  color: var(--ui-color-text-primary, #eef6f0);
+  color: var(--ui-color-text-primary);
   gap: 6px;
   font-size: 14px;
   font-weight: 700;
 }
 
 .project-center-screen .launcher-advanced-field-note {
-  color: var(--ui-color-text-muted, #84958b);
+  color: var(--ui-color-text-muted);
   font-size: 13px;
   font-weight: 400;
 }
@@ -310,24 +231,24 @@
 .project-center-screen .launcher-advanced-open .recovery-open-row input {
   min-height: 44px;
   padding: 10px 12px;
-  border-radius: 9px;
+  border-radius: var(--ui-radius-large);
   font-size: 14px;
 }
 
 .project-center-screen .launcher-advanced-open .open-path-hint {
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   font-size: 13px;
 }
 
 .project-center-screen .launcher-advanced-open .recovery-open-row > button {
-  min-height: var(--ui-touch-icon, 44px);
+  min-height: var(--ui-touch-icon);
   padding: 10px 14px;
   white-space: nowrap;
 }
 
 .project-center-screen .project-launcher-status {
   max-width: 76ch;
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   font-size: 13px;
 }
 
@@ -345,7 +266,7 @@
   min-height: 56px;
   padding: 10px 14px;
   border-color: rgb(233 181 80 / 42%);
-  background: rgb(18 49 30 / 94%);
+  background: var(--ui-color-surface-work);
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
@@ -376,7 +297,7 @@
 }
 
 .project-center-screen .project-launcher .recovery-prompt-actions button {
-  min-height: var(--ui-touch-icon, 44px);
+  min-height: var(--ui-touch-icon);
   padding: 10px 14px;
 }
 
@@ -419,9 +340,9 @@
   display: grid;
   min-height: 82px;
   padding: 14px 16px;
-  border: 1px solid rgb(154 216 172 / 18%);
-  border-radius: 14px;
-  background: linear-gradient(105deg, rgb(18 39 27 / 78%), rgb(14 28 20 / 72%));
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
+  background: var(--ui-color-surface-panel);
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
@@ -434,8 +355,8 @@
   .recent-projects-panel[data-presentation='launcher']
   .recent-projects-list
   li:hover {
-  border-color: rgb(127 199 148 / 38%);
-  background: linear-gradient(105deg, rgb(25 54 36 / 86%), rgb(16 34 23 / 82%));
+  border-color: var(--ui-color-border);
+  background: var(--ui-color-surface-panel);
 }
 
 .project-center-screen
@@ -460,10 +381,10 @@
   width: 36px;
   min-width: 36px;
   height: 36px;
-  border: 1px solid rgb(154 216 172 / 32%);
-  border-radius: 11px;
-  color: #9eddb0;
-  background: rgb(45 104 64 / 24%);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
+  color: var(--ui-color-text-secondary);
+  background: var(--ui-color-surface-work);
   place-items: center;
 }
 
@@ -485,7 +406,7 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   font-size: 14px;
   line-height: 1.4;
   flex-wrap: nowrap;
@@ -497,7 +418,7 @@
   .recent-project-launcher-path {
   min-width: 0;
   overflow: hidden;
-  color: var(--ui-color-text-muted, #84958b);
+  color: var(--ui-color-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1 1 auto;
@@ -526,7 +447,7 @@
   li:not([data-project-status='available'])
   .recent-project-launcher-separator {
   order: -1;
-  color: var(--ui-color-text-muted, #84958b);
+  color: var(--ui-color-text-muted);
 }
 
 .project-center-screen
@@ -542,10 +463,10 @@
 .project-center-screen
   .recent-projects-panel[data-presentation='launcher']
   .recent-project-action-primary {
-  min-height: var(--ui-touch-icon, 44px);
+  min-height: var(--ui-touch-icon);
   padding: 10px 14px;
-  border-color: rgb(127 199 148 / 48%);
-  background: rgb(31 66 43 / 82%);
+  border-color: var(--ui-color-border);
+  background: var(--ui-color-surface-work);
   font-size: 14px;
 }
 
@@ -553,12 +474,12 @@
   .recent-projects-panel[data-presentation='launcher']
   .recent-project-more {
   display: inline-grid;
-  width: var(--ui-touch-icon, 44px);
-  min-width: var(--ui-touch-icon, 44px);
-  min-height: var(--ui-touch-icon, 44px);
+  width: var(--ui-touch-icon);
+  min-width: var(--ui-touch-icon);
+  min-height: var(--ui-touch-icon);
   padding: 0;
   border-color: transparent;
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   background: transparent;
   place-items: center;
 }
@@ -569,9 +490,9 @@
 .project-center-screen
   .recent-projects-panel[data-presentation='launcher']
   .recent-project-more:focus-visible {
-  border-color: rgb(127 199 148 / 35%);
-  color: var(--ui-color-text-primary, #eef6f0);
-  background: rgb(45 104 62 / 28%);
+  border-color: var(--ui-color-border);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-work);
 }
 
 .project-center-screen
@@ -587,9 +508,9 @@
   .recent-projects-empty-state {
   display: grid;
   padding: 16px;
-  border: 1px solid rgb(154 216 172 / 18%);
-  border-radius: 14px;
-  background: rgb(18 39 27 / 54%);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
+  background: var(--ui-color-surface-work);
   align-content: center;
   gap: 6px;
 }
@@ -598,7 +519,7 @@
   .recent-projects-panel[data-presentation='launcher']
   .recent-projects-empty {
   margin: 0;
-  color: var(--ui-color-text-primary, #eef6f0);
+  color: var(--ui-color-text-primary);
   font-size: 15px;
 }
 
@@ -606,7 +527,7 @@
   .recent-projects-panel[data-presentation='launcher']
   .recent-projects-empty-description {
   margin: 0;
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   font-size: 14px;
 }
 
@@ -693,7 +614,7 @@
   display: grid;
   min-width: 0;
   padding-bottom: 6px;
-  border-bottom: 1px solid rgb(154 216 172 / 16%);
+  border-bottom: 1px solid var(--ui-color-border);
 }
 
 .project-launcher-header .eyebrow,
@@ -705,7 +626,7 @@
 }
 
 .project-launcher-header .eyebrow {
-  color: #a8c9b1;
+  color: var(--ui-color-text-secondary);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.18em;
@@ -713,25 +634,23 @@
 
 .project-launcher-section-label {
   margin-top: 14px;
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   font-size: 13px;
   font-weight: 700;
 }
 
 .project-launcher-lede {
   margin-top: 10px;
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   font-size: clamp(14px, 1.8vw, 17px);
 }
 
 .launcher-current-project {
   min-height: 132px;
   padding: 22px 24px;
-  border: 1px solid rgb(127 199 148 / 45%);
-  border-radius: var(--ui-radius-large, 14px);
-  background:
-    linear-gradient(110deg, rgb(37 87 57 / 38%), rgb(17 35 24 / 88%)),
-    var(--ui-color-surface-panel, #112318);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
+  background: var(--ui-color-surface-panel);
   box-shadow: 0 18px 40px rgb(0 0 0 / 18%);
 }
 
@@ -744,12 +663,12 @@
 
 .launcher-current-project-copy .eyebrow {
   margin: 0;
-  color: #a8c9b1;
+  color: var(--ui-color-text-secondary);
 }
 
 .launcher-current-project h3 {
   margin: 0;
-  color: var(--ui-color-text-primary, #eef6f0);
+  color: var(--ui-color-text-primary);
   font-size: clamp(18px, 2vw, 23px);
   line-height: 1.2;
 }
@@ -764,25 +683,11 @@
 
 .launcher-current-project-meta .project-center-current-path {
   max-width: min(52ch, 100%);
-  color: var(--ui-color-text-muted, #84958b);
+  color: var(--ui-color-text-muted);
 }
 
 .launcher-continue-button {
   min-width: 156px;
-  min-height: var(--ui-touch-emphasized, 56px);
-  padding: 12px 20px;
-  border-color: rgb(154 230 172 / 72%);
-  border-radius: var(--ui-radius-medium, 10px);
-  color: #f2fff4;
-  background: #2d6840;
-  font-size: 15px;
-  font-weight: 800;
-  box-shadow: 0 8px 22px rgb(21 69 37 / 30%);
-}
-
-.launcher-continue-button:hover:not(:disabled),
-.launcher-continue-button:focus-visible {
-  background: #39814f;
 }
 
 .project-launcher-welcome {
@@ -790,9 +695,9 @@
   min-height: 112px;
   padding: 20px 24px;
   align-items: center;
-  border: 1px solid rgb(127 199 148 / 28%);
-  border-radius: var(--ui-radius-large, 14px);
-  background: rgb(17 35 24 / 62%);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
+  background: var(--ui-color-surface-work);
   gap: 16px;
 }
 
@@ -801,23 +706,23 @@
   width: 52px;
   min-width: 52px;
   height: 52px;
-  border: 1px solid rgb(154 216 172 / 45%);
-  border-radius: 16px;
-  color: #b9efc8;
-  background: rgb(45 104 64 / 36%);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
+  color: var(--ui-color-text-secondary);
+  background: var(--ui-color-surface-work);
   place-items: center;
   font-size: 28px;
   font-weight: 300;
 }
 
 .project-launcher-welcome h2 {
-  color: var(--ui-color-text-primary, #eef6f0);
+  color: var(--ui-color-text-primary);
   font-size: 18px;
 }
 
 .project-launcher-welcome p:last-child {
   margin-top: 6px;
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   font-size: 13px;
 }
 
@@ -831,42 +736,24 @@
 
 .project-launcher-actions button {
   display: inline-flex;
-  min-height: var(--ui-touch-regular, 48px);
-  padding: 11px 18px;
+  min-height: var(--ui-touch-regular);
   align-items: center;
   justify-content: center;
   gap: 8px;
 }
 
-.project-launcher-actions .launcher-action-primary {
-  border-color: rgb(154 230 172 / 72%);
-  color: #f2fff4;
-  background: #2d6840;
-  box-shadow: 0 8px 22px rgb(21 69 37 / 20%);
-}
-
-.project-launcher-actions .launcher-action-primary:hover:not(:disabled),
-.project-launcher-actions .launcher-action-primary:focus-visible {
-  background: #39814f;
-}
-
-.project-launcher-actions .launcher-open-project-button {
-  border-color: rgb(127 199 148 / 35%);
-  background: var(--ui-color-surface-overlay, #142019);
-}
-
 .launcher-advanced-open {
   min-width: 0;
-  border-top: 1px solid rgb(154 216 172 / 14%);
+  border-top: 1px solid var(--ui-color-border);
 }
 
 .launcher-advanced-open summary {
   display: flex;
   width: fit-content;
-  min-height: var(--ui-touch-icon, 44px);
+  min-height: var(--ui-touch-icon);
   padding: 10px 2px;
   align-items: center;
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   font-size: 12px;
   cursor: pointer;
   user-select: none;
@@ -874,7 +761,7 @@
 
 .launcher-advanced-open summary:hover,
 .launcher-advanced-open summary:focus-visible {
-  color: var(--ui-color-text-primary, #eef6f0);
+  color: var(--ui-color-text-primary);
 }
 
 .launcher-advanced-open .recovery-open-row {
@@ -884,7 +771,7 @@
 .project-launcher-status {
   min-height: 1.4em;
   margin: 0;
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   font-size: 12px;
 }
 
@@ -910,7 +797,7 @@
   max-height: min(38vh, 360px);
   padding: 0 4px 0 0;
   overflow-y: auto;
-  scrollbar-color: #3f6d4e #0a100c;
+  scrollbar-color: var(--ui-color-border) var(--ui-color-surface-app);
   gap: 0;
 }
 
@@ -942,7 +829,7 @@
 
 .recent-project-launcher-copy strong {
   overflow: hidden;
-  color: var(--ui-color-text-primary, #eef6f0);
+  color: var(--ui-color-text-primary);
   font-size: 15px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -950,7 +837,7 @@
 
 .recent-project-launcher-meta {
   overflow: hidden;
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
@@ -969,19 +856,19 @@
 
 .recent-projects-panel[data-presentation='launcher']
   .recent-project-action-primary {
-  min-height: var(--ui-touch-icon, 44px);
-  border-color: rgb(127 199 148 / 45%);
-  background: rgb(31 66 43 / 72%);
+  min-height: var(--ui-touch-icon);
+  border-color: var(--ui-color-border);
+  background: var(--ui-color-surface-work);
 }
 
 .recent-projects-panel[data-presentation='launcher'] .recent-project-more {
   display: inline-grid;
-  width: var(--ui-touch-icon, 44px);
-  min-width: var(--ui-touch-icon, 44px);
-  min-height: var(--ui-touch-icon, 44px);
+  width: var(--ui-touch-icon);
+  min-width: var(--ui-touch-icon);
+  min-height: var(--ui-touch-icon);
   padding: 0;
   border-color: transparent;
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   background: transparent;
   place-items: center;
 }
@@ -989,9 +876,9 @@
 .recent-projects-panel[data-presentation='launcher'] .recent-project-more:hover,
 .recent-projects-panel[data-presentation='launcher']
   .recent-project-more:focus-visible {
-  border-color: rgb(127 199 148 / 35%);
-  color: var(--ui-color-text-primary, #eef6f0);
-  background: rgb(45 104 62 / 28%);
+  border-color: var(--ui-color-border);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-work);
 }
 
 .recent-projects-empty-state {
@@ -1002,7 +889,7 @@
 
 .recent-projects-empty-description {
   margin: 6px 0 0;
-  color: var(--ui-color-text-secondary, #aebfb4);
+  color: var(--ui-color-text-secondary);
   font-size: 12px;
 }
 
@@ -1065,8 +952,8 @@
    decorative; all product copy remains in React/HTML. */
 .project-center-screen .project-launcher-banner {
   min-height: clamp(112px, 12vw, 168px);
-  border: 1px solid rgb(127 199 148 / 24%);
-  border-radius: 18px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
   background-image:
     linear-gradient(90deg, rgb(8 16 12 / 18%), rgb(8 16 12 / 4%)),
     url('/project-launcher-banner.png');
@@ -1079,10 +966,8 @@
 .project-center-screen .launcher-current-project {
   min-height: 164px;
   padding: 28px 30px;
-  border-color: rgb(127 199 148 / 52%);
-  background:
-    radial-gradient(circle at 92% 52%, rgb(76 157 96 / 22%), transparent 34%),
-    linear-gradient(108deg, rgb(35 84 54 / 62%), rgb(15 34 23 / 96%));
+  border-color: var(--ui-color-border);
+  background: var(--ui-color-surface-panel);
   box-shadow: 0 20px 44px rgb(0 0 0 / 24%);
 }
 
@@ -1094,7 +979,7 @@
 
 .project-center-screen .launcher-current-project-glyph {
   display: inline-flex;
-  color: #9ed9ae;
+  color: var(--ui-color-text-secondary);
 }
 
 .project-center-screen .launcher-current-project-meta {
@@ -1111,7 +996,7 @@
 }
 
 .project-center-screen .launcher-current-project-meta .clean-state {
-  border: 1px solid rgb(154 216 172 / 30%);
+  border: 1px solid var(--ui-color-border);
   color: #d4ead9;
   background: rgb(104 137 114 / 20%);
 }

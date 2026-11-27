@@ -167,7 +167,7 @@ describe('R2-H.2 shares the C03 unified candidate workbench', () => {
     expect(review).toContain('getSequenceStartFrameInputWidthPx(startFrameIndex + 1)');
     expect(review).toContain("importKind={effectiveImportAsAnimation ? 'animation' : 'image'}");
     expect(unifiedStyles).toContain('width: 52px;');
-    expect(unifiedStyles).toContain('min-height: 44px;');
+    expect(unifiedStyles).toContain('min-height: var(--ui-touch-regular);');
     expect(unifiedStyles).toContain(
       '.fla-frame-sequence-review-unified-preview .fla-frame-sequence-filmstrip-region {',
     );

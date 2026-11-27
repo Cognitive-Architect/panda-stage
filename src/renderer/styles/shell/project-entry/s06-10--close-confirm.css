@@ -17,7 +17,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(6, 12, 9, 0.78);
+  background: rgb(0 0 0 / 75%);
 }
 
 .close-confirm-frame {
@@ -26,29 +26,29 @@
   gap: 12px;
   width: min(480px, 100%);
   padding: 20px 22px;
-  border: 1px solid #2f4a3c;
-  border-radius: 12px;
-  background: #101a15;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
+  background: var(--ui-color-surface-overlay);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
 }
 
 .close-confirm-header h3 {
   margin: 0;
   font-size: 1.05rem;
-  color: #eaf4ee;
+  color: var(--ui-color-text-primary);
 }
 
 .close-confirm-project {
   margin: 4px 0 0;
   font-size: 0.82rem;
-  color: #8fa89a;
+  color: var(--ui-color-text-secondary);
   word-break: break-all;
 }
 
 .close-confirm-prompt {
   margin: 0;
   font-size: 0.9rem;
-  color: #d8e8de;
+  color: var(--ui-color-text-primary);
 }
 
 .close-confirm-recovery-notice {
@@ -64,7 +64,7 @@
 .close-confirm-status {
   min-height: 1.1rem;
   font-size: 0.8rem;
-  color: #9fb8aa;
+  color: var(--ui-color-text-secondary);
 }
 
 .close-confirm-actions {
@@ -73,14 +73,9 @@
   gap: 8px;
 }
 
-.close-confirm-actions button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
 .close-confirm-hint {
   margin: 0;
   font-size: 0.75rem;
-  color: #7e968a;
+  color: var(--ui-color-text-secondary);
 }
 

@@ -29,7 +29,7 @@ describe('Issue #388 Stage C.1 landscape subtitle Properties polish', () => {
     const landscape = landscapeDialogueSource(dialogue);
 
     expect(inspector).toContain(
-      '{(compact || landscapePresentation) &&\n      (!dialogueMode || landscapePresentation) ? (',
+      '{(!embedded || onDrawerOpenChange) && (compact || landscapePresentation) &&\n      (!dialogueMode || landscapePresentation) ? (',
     );
     expect(inspector).not.toContain('inspector-drawer-close');
     expect(inspector).toContain('data-testid="inspector-inline-close"');

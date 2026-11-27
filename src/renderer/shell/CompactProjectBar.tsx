@@ -44,6 +44,7 @@ export interface CompactProjectBarProps {
   onOpenExportSettings?(): void;
   onRequestCloseProject(): void;
   presentation?: EditorShellLayoutMode;
+  docked?: boolean;
 }
 
 // Keep the existing four-state vocabulary for shell/static contracts; only
@@ -89,6 +90,7 @@ export function QuickActionDrawer({
   onOpenExportSettings,
   onRequestCloseProject,
   presentation = 'landscape',
+  docked = false,
 }: CompactProjectBarProps): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const exportFormat = projectSnapshot.project.exportPreferences?.format ?? 'mp4';
@@ -99,6 +101,7 @@ export function QuickActionDrawer({
     'png-sequence': '导出 PNG 序列',
     'sprite-sheet': '导出精灵图',
   }[exportFormat];
+  const exportActionLabel = exportBusy || exportSurfaceOpen ? '显示导出任务' : exportLabel;
   const panelId = `quick-action-drawer-panel-${useId()}`;
   const statusText = status.trim();
   const showFeedback =
@@ -119,7 +122,8 @@ export function QuickActionDrawer({
           ? '保存项目（有未保存更改）'
           : '保存项目（已保存）';
 
-  const showRestSaveState = shouldRenderRestSaveState(expanded, saveState);
+  const showRestSaveState = !docked && shouldRenderRestSaveState(expanded, saveState);
+  const actionsVisible = docked || expanded;
 
   useEffect(() => {
     // Switching projects remounts this presentation in EditorShell, and this
@@ -149,18 +153,19 @@ export function QuickActionDrawer({
 
   return (
     <section
-      aria-label="快捷操作抽屉"
+      aria-label={docked ? '项目操作' : '快捷操作抽屉'}
       className="quick-action-drawer"
-      data-expanded={String(expanded)}
+      data-expanded={String(actionsVisible)}
+      data-docked={docked || undefined}
       data-presentation={presentation}
       data-save-state={saveState}
       data-testid="quick-action-drawer"
     >
       <PanelSurface
-        aria-hidden={!expanded}
+        aria-hidden={!actionsVisible}
         className="quick-action-drawer-surface"
         data-testid="quick-action-drawer-surface"
-        inert={!expanded ? true : undefined}
+        inert={!actionsVisible ? true : undefined}
         id={panelId}
       >
         <div className="quick-action-drawer-actions">
@@ -252,14 +257,10 @@ export function QuickActionDrawer({
             }
             onClick={onOpenProductPreview}
             title="预览当前镜头"
-            variant="primary"
+            variant={docked ? 'secondary' : 'primary'}
           />
           <IconButton
-            aria-label={
-              exportBusy || exportSurfaceOpen
-                ? '\u663e\u793a\u5bfc\u51fa\u4efb\u52a1'
-                : exportLabel
-            }
+            aria-label={exportActionLabel}
             aria-busy={exportBusy}
             aria-pressed={exportSurfaceOpen}
             className="quick-action-drawer-action quick-action-drawer-export"
@@ -267,8 +268,8 @@ export function QuickActionDrawer({
             data-task4-core="export-video"
             data-testid="quick-action-export"
             disabled={busy}
-            icon={
-              exportBusy ? (
+            icon={<>
+              {exportBusy ? (
                 <LoaderCircle
                   aria-hidden="true"
                   className="ui-icon quick-action-drawer-spinner"
@@ -282,14 +283,11 @@ export function QuickActionDrawer({
                   focusable="false"
                   size={18}
                 />
-              )
-            }
+              )}
+              {docked && exportActionLabel}
+            </>}
             onClick={onExportVideo}
-            title={
-              exportBusy || exportSurfaceOpen
-                ? '\u663e\u793a\u5bfc\u51fa\u4efb\u52a1'
-                : exportLabel
-            }
+            title={exportActionLabel}
             variant="primary"
           />
           {onOpenExportSettings ? <IconButton aria-label="导出设置" title="导出设置"
@@ -354,7 +352,7 @@ export function QuickActionDrawer({
           {saveStateLabel}
         </span>
       ) : null}
-      <button
+      {!docked && <button
         aria-controls={panelId}
         aria-expanded={expanded}
         aria-label={expanded ? '收起快捷操作' : '展开快捷操作'}
@@ -368,7 +366,7 @@ export function QuickActionDrawer({
           aria-hidden="true"
           className="timeline-resize-grip quick-action-drawer-grip"
         />
-      </button>
+      </button>}
     </section>
   );
 }

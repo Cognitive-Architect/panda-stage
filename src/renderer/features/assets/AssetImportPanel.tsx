@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import { FileArchive, X } from 'lucide-react';
 import type {
@@ -17,10 +17,11 @@ import {
   importedAudioFeedbackDetails,
   type AssetImportFeedback,
 } from './assetImportFeedback';
-import { useAssetDrop } from './useAssetDrop';
+import { useAssetDrop, type AssetDropHandlers } from './useAssetDrop';
 import { useImportFeedbackDismiss } from './useImportFeedbackDismiss';
 
 export interface AssetImportPanelProps {
+  ref?: Ref<AssetDropHandlers>;
   snapshot: EditorProjectSnapshot | null;
   importRequestToken?: number;
   onImportFla: () => void;
@@ -57,6 +58,7 @@ interface ActiveImport {
 type VisibleAssetImportFeedback = AssetImportFeedback & { id: number };
 
 export function AssetImportPanel({
+  ref,
   snapshot,
   importRequestToken,
   onImportFla,
@@ -299,6 +301,7 @@ export function AssetImportPanel({
     busy || snapshot === null,
     importDroppedFiles,
   );
+  useImperativeHandle(ref, () => dropHandlers, [dropHandlers]);
 
   const feedbackPortal =
     feedback && typeof document !== 'undefined'

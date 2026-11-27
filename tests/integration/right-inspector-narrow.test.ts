@@ -43,14 +43,10 @@ describe('Issue 192 Right Inspector compact rail and drawer', () => {
     );
   });
 
-  it('lets the landscape shell select the compact inspector rail', () => {
-    expect(shell).toContain(
-      'compact={isPortrait ? portraitPropertiesVisible : undefined}',
-    );
-    expect(shell).toContain('shellMode={layoutMode}');
-    expect(shell).not.toContain(
-      'compact={isPortrait && portraitPropertiesVisible}',
-    );
+  it('embeds the real inspector in the workbench without a nested drawer', () => {
+    expect(shell).toContain('<RightInspector drawerOpen embedded layerListDocked');
+    expect(shell).toContain('props: <div className="workbench-properties"');
+    expect(shell).not.toContain('<AdaptiveWorkspaceSwitcher');
   });
 
   it('renders the compact rail handle and right-side drawer only inside the narrow seam', () => {

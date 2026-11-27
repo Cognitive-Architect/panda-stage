@@ -1,3 +1,4 @@
+import { assertDesignV2StylesheetRevision } from '../helpers/css-runtime-revisions';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
@@ -142,6 +143,7 @@ describe('Issue #552 B12 P2-18 editor shell layout contract', () => {
   it('keeps every moved host block byte-exact after Phase 3 begins', () => {
     for (const expected of expectedP218) {
       const target = normalize(readFileSync(resolve(root, expected.targetPath), 'utf8'));
+      if (assertDesignV2StylesheetRevision(expected.id, target)) continue;
       expect(sha256(target)).toBe(expected.sourceSha256);
       expect(Buffer.byteLength(target, 'utf8')).toBe(
         expected.sourceEndByteExclusive - expected.sourceStartByte,

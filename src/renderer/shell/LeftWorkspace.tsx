@@ -23,6 +23,7 @@ export interface LeftWorkspaceProps {
   recentRefreshToken: number;
   shellMode?: EditorShellLayoutMode;
   drawerOpen?: boolean;
+  docked?: boolean;
   onDrawerOpenChange?(open: boolean): void;
   activeActivity?: ResourceActivity;
   onActiveActivityChange?(activity: ResourceActivity): void;
@@ -61,6 +62,7 @@ export function LeftWorkspace({
   recentRefreshToken,
   shellMode,
   drawerOpen,
+  docked,
   onDrawerOpenChange,
   activeActivity,
   onActiveActivityChange,
@@ -106,9 +108,10 @@ export function LeftWorkspace({
         adaptivePartsActionsRef={adaptivePartsActionsRef}
         auxiliaryContent={shellMode === 'landscape' ? undefined : projectUtilities}
         compact={
-          shellMode === undefined ? undefined : shellMode === 'landscape'
+          docked ? false : shellMode === undefined ? undefined : shellMode === 'landscape'
         }
         drawerOpen={drawerOpen}
+        docked={docked}
         hideSectionLabels={shellMode === 'portrait'}
         key={`resource:${projectSnapshot.projectRoot}`}
         onActiveActivityChange={onActiveActivityChange}

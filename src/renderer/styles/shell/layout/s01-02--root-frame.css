@@ -3,9 +3,7 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
-  background:
-    radial-gradient(circle at 82% 0%, rgb(70 139 91 / 22%), transparent 36%),
-    linear-gradient(155deg, #141c18, #080c0a 72%);
+  background: var(--ui-color-surface-app);
 }
 
 .editor-shell {

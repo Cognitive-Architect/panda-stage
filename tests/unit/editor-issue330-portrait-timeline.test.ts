@@ -20,14 +20,14 @@ describe('Issue #330 portrait Timeline first pass', () => {
     expect(switcher).toContain("label: '属性'");
   });
 
-  it('reuses the single Canvas slot and keeps Timeline session-only', () => {
+  it('keeps the single Canvas and direct Timeline entry', () => {
     const shell = source('src/renderer/shell/EditorShell.tsx');
     const bottom = source('src/renderer/shell/BottomWorkspace.tsx');
 
     expect(shell.match(/<CanvasWorkspace/gu)).toHaveLength(1);
-    expect(shell).toContain("portraitWorkspace === 'timeline'");
-    expect(shell).toContain("portraitWorkspace !== 'timeline'");
-    expect(shell).toContain('dialogueSelectionVisible=');
+    expect(shell).toContain('timeline: <div className="workbench-timeline"');
+    expect(shell.match(/<TimelineDock/gu)).toHaveLength(1);
+    expect(shell).not.toContain('<BottomWorkspace');
     expect(shell).not.toContain('timelineStore');
     expect(bottom).toContain('<TimelineDock presentation={presentation} productPreviewOpen={productPreviewOpen} />');
   });

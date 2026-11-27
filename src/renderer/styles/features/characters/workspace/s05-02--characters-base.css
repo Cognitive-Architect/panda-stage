@@ -58,7 +58,6 @@
 }
 
 .character-manager-heading button,
-.character-create-form button,
 .character-settings button,
 .expression-actions button,
 .expression-add-form button {
@@ -77,8 +76,8 @@
   min-width: 0;
   padding: 14px;
   border: 1px solid rgb(255 255 255 / 9%);
-  border-radius: 12px;
-  background: rgb(7 12 9 / 58%);
+  border-radius: var(--ui-radius-large);
+  background: var(--ui-color-surface-panel);
 }
 
 .character-list {
@@ -114,8 +113,8 @@
 }
 
 .character-list-items .character-list-active {
-  color: #e6f7ea;
-  background: #235739;
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-selected-surface);
 }
 
 .character-create-form,
@@ -139,12 +138,12 @@
 .expression-fields label,
 .expression-add-form label {
   display: grid;
-  color: #93a49a;
+  color: var(--ui-color-text-secondary);
   gap: 4px;
   font-size: 10px;
 }
 
-.character-create-form input,
+.character-create-form input:not([type='radio'], [type='checkbox']),
 .character-create-form select,
 .character-settings input,
 .character-settings select,
@@ -153,13 +152,6 @@
 .expression-add-form input,
 .expression-add-form select {
   width: 100%;
-  min-width: 0;
-  padding: 7px 8px;
-  border: 1px solid rgb(154 216 172 / 25%);
-  border-radius: 8px;
-  color: #eef6f0;
-  background: #0b100e;
-  font: inherit;
 }
 
 .character-create-form small {

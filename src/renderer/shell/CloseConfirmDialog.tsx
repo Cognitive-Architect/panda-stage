@@ -1,3 +1,4 @@
+import { Button } from '../ui';
 import { useEffect } from 'react';
 import {
   describeCloseConfirm,
@@ -71,7 +72,7 @@ export function CloseConfirmDialog({
           {status}
         </output>
         <div className="close-confirm-actions">
-          <button
+          <Button
             className="close-confirm-save task4-hit-target"
             data-task4-core="close-save"
             data-testid="close-confirm-save"
@@ -80,8 +81,9 @@ export function CloseConfirmDialog({
             type="button"
           >
             保存后关闭
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="danger"
             className="close-confirm-discard task4-hit-target"
             data-task4-core="close-discard"
             data-testid="close-confirm-discard"
@@ -90,8 +92,9 @@ export function CloseConfirmDialog({
             type="button"
           >
             不保存关闭
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="secondary"
             className="close-confirm-cancel task4-hit-target"
             data-task4-core="close-cancel"
             data-testid="close-confirm-cancel"
@@ -100,7 +103,7 @@ export function CloseConfirmDialog({
             type="button"
           >
             取消
-          </button>
+          </Button>
         </div>
         <p className="close-confirm-hint">
           仅关闭当前项目，应用窗口保持打开；点击窗口关闭按钮仍会走系统确认。

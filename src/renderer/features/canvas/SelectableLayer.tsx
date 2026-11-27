@@ -1,3 +1,4 @@
+import { readCanvasControlColor } from './canvasControlColors';
 import { Fragment } from 'react';
 import Konva from 'konva';
 import { CharacterMotionPart, type CharacterMotionCanvas } from './CharacterMotionPart';
@@ -131,6 +132,8 @@ export function SelectableLayer({
   onPositionAuthoringCommit = () => undefined,
   onError,
 }: SelectableLayerProps): React.JSX.Element {
+  const selectionStroke = readCanvasControlColor('action-primary');
+  const guideStroke = readCanvasControlColor('text-secondary');
   const headGroupRef: { current: Konva.Group | null } = { current: null };
   const canSelect = true;
   const positionAuthoringEnabled = positionAuthoringSession !== null;
@@ -382,7 +385,7 @@ export function SelectableLayer({
         key={`${part.partId}:hit`}
         listening={canSelect}
         name={selectedNode ? 'character-node-selection' : 'composite-visual-hit-area'}
-        stroke={selectedNode ? '#83d39a' : undefined}
+        stroke={selectedNode ? selectionStroke : undefined}
         strokeWidth={1}
         strokeScaleEnabled={false}
         hitStrokeWidth={0}
@@ -599,8 +602,8 @@ export function SelectableLayer({
         {layer.source.kind === 'control' ? (
           <Group name="canvas-control-marker">
             <Rect x={-36} y={-36} width={72} height={72} fill="transparent" />
-            <Line points={[-36, 0, 36, 0]} stroke={selected ? '#83d39a' : '#8fb5a0'} strokeWidth={4} />
-            <Line points={[0, -36, 0, 36]} stroke={selected ? '#83d39a' : '#8fb5a0'} strokeWidth={4} />
+            <Line points={[-36, 0, 36, 0]} stroke={selected ? selectionStroke : guideStroke} strokeWidth={4} />
+            <Line points={[0, -36, 0, 36]} stroke={selected ? selectionStroke : guideStroke} strokeWidth={4} />
           </Group>
         ) : flaGraphicEditProjection ? (
           <FlaGraphicStructureProjection {...flaGraphicEditProjection} />
@@ -643,7 +646,7 @@ export function SelectableLayer({
           dash={layer.locked ? [18, 12] : undefined}
           height={visualBounds.height}
           listening={false}
-          stroke={layer.locked ? '#ffd166' : '#83d39a'}
+          stroke={layer.locked ? '#ffd166' : selectionStroke}
           strokeWidth={4}
           width={visualBounds.width}
           x={visualBounds.x}

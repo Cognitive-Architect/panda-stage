@@ -1,58 +1,59 @@
-/*
- * UI-M1 primitives use data attributes as a compatibility bridge. Existing
- * shell class names are intentionally preserved so legacy selectors and
- * selector-based acceptance contracts continue to describe the same DOM.
- */
-
-button[data-ui-button] {
-  min-height: var(--ui-touch-regular);
-  padding: var(--ui-space-2) var(--ui-space-3);
-  border: 1px solid var(--ui-color-separator);
-  border-radius: var(--ui-radius-medium);
+/* Shared controls and native equivalents use the same product tokens. */
+button {
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
   color: var(--ui-color-text-primary);
-  background: var(--ui-color-action-primary);
-  font: var(--ui-font-body);
-  font-weight: 700;
-  touch-action: manipulation;
+  background: var(--ui-color-surface-work);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
 }
 
-button[data-ui-button][data-ui-variant='primary'] {
-  background: var(--ui-color-action-primary);
+:where(button:not(.dv-default-tab-action, .asset-card, [data-layer-id] button,
+  .timeline-lane-content button, .character-motion-part-select)) {
+  min-height: var(--ui-touch-regular);
+  padding: 3px 8px;
 }
 
-button[data-ui-button][data-ui-variant='secondary'] {
-  border-color: var(--ui-color-border);
-  background: var(--ui-color-surface-overlay);
-}
-
-button[data-ui-button][data-ui-variant='danger'] {
-  border-color: rgb(255 155 143 / 45%);
-  background: var(--ui-color-action-danger);
-}
-
-button[data-ui-button]:hover:not(:disabled) {
+button:hover:enabled {
   background: var(--ui-color-action-hover);
 }
 
-button[data-ui-button][data-ui-variant='danger']:hover:not(:disabled) {
-  background: #96382d;
-}
-
-button[data-ui-button]:active:not(:disabled) {
+button:active:enabled {
   background: var(--ui-color-action-pressed);
 }
 
-button[data-ui-button]:focus-visible {
-  outline: 3px solid var(--ui-color-focus-ring);
-  outline-offset: 2px;
+button:is([aria-pressed='true'], [aria-checked='true'], [aria-selected='true']):enabled {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-action-pressed);
+  color: var(--ui-color-selected-border);
 }
 
-button[data-ui-button]:disabled {
-  cursor: default;
-  border-color: rgb(154 216 172 / 14%);
-  color: var(--ui-color-disabled-text);
-  background: var(--ui-color-disabled-surface);
-  opacity: 0.72;
+button[data-ui-button] {
+  min-height: var(--ui-touch-regular);
+  padding: 3px 8px;
+  font: var(--ui-font-body);
+  font-weight: 600;
+  touch-action: manipulation;
+}
+
+button[data-ui-button][data-ui-variant='primary']:enabled {
+  background: var(--ui-color-action-primary);
+  color: var(--ui-color-on-accent);
+}
+
+button[data-ui-button][data-ui-variant='primary']:hover:enabled {
+  background: var(--ui-color-accent-hover);
+}
+
+button[data-ui-button][data-ui-variant='danger']:enabled {
+  border-color: rgb(255 155 143 / 45%);
+  background: var(--ui-color-action-danger);
+  color: #fff0ed;
+}
+
+button[data-ui-button][data-ui-variant='danger']:hover:enabled {
+  background: #96382d;
 }
 
 button[data-ui-button][data-ui-size='icon'] {
@@ -65,6 +66,75 @@ button[data-ui-button][data-ui-size='icon'] {
   justify-content: center;
 }
 
+button[data-ui-size='icon'] > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:where(select, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'],
+  [type='file'], [type='hidden']), textarea) {
+  min-width: 0;
+  min-height: var(--ui-touch-regular);
+  padding: 3px 6px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-work);
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-body);
+}
+
+:where(input[type='number']) {
+  min-height: 29px;
+  font-variant-numeric: tabular-nums;
+}
+
+input:is([type='checkbox'], [type='radio'], [type='range']) {
+  accent-color: var(--ui-color-selected-border);
+}
+
+:is(input, select, textarea)[aria-invalid='true'] {
+  --ui-color-focus-ring: var(--ui-color-error-border);
+  border-color: var(--ui-color-error-border);
+}
+
+:is(button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--ui-color-focus-ring);
+  outline-offset: -2px;
+}
+
+:is(button, input, textarea, select):disabled {
+  border-color: var(--ui-color-border);
+  background-color: var(--ui-color-disabled-surface);
+  color: var(--ui-color-disabled-text);
+  cursor: default;
+  opacity: 0.72;
+}
+
+:where(dialog, [role='menu'], [role='tooltip']) {
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-medium);
+  background: var(--ui-color-surface-overlay);
+  color: var(--ui-color-text-primary);
+}
+
+:where(dialog) {
+  border-radius: var(--ui-radius-large);
+}
+
+:where([role='menu']) :where([data-highlighted], :focus-visible) {
+  background: var(--ui-color-action-hover);
+}
+
+:where([role='menu']) :where([data-disabled], [aria-disabled='true']) {
+  color: var(--ui-color-disabled-text);
+}
+
+:where([role='tooltip']) {
+  padding: 3px 6px;
+  font: var(--ui-font-secondary);
+}
+
 .ui-icon-label {
   display: inline-flex;
   align-items: center;
@@ -75,8 +145,8 @@ button[data-ui-button][data-ui-size='icon'] {
 .ui-icon {
   display: block;
   flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .ui-icon-tab {
@@ -118,8 +188,11 @@ button[data-ui-button][data-ui-size='icon'] {
   white-space: nowrap;
 }
 
-.ui-segmented-tabs__item:hover:not(:disabled),
-.ui-segmented-tabs__item--selected {
+.ui-segmented-tabs__item:hover:not(:disabled) {
+  background: var(--ui-color-action-hover);
+}
+
+.ui-segmented-tabs__item--selected:not(:disabled) {
   border-color: var(--ui-color-selected-border);
   background: var(--ui-color-selected-surface);
 }
@@ -142,12 +215,12 @@ button[data-ui-button][data-ui-size='icon'] {
 }
 
 .ui-field__error {
-  color: #ffd4d0;
+  color: var(--ui-color-error-text);
   font: var(--ui-font-secondary);
 }
 
 .ui-field[data-ui-invalid='true'] {
-  --ui-color-focus-ring: rgb(255 155 143 / 85%);
+  --ui-color-focus-ring: var(--ui-color-error-border);
 }
 
 .ui-stepper {

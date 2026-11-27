@@ -1,3 +1,4 @@
+import { readCanvasControlColor } from './canvasControlColors';
 import { useEffect, useRef, useState } from 'react';
 import type Konva from 'konva';
 import { Circle, Group, Rect } from 'react-konva';
@@ -84,11 +85,11 @@ export function ParentLayerTransformer({ nodeRef, render, rootScale, bounds, onC
     <Group ref={controls} x={render.x} y={render.y} rotation={render.rotationDeg + draft.turn}
       name="parent-layer-transformer" onPointerMove={move} onPointerUp={(event) => end(event, true)}
       onPointerCancel={(event) => end(event, false)}>
-      <Rect x={left} y={top} width={width} height={height} stroke="#83d39a" strokeWidth={3} listening={false} />
-      <Rect name="parent-layer-scale" x={left + width - 12} y={top + height - 12} width={24} height={24} fill="#e8fff0"
-        stroke="#235739" strokeWidth={3} onPointerDown={(event) => begin(event, 'scale')} />
-      <Circle name="parent-layer-rotate" x={left + width / 2} y={top - 42} radius={13} fill="#e8fff0"
-        stroke="#235739" strokeWidth={3} onPointerDown={(event) => begin(event, 'rotate')} />
+      <Rect x={left} y={top} width={width} height={height} stroke={readCanvasControlColor('action-primary')} strokeWidth={3} listening={false} />
+      <Rect name="parent-layer-scale" x={left + width - 12} y={top + height - 12} width={24} height={24} fill={readCanvasControlColor('text-primary')}
+        stroke={readCanvasControlColor('action-primary')} strokeWidth={3} onPointerDown={(event) => begin(event, 'scale')} />
+      <Circle name="parent-layer-rotate" x={left + width / 2} y={top - 42} radius={13} fill={readCanvasControlColor('text-primary')}
+        stroke={readCanvasControlColor('action-primary')} strokeWidth={3} onPointerDown={(event) => begin(event, 'rotate')} />
     </Group>
   );
 }

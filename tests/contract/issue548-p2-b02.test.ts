@@ -1,3 +1,4 @@
+import { assertDesignV2StylesheetRevision } from '../helpers/css-runtime-revisions';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
@@ -436,6 +437,7 @@ describe('Issue #548 P2-B02 character workspace relocation', () => {
   it('keeps unchanged P2 targets byte-exact after Phase 3 begins', () => {
     for (const relocation of expectedP204) {
       const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
+      if (assertDesignV2StylesheetRevision(relocation.id, target)) continue;
       expect(sha256(target)).toBe(relocation.sourceSha256);
       expect(Buffer.byteLength(target, 'utf8')).toBe(
         relocation.sourceEndByteExclusive - relocation.sourceStartByte,
@@ -444,6 +446,7 @@ describe('Issue #548 P2-B02 character workspace relocation', () => {
 
     for (const relocation of expectedP205) {
       const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
+      if (assertDesignV2StylesheetRevision(relocation.id, target)) continue;
       if (relocation.id === 'G145') {
         // Issue #555 intentionally evolves this target; its selected-surface
         // contract is covered by issue555-p3-01-selected-asset-surface.test.ts.

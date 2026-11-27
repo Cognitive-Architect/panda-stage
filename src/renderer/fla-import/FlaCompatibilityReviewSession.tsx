@@ -1,3 +1,5 @@
+import { X } from 'lucide-react';
+import { DecorativeIcon } from '../ui';
 import {
   useCallback,
   useEffect,
@@ -915,7 +917,7 @@ export function FlaCompatibilityReviewSession({
             title={closeLocked ? '正式导入完成前不能关闭。' : undefined}
             type="button"
           >
-            ×
+            <DecorativeIcon icon={X} />
           </button>
         </header>
 

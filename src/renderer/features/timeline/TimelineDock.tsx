@@ -5,7 +5,6 @@ import { LayerParentLane } from './LayerParentLane';
 import { ShotCameraLane } from './ShotCameraLane';
 import {
   useLayoutEffect,
-  useContext,
   useRef,
   useState,
   useSyncExternalStore,
@@ -47,14 +46,15 @@ import { StandaloneAudioControls } from './StandaloneAudioControls';
 import { FlaGraphicInternalTimelineBar } from './FlaGraphicInternalTimelineBar';
 import { TimelineAudioWaveform } from './TimelineAudioWaveform';
 import { useTimelineAudio } from './useTimelineAudio';
-import { AnimationCurveDraftDispatch } from './AnimationCurveDraft';
-import { AnimationCurvePanel } from './AnimationCurvePanel';
+import { hasAnimationCurveTracks } from './AnimationCurvePanel';
 
 const TIMELINE_LANE_LABEL_WIDTH = 82;
 const PORTRAIT_TIMELINE_LANE_LABEL_WIDTH = 58;
 
 export interface TimelineDockProps {
   productPreviewOpen?: boolean;
+  docked?: boolean;
+  onOpenCurve?(): void;
   presentation?: 'desktop' | 'landscape' | 'portrait';
 }
 
@@ -89,6 +89,8 @@ export function bindTimelineRulerScroll(
  */
 export function TimelineDock({
   productPreviewOpen = false,
+  docked = false,
+  onOpenCurve,
   presentation = 'landscape',
 }: TimelineDockProps = {}): React.JSX.Element {
   const currentShotId = useSyncExternalStore(
@@ -119,10 +121,7 @@ export function TimelineDock({
     : null;
   const positionLane = recognizeSelectedPositionLane(shot, selectedLayerId);
   const motionLayer = shot?.layers.find(({ id }) => id === selectedLayerId);
-  const hasCurveTracks = Boolean(motionLayer && (motionLayer.animationClip?.tracks.length ||
-    shot?.timelineEvents.some((event) => event.layerId === motionLayer.id && event.type === 'opacity' && event.endMs > event.startMs)));
-  const [curveOpen, setCurveOpen] = useState(false);
-  const onAnimationCurveDraft = useContext(AnimationCurveDraftDispatch);
+  const hasCurveTracks = shot && motionLayer && hasAnimationCurveTracks(shot, motionLayer);
   const characters = snapshot?.project.characters ?? [];
   const audioClips = shot?.audioClips.filter(clip => clip.role === 'dialogue') ?? [];
   const selectedAudioClip = shot?.audioClips.find(clip => clip.id === selectedAudioClipId && clip.role !== 'dialogue');
@@ -328,7 +327,7 @@ export function TimelineDock({
         data-timeline-layer="toolbar"
         role="toolbar"
       >
-        <button
+        {!docked && <button
           type="button"
           className="timeline-collapse"
           data-testid="timeline-collapse"
@@ -346,7 +345,7 @@ export function TimelineDock({
           <span className="timeline-collapse-label">
             {ui.expanded ? '收起时间轴' : '展开时间轴'}
           </span>
-        </button>
+        </button>}
         <output
           className="timeline-timecode"
           data-testid="timeline-timecode"
@@ -374,12 +373,9 @@ export function TimelineDock({
           disabled={!hasShot || productPreviewOpen} onClick={() => setFindOpen(!findOpen)}>
           <Search aria-hidden="true" focusable="false" size={16} />
         </button>
-        {hasCurveTracks && !productPreviewOpen ? (
+        {hasCurveTracks && !productPreviewOpen && onOpenCurve ? (
           <button type="button" className="animation-curve-toggle" aria-label="属性曲线" title="属性曲线"
-            aria-expanded={curveOpen && ui.expanded} onClick={() => {
-              if (!ui.expanded) timelineUiStore.setExpanded(true);
-              setCurveOpen(!(curveOpen && ui.expanded));
-            }}>
+            onClick={onOpenCurve}>
             <Spline aria-hidden="true" focusable="false" size={16} />
           </button>
         ) : null}
@@ -415,7 +411,6 @@ export function TimelineDock({
             onClick={() => timelineUiStore.setZoom(ui.zoom / 2)}
           >
             <ZoomOut aria-hidden="true" focusable="false" size={16} />
-            −
           </button>
           <span className="timeline-zoom-value" data-testid="timeline-zoom-value">
             {ui.zoom}×
@@ -429,14 +424,9 @@ export function TimelineDock({
             onClick={() => timelineUiStore.setZoom(ui.zoom * 2)}
           >
             <ZoomIn aria-hidden="true" focusable="false" size={16} />
-            +
           </button>
         </div>
       </header>
-      {curveOpen && ui.expanded && !productPreviewOpen && snapshot && shot && motionLayer && hasCurveTracks ? (
-        <AnimationCurvePanel key={JSON.stringify([editorProjectStore.getProjectInstanceId(), shot.id, motionLayer.id])}
-          snapshot={snapshot} shot={shot} layer={motionLayer} onDraft={onAnimationCurveDraft} onClose={() => setCurveOpen(false)} />
-      ) : null}
       {findOpen && !productPreviewOpen && snapshot && currentShotId ? (
         <DialogueFindReplace key={editorProjectStore.getProjectInstanceId()} project={snapshot.project} shotId={currentShotId}
           onLocate={locateDialogue} onClose={() => {

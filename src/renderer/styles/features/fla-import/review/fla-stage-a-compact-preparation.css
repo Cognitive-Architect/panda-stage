@@ -53,8 +53,8 @@
   width: 18px;
   height: 18px;
   flex: none;
-  border: 2px solid rgb(131 211 154 / 22%);
-  border-top-color: #83d39a;
+  border: 2px solid var(--ui-color-border);
+  border-top-color: var(--ui-color-selected-border);
   border-radius: 50%;
   animation: fla-stage-a-spin 0.9s linear infinite;
 }

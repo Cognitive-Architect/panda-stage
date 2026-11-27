@@ -24,59 +24,33 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(app).toContain('gatePreview=');
   });
 
-  it('builds one fixed top/body/bottom Grid with one real inspector', () => {
+  it('mounts the six production panels with Dockview as the geometry owner', () => {
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
-    const left = readSource('src/renderer/shell/LeftWorkspace.tsx');
-    const styles = readOrderedStylesheetSource();
-    const bottom = readSource('src/renderer/shell/BottomWorkspace.tsx');
+    const workbench = readSource('src/renderer/shell/EditorWorkbench.tsx');
+    const layout = readSource('src/renderer/shell/editorWorkbenchLayout.ts');
+    const styles = readSource('src/renderer/styles/shell/layout/editor-workbench.css');
 
-    for (const selector of [
-      'data-testid="editor-layout"',
-      'data-testid="editor-body"',
-      '<RightInspector',
-      '<BottomWorkspace',
+    for (const component of [
+      'LeftWorkspace', 'ShotLayerListPanel', 'CanvasWorkspace',
+      'RightInspector', 'DockedAnimationCurve', 'TimelineDock',
     ]) {
-      expect(shell).toContain(selector);
+      expect(count(shell, new RegExp('<' + component + '\\b', 'gu'))).toBe(1);
     }
-    expect(shell.indexOf('<CompactProjectBar')).toBeLessThan(
-      shell.indexOf('<LeftWorkspace'),
-    );
+    expect(shell).toContain('data-testid="editor-layout"');
     expect(shell).toContain('data-testid="editor-top-region"');
-    expect(shell).not.toContain('<EditorTopBar');
-    expect(shell).not.toContain('right-inspector-placeholder');
-    expect(left).toContain('data-testid="left-workspace-scroll"');
-    expect(styles).toMatch(
-      /\.editor-layout\s*\{[\s\S]*?grid-template-rows:\s*auto minmax\(0, 1fr\) auto;/u,
+    expect(shell).toContain('data-testid="editor-body"');
+    expect(shell).not.toContain('<BottomWorkspace');
+    expect(workbench).toContain('<DockviewReact');
+    expect(workbench).toContain('disableFloatingGroups proportionalLayout');
+    expect(layout.indexOf("addWorkbenchPanel(api, 'timeline'")).toBeLessThan(
+      layout.indexOf("addWorkbenchPanel(api, 'assets'"),
     );
-    expect(styles).toMatch(
-      /\.editor-body\s*\{[\s\S]*?grid-template-columns:/u,
-    );
-    expect(bottom).toContain('data-testid="bottom-workspace"');
-    expect(bottom).toContain('<HistoryControls');
-    expect(styles).toMatch(
-      /\.bottom-workspace\s*\{[\s\S]*?min-height:\s*132px;[\s\S]*?max-height:\s*168px;[\s\S]*?overflow:\s*hidden;/u,
-    );
-    expect(styles).toMatch(
-      /\.bottom-workspace\s*>\s*\.history-controls\s*\{[\s\S]*?grid-template-columns:\s*auto minmax\(0, 1fr\) minmax\(0, 1\.3fr\);/u,
-    );
-    expect(styles).toMatch(
-      /\.bottom-workspace\s*>\s*\.history-controls\s*\.history-actions\s*\{[\s\S]*?flex-wrap:\s*nowrap;/u,
-    );
-    expect(styles).toMatch(
-      /\.bottom-workspace\s*>\s*\.history-controls\s*\{[\s\S]*?border:\s*0;[\s\S]*?background:\s*transparent;/u,
-    );
-    expect(styles).toMatch(
-      /@media\s*\(max-width:\s*720px\)\s*\{[\s\S]*?\.bottom-workspace\s*>\s*\.history-controls\s*\{[\s\S]*?grid-template-areas:[\s\S]*?"heading actions"[\s\S]*?"status status";/u,
-    );
-    expect(styles).not.toMatch(
-      /\.bottom-workspace\s*\{[^}]*overflow-y:\s*auto;/u,
-    );
-    expect(left).toContain('左侧工作区');
-    expect(shell).toContain('右侧检查器');
-    expect(bottom).toContain('aria-label="Bottom workspace"');
+    expect(layout).toContain("referencePanel: 'props', direction: 'within'");
+    expect(styles).toMatch(/\.workbench-timeline \.timeline-ruler-scroll\s*\{[^}]*overflow: auto;/u);
+    expect(styles).toMatch(/\.workbench-timeline \.timeline-ruler\s*\{[^}]*position: sticky;/u);
   });
 
-  it('keeps Electron regression receipts attached to the live compact bottom owner', () => {
+  it('retains the recorded legacy Electron selector contracts', () => {
     const issue102Receipt = readSource('scripts/verify-issue102-task4.cjs');
     const issue109Receipt = readSource(
       'scripts/verify-issue109-resource-workspace.cjs',
@@ -173,7 +147,7 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(count(dock, /<ShotManager/gu)).toBe(1);
     expect(count(dock, /<AssetLibrary/gu)).toBe(1);
     expect(count(dock, /<CharacterManager/gu)).toBe(1);
-    expect(dock).toContain("useState<ResourceActivity>('shots')");
+    expect(dock).toContain("useState<ResourceActivity>(docked ? 'assets' : 'shots')");
     expect(dock).not.toContain('display: none');
     expect(dock).not.toContain('hidden');
     expect(panel.match(/<RecentProjectsPanel/gu)).toHaveLength(1);

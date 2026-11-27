@@ -9,7 +9,7 @@
   z-index: 40;
   display: grid;
   padding: 24px;
-  background: rgb(4 8 6 / 68%);
+  background: rgb(0 0 0 / 68%);
   place-items: center;
 }
 
@@ -19,9 +19,9 @@
   max-height: 100%;
   padding: 20px;
   overflow-y: auto;
-  border: 1px solid rgb(154 216 172 / 28%);
-  border-radius: 16px;
-  background: linear-gradient(160deg, #16211b, #0d1512);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
+  background: var(--ui-color-surface-overlay);
   box-shadow: 0 24px 60px rgb(0 0 0 / 45%);
   gap: 14px;
 }
@@ -35,7 +35,7 @@
   display: grid;
   font-size: 0.86rem;
   font-weight: 600;
-  color: #b9d3c3;
+  color: var(--ui-color-text-secondary);
   gap: 6px;
 }
 
@@ -50,31 +50,20 @@
   min-width: 0;
 }
 
-.new-project-field input {
-  padding: 9px 11px;
-  border: 1px solid rgb(154 216 172 / 26%);
-  border-radius: 10px;
-  color: #eef8f1;
-  background: #0c1310;
-  font: inherit;
-  font-weight: 500;
-}
-
-.new-project-field input:focus-visible {
-  outline: 3px solid rgb(149 224 172 / 42%);
-  outline-offset: 1px;
-}
-
 .new-project-hint {
   font-size: 0.78rem;
   font-weight: 500;
-  color: #93aa9d;
+  color: var(--ui-color-text-muted);
+}
+
+.new-project-hint[role='alert'] {
+  color: var(--ui-color-error-text);
 }
 
 .new-project-status {
   min-height: 1.2em;
   font-size: 0.84rem;
-  color: #cfe4d7;
+  color: var(--ui-color-text-primary);
 }
 
 .new-project-status:empty {
@@ -85,9 +74,5 @@
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-}
-
-.new-project-actions button {
-  padding: 9px 18px;
 }
 

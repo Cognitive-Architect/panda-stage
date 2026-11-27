@@ -16,7 +16,7 @@
   min-width: 0;
   align-items: center;
   gap: 6px;
-  color: var(--ui-color-accent, #9fe0b0);
+  color: var(--ui-color-selected-border);
 }
 
 .dialogue-subtitle-style-heading .ui-icon {
@@ -169,7 +169,7 @@
   padding: 2px;
   border: 1px solid var(--ui-color-border, rgb(127 199 148 / 38%));
   border-radius: 999px;
-  background: rgb(127 199 148 / 13%);
+  background: var(--ui-color-surface-work);
   transition:
     border-color 120ms ease,
     background 120ms ease;

@@ -89,7 +89,7 @@ describe('Issue #373 Cloud Touch landscape selected-object inspector', () => {
     const issue373 = styles.slice(styles.lastIndexOf('/* Issue #373:'));
 
     expect(inspector).toContain(
-      '{(compact || landscapePresentation) &&\n      (!dialogueMode || landscapePresentation) ? (',
+      '{(!embedded || onDrawerOpenChange) && (compact || landscapePresentation) &&\n      (!dialogueMode || landscapePresentation) ? (',
     );
     expect(inspector).toContain('data-testid="inspector-inline-close"');
     expect(inspector).toContain('railRef.current?.focus()');

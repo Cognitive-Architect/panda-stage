@@ -56,7 +56,7 @@
   > button.resource-activity-rail-active {
   border-color: var(--ui-color-selected-border, #83d39a);
   color: #d8f2df;
-  background: rgb(45 104 62 / 28%);
+  background: var(--ui-color-selected-surface);
   box-shadow: inset 0 0 0 1px rgb(131 211 154 / 10%),
     0 0 14px rgb(131 211 154 / 8%);
 }

@@ -12,9 +12,9 @@ describe('Issue #456 Quick Action Drawer geometry contract', () => {
   const styles = source('src/renderer/styles.css');
   const gate = source('scripts/verify-issue456-quick-action.cjs');
 
-  it('keeps only portrait top surfaces in flow while mounting the drawer and recovery card in overlays', () => {
+  it('keeps the project bar above the workbench and recovery in its own surface', () => {
     expect(shell).toContain(
-      "data-top-region-layout={isPortrait ? 'flow' : 'overlay'}",
+      'data-top-region-layout="flow"',
     );
     expect(shell).not.toContain(
       "data-top-region-layout={recoveryCandidate || isPortrait ? 'flow' : 'overlay'}",
@@ -28,7 +28,7 @@ describe('Issue #456 Quick Action Drawer geometry contract', () => {
       shell.indexOf('<LeftWorkspace'),
     );
     expect(shell).toContain('<RecoveryCandidateBanner');
-    expect(shell).toContain('<AdaptiveWorkspaceSwitcher');
+    expect(shell).toContain('<EditorWorkbench');
   });
 
   it('locks the overlay geometry so no normal-flow row or touch-target cavity remains', () => {
@@ -69,7 +69,11 @@ describe('Issue #456 Quick Action Drawer geometry contract', () => {
     expect(bar).toContain("exportPreferences?.format ?? 'mp4'");
     expect(bar).toMatch(/mp4: '导出视频',[\s\S]*?'png-sequence': '导出 PNG 序列',[\s\S]*?'sprite-sheet': '导出精灵图'/u);
     const button = bar.slice(bar.lastIndexOf('aria-label={', bar.indexOf('data-testid="quick-action-export"')));
-    expect(button.split('data-testid="quick-action-export-settings"')[0]?.match(/: exportLabel/gu)).toHaveLength(2);
+    const exportButton = button.split('data-testid="quick-action-export-settings"')[0];
+    expect(bar).toContain("const exportActionLabel = exportBusy || exportSurfaceOpen ? '显示导出任务' : exportLabel;");
+    expect(exportButton).toContain('aria-label={exportActionLabel}');
+    expect(exportButton).toContain('title={exportActionLabel}');
+    expect(exportButton).toContain('{docked && exportActionLabel}');
   });
 
   it('attaches a live dual-size Electron geometry gate', () => {

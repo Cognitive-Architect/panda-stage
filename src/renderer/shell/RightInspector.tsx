@@ -376,6 +376,13 @@ export function getRightInspectorSelection(
   };
 }
 
+export function focusLayerParentBinding(): void {
+  const target = document.getElementById('layer-parent-control-anchor');
+  if (!target) return;
+  target.scrollIntoView({ block: 'nearest' });
+  target.querySelector('select')?.focus();
+}
+
 export interface RightInspectorProps {
   shellMode?: EditorShellLayoutMode;
   /** Optional compact presentation for a portrait Canvas-context sheet. */
@@ -387,6 +394,7 @@ export interface RightInspectorProps {
   onDrawerOpenChange?(open: boolean): void;
   /** Render only the existing Inspector content inside RightWorkspace. */
   embedded?: boolean;
+  layerListDocked?: boolean;
 }
 
 export function RightInspector({
@@ -396,6 +404,7 @@ export function RightInspector({
   drawerOpen: requestedDrawerOpen,
   onDrawerOpenChange,
   embedded = false,
+  layerListDocked = false,
 }: RightInspectorProps = {}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
@@ -570,7 +579,7 @@ export function RightInspector({
           }}>新建控制层</button>
       ) : null}
       {createControlError ? <span role="alert">{createControlError}</span> : null}
-      {(compact || landscapePresentation) &&
+      {(!embedded || onDrawerOpenChange) && (compact || landscapePresentation) &&
       (!dialogueMode || landscapePresentation) ? (
         <button
           aria-label="关闭属性"
@@ -659,14 +668,6 @@ export function RightInspector({
     </section>
   );
 
-  const focusParentBinding = (): void => {
-    const target = document.getElementById('layer-parent-control-anchor');
-    if (target) {
-      target.scrollIntoView({ block: 'nearest' });
-      const select = target.querySelector('select');
-      if (select instanceof HTMLElement) select.focus();
-    }
-  };
   const parentControl = snapshot && currentShot && selection.layer ? (
     <div id="layer-parent-control-anchor">
       <LayerParentControl
@@ -696,7 +697,7 @@ export function RightInspector({
   const backgroundPanel = <LayerBackgroundControl />;
   const orderPanel = (
     <>
-      <ShotLayerListPanel onFocusParentBinding={focusParentBinding} />
+      {!layerListDocked && <ShotLayerListPanel onFocusParentBinding={focusLayerParentBinding} />}
       <LayerOrderControls
         backgroundLayerSelected={selection.state === 'background'}
         showLockControl={Boolean(compact) || landscapePresentation}
@@ -821,6 +822,7 @@ export function RightInspector({
             <PortraitPropertiesSections
               backgroundLayerSelected={selection.state === 'background'}
               parentControl={parentControl}
+              layerListDocked={layerListDocked}
               presentation={landscapePresentation ? 'landscape' : 'portrait'}
             />
           ) : (

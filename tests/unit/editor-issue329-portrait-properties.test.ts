@@ -59,7 +59,7 @@ describe('Issue #329 portrait Properties first pass', () => {
     const styles = source('src/renderer/styles.css');
 
     expect(dock).toContain('hidePortraitAssetsChrome');
-    expect(dock).toContain('hidePortraitAssetsChrome ? null :');
+    expect(dock).toContain('docked || hidePortraitAssetsChrome || hidePortraitShotChrome ? null :');
     expect(dock).toContain('id="resource-activity-heading"');
     expect(dock).toContain('setAssetReviewCloseRequest');
     expect(styles).toContain(

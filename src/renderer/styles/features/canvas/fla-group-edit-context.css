@@ -58,12 +58,6 @@
   right: 0;
   width: max-content;
   max-width: min(320px, calc(100vw - 32px));
-  padding: 7px 9px;
-  border: 1px solid var(--ui-color-border);
-  border-radius: var(--ui-radius-small);
-  color: var(--ui-color-text-primary);
-  background: var(--ui-color-surface-overlay);
-  font: var(--ui-font-secondary);
   text-shadow: none;
   visibility: hidden;
   opacity: 0;

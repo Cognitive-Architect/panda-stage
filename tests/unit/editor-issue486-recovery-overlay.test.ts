@@ -23,9 +23,9 @@ describe('Issue #486 recovery overlay contract', () => {
     expect(drawer).toContain('data-testid="editor-action-status"');
   });
 
-  it('keeps recovery in the landscape overlay without changing portrait flow', () => {
+  it('gives the workbench recovery feedback its own top region', () => {
     expect(shell).toContain(
-      "data-top-region-layout={isPortrait ? 'flow' : 'overlay'}",
+      'data-top-region-layout="flow"',
     );
     expect(shell).not.toContain(
       "data-top-region-layout={recoveryCandidate || isPortrait ? 'flow' : 'overlay'}",

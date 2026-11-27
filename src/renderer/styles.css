@@ -186,3 +186,4 @@
 
 @import './styles/features/canvas/character-motion.css';
 @import './styles/features/canvas/shot-camera.css';
+@import './styles/shell/layout/editor-workbench.css';

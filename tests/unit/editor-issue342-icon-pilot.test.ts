@@ -123,12 +123,12 @@ describe('Issue #342 Lucide icon pilot', () => {
     expect(dock).toContain("label: '新建镜头'");
   });
 
-  it('defines a shared 16–20px icon treatment without changing touch targets', () => {
+  it('defines shared command and tab icon sizes with separate hit targets', () => {
     const primitives = source('src/renderer/styles/primitives.css');
     const styles = source('src/renderer/styles.css');
 
     expect(primitives).toContain('.ui-icon-label');
-    expect(primitives).toContain('width: 18px;');
+    expect(primitives).toContain('width: 16px;');
     expect(primitives).toContain('.ui-icon-tab');
     expect(primitives).toContain('width: 20px;');
     expect(primitives).toContain('min-height: var(--ui-touch-icon);');

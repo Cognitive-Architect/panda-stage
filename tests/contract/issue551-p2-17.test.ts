@@ -1,3 +1,4 @@
+import { assertDesignV2StylesheetRevision } from '../helpers/css-runtime-revisions';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
@@ -232,6 +233,7 @@ describe('Issue #551 P2-17 right Workspace/Inspector Host contract', () => {
   it('keeps host targets byte-exact after Phase 3 begins', () => {
     for (const expected of expectedP217) {
       const target = normalize(readFileSync(resolve(root, expected.targetPath), 'utf8'));
+      if (assertDesignV2StylesheetRevision(expected.id, target)) continue;
       expect(sha256(target)).toBe(expected.sourceSha256);
       expect(Buffer.byteLength(target, 'utf8')).toBe(
         expected.sourceEndByteExclusive - expected.sourceStartByte,

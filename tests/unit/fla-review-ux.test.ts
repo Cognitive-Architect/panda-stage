@@ -232,8 +232,8 @@ describe('Issue #775 C03 unified FLA workbench UX contract', () => {
     expect(styles).toMatch(/@media \(max-width: 560px\)[\s\S]*?\.fla-c03-browser-tools\s*\{[^}]*flex-wrap:\s*wrap;/u);
     expect(styles).toContain('.fla-c03-checkbox-hitbox:has(input:focus-visible)');
     expect(styles).not.toContain('.fla-c03-checkbox-hitbox:focus-within');
-    expect(styles).toMatch(/\.fla-c03-header button\s*\{[^}]*min-width:\s*48px;[^}]*min-height:\s*48px;/u);
+    expect(styles).toMatch(/\.fla-c03-header button\s*\{[^}]*min-width:\s*var\(--ui-touch-icon\);[^}]*min-height:\s*var\(--ui-touch-regular\);/u);
     expect(styles).toMatch(/\.fla-c03-zoom-tools button:first-child,[\s\S]*?font-size:\s*22px;/u);
-    expect(styles).toMatch(/\.fla-c03-footer-actions \.fla-c03-import-primary\s*\{[^}]*min-height:\s*44px;[^}]*font-size:\s*14px;[^}]*font-weight:\s*800;[^}]*overflow-wrap:\s*anywhere;/u);
+    expect(styles).toMatch(/\.fla-c03-footer-actions \.fla-c03-import-primary\s*\{[^}]*min-height:\s*var\(--ui-touch-regular\);[^}]*font-size:\s*14px;[^}]*font-weight:\s*800;[^}]*overflow-wrap:\s*anywhere;/u);
   });
 });

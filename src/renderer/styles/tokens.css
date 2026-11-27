@@ -1,28 +1,32 @@
 :root {
   /* Surfaces: keep the dark editor hierarchy explicit for future consumers. */
-  --ui-color-surface-app: #0b100e;
-  --ui-color-surface-work: #141c18;
-  --ui-color-surface-panel: #112318;
-  --ui-color-surface-overlay: #142019;
-  --ui-color-border: rgb(127 199 148 / 28%);
-  --ui-color-separator: rgb(154 216 172 / 24%);
+  --ui-color-surface-app: #111316;
+  --ui-color-surface-work: #20242a;
+  --ui-color-surface-panel: #1a1d22;
+  --ui-color-surface-overlay: #22262d;
+  --ui-color-border: #30353d;
+  --ui-color-separator: var(--ui-color-border);
 
   /* Text. */
-  --ui-color-text-primary: #eef6f0;
-  --ui-color-text-secondary: #aebfb4;
-  --ui-color-text-muted: #84958b;
+  --ui-color-text-primary: #e3e7ed;
+  --ui-color-text-secondary: #a0a8b6;
+  --ui-color-text-muted: #8a94a2;
 
   /* Semantic actions and state. */
-  --ui-color-action-primary: #1d4d31;
-  --ui-color-action-hover: #28663f;
-  --ui-color-action-pressed: #164026;
+  --ui-color-action-primary: #54cdf3;
+  --ui-color-on-accent: #13212a;
+  --ui-color-accent-hover: #87ddf9;
+  --ui-color-action-hover: #2c333d;
+  --ui-color-action-pressed: #23363f;
   --ui-color-action-warning: #a36d19;
   --ui-color-action-danger: #7c2e25;
-  --ui-color-focus-ring: rgb(149 224 172 / 80%);
-  --ui-color-disabled-surface: #142019;
-  --ui-color-disabled-text: #84958b;
-  --ui-color-selected-surface: rgb(65 145 87 / 34%);
-  --ui-color-selected-border: #7fc794;
+  --ui-color-error-text: #ffd4d0;
+  --ui-color-error-border: #ff9b8f;
+  --ui-color-focus-ring: var(--ui-color-action-primary);
+  --ui-color-disabled-surface: var(--ui-color-surface-work);
+  --ui-color-disabled-text: var(--ui-color-text-muted);
+  --ui-color-selected-surface: #23343e;
+  --ui-color-selected-border: var(--ui-color-action-primary);
 
   /* Converged spacing scale. */
   --ui-space-1: 4px;
@@ -32,19 +36,20 @@
   --ui-space-5: 24px;
 
   /* Radius scale. */
-  --ui-radius-small: 6px;
-  --ui-radius-medium: 10px;
-  --ui-radius-large: 14px;
+  --ui-radius-small: 5px;
+  --ui-radius-medium: 5px;
+  --ui-radius-large: 6px;
   --ui-radius-pill: 999px;
 
   /* Small semantic type scale; values remain readable at the target path. */
-  --ui-font-body: 14px/1.45 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
-  --ui-font-secondary: 12px/1.4 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
-  --ui-font-section-heading: 16px/1.3 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
-  --ui-font-eyebrow: 11px/1.2 Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --ui-font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  --ui-font-body: 13px/1.4 var(--ui-font-family);
+  --ui-font-secondary: 12px/1.4 var(--ui-font-family);
+  --ui-font-section-heading: 16px/1.3 var(--ui-font-family);
+  --ui-font-eyebrow: 11px/1.2 var(--ui-font-family);
 
-  /* Shared hit-target contracts. */
-  --ui-touch-icon: 44px;
-  --ui-touch-regular: 48px;
-  --ui-touch-emphasized: 56px;
+  /* Desktop control sizes shared by existing consumers. */
+  --ui-touch-icon: 28px;
+  --ui-touch-regular: 28px;
+  --ui-touch-emphasized: 30px;
 }

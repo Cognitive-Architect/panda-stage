@@ -14,6 +14,8 @@ export function DecorativeIcon({
 }: DecorativeIconProps): React.JSX.Element {
   return (
     <Icon
+      size={16}
+      strokeWidth={1.8}
       {...props}
       aria-hidden="true"
       className={className}

@@ -11,10 +11,9 @@ describe('F1-04 responsive import lifecycle', () => {
     const dock = source('src/renderer/shell/ResourceActivityDock.tsx');
     const leftWorkspace = source('src/renderer/shell/LeftWorkspace.tsx');
 
-    expect(shell).toContain('onFlaCharacterImportStart={() => {');
-    expect(shell).toContain("setPortraitWorkspace('canvas');");
-    expect(shell).toContain("setPortraitResourceActivity('characters');");
-    expect(shell).toContain("setPortraitCanvasSurface('shots');");
+    expect(shell).toContain("onFlaCharacterImportStart={() => workbench.current?.show('assets')}");
+    expect(shell).toContain('onFlaCharacterCommitStateChange={setFlaCharacterCommitActive}');
+    expect(shell).toMatch(/panel === 'assets'.*!flaCharacterCommitActiveRef\.current/u);
     expect(leftWorkspace).toContain(
       'onFlaCharacterImportStart={onFlaCharacterImportStart}',
     );

@@ -71,7 +71,7 @@ describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
     }
   });
 
-  it('mounts one scoped pointer/capture handle and preserves the incumbent owners', () => {
+  it('retains the legacy resize helper and gives production geometry to Dockview', () => {
     const bottom = source('src/renderer/shell/BottomWorkspace.tsx');
     const shell = source('src/renderer/shell/EditorShell.tsx');
     const timelineUi = source(
@@ -85,9 +85,9 @@ describe('Issue #378 Cloud Touch landscape Timeline resize foundation', () => {
       issue378End === -1 ? undefined : issue378End,
     );
 
-    expect(shell).toContain(
-      'resizable={layoutMode === \'landscape\'}',
-    );
+    expect(shell).toContain('<EditorWorkbench');
+    expect(shell).toContain('<TimelineDock');
+    expect(shell).not.toContain('<BottomWorkspace');
     expect(bottom).toContain('data-testid="timeline-resize-handle"');
     expect(bottom).toContain('role="separator"');
     expect(bottom).toContain('aria-label="调整时间轴高度"');

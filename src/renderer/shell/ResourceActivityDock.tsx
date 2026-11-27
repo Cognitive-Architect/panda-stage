@@ -67,6 +67,7 @@ export interface ResourceActivityDockProps {
   presentation?: ResourceActivityPresentation;
   /** Optional controlled drawer state for a portrait Canvas-context surface. */
   drawerOpen?: boolean;
+  docked?: boolean;
   onDrawerOpenChange?(open: boolean): void;
   /** Optional portrait workspace request; the resource owner remains single. */
   activeActivity?: ResourceActivity;
@@ -153,6 +154,7 @@ export function ResourceActivityDock({
   compact,
   presentation = 'default',
   drawerOpen: requestedDrawerOpen,
+  docked = false,
   onDrawerOpenChange,
   activeActivity: requestedActivity,
   onActiveActivityChange,
@@ -175,7 +177,7 @@ export function ResourceActivityDock({
 }: ResourceActivityDockProps): React.JSX.Element {
   const landscapePresentation = presentation === 'landscape';
   const [internalActivity, setInternalActivity] =
-    useState<ResourceActivity>('shots');
+    useState<ResourceActivity>(docked ? 'assets' : 'shots');
   const activeActivity = requestedActivity ?? internalActivity;
   const previousActivity = useRef(activeActivity);
   const approvedPendingExit = useRef(false);
@@ -427,7 +429,7 @@ export function ResourceActivityDock({
   const showPortraitAssetActionGroup =
     hidePortraitAssetsChrome && assetView === 'browser';
   const showLandscapeAssetActionGroup =
-    landscapePresentation &&
+    (landscapePresentation || docked) &&
     activeActivity === 'assets' &&
     assetView === 'browser';
   const hideLandscapeCharacterPrimaryAction =
@@ -574,7 +576,7 @@ export function ResourceActivityDock({
             );
           })}
         </nav>
-      ) : (
+      ) : docked ? null : (
         <button
           aria-controls="resource-activity-drawer"
           aria-expanded={drawerOpen}
@@ -706,7 +708,7 @@ export function ResourceActivityDock({
                   <span>导入 FLA</span>
                 </button>
               ) : null}
-              {hidePortraitAssetsChrome ? null : hidePortraitShotChrome ? null : (
+              {docked || hidePortraitAssetsChrome || hidePortraitShotChrome ? null : (
                 <button
                   aria-label="关闭资源工作区"
                   className={`resource-activity-close${showCharacterCreateModeSelector ? ' resource-activity-create-close' : ''}`}
@@ -785,6 +787,7 @@ export function ResourceActivityDock({
             ) : activeActivity === 'assets' ? (
               <AssetLibrary
                 closeRequestToken={assetReviewCloseRequest}
+                compactImport={docked}
                 flaReviewRequestToken={assetFlaReviewRequest}
                 hideHeading={hideLocalActivityTabs}
                 importRequestToken={assetImportRequest}
@@ -802,7 +805,7 @@ export function ResourceActivityDock({
                 snapshot={snapshot}
                 view={assetView}
                 showFlaAction={
-                  !hidePortraitAssetsChrome && !landscapePresentation
+                  !docked && !hidePortraitAssetsChrome && !landscapePresentation
                 }
               />
             ) : (

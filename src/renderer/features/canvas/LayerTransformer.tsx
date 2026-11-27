@@ -1,3 +1,4 @@
+import { readCanvasControlColor } from './canvasControlColors';
 import { useEffect, useRef } from 'react';
 import Konva from 'konva';
 import { Transformer } from 'react-konva';
@@ -101,10 +102,10 @@ export function LayerTransformer({
   if (!selected || locked) return null;
   return (
     <Transformer
-      anchorFill="#e8fff0"
+      anchorFill={readCanvasControlColor('text-primary')}
       anchorSize={18}
-      anchorStroke="#235739"
-      borderStroke="#83d39a"
+      anchorStroke={readCanvasControlColor('action-primary')}
+      borderStroke={readCanvasControlColor('action-primary')}
       borderStrokeWidth={3}
       boundBoxFunc={(oldBox, newBox) =>
         isTransformerBoxAllowed(oldBox, newBox, scale, scaleY)
