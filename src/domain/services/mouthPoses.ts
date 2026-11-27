@@ -147,13 +147,42 @@ export function resolveMouthPoseEvent(shot: Shot, layerId: string, timeMs: numbe
   return winner;
 }
 
-export function reconcileDialogueMouthPoses(before: Shot, after: Shot, moved?: { dialogueId: string; deltaMs: number }): TimelineEvent[] {
+export type DialogueMouthPoseMove =
+  | { readonly dialogueId: string; readonly deltaMs: number }
+  | ReadonlyMap<string, number>
+  | Readonly<Record<string, number>>;
+
+function resolveMovedDeltaMs(
+  moved: DialogueMouthPoseMove | undefined,
+  dialogueId: string,
+): number {
+  if (!moved) return 0;
+  if (moved instanceof Map) {
+    return moved.get(dialogueId) ?? 0;
+  }
+  if (
+    'dialogueId' in moved &&
+    'deltaMs' in moved &&
+    typeof moved.dialogueId === 'string' &&
+    typeof moved.deltaMs === 'number'
+  ) {
+    return moved.dialogueId === dialogueId ? moved.deltaMs : 0;
+  }
+  const value = (moved as Readonly<Record<string, number>>)[dialogueId];
+  return typeof value === 'number' ? value : 0;
+}
+
+export function reconcileDialogueMouthPoses(
+  before: Shot,
+  after: Shot,
+  moved?: DialogueMouthPoseMove,
+): TimelineEvent[] {
   return after.timelineEvents.flatMap((event): TimelineEvent[] => {
     if (event.type !== 'mouth-pose' || !event.dialogueId) return [event];
     const oldDialogue = before.dialogues.find((item) => item.id === event.dialogueId);
     const dialogue = after.dialogues.find((item) => item.id === event.dialogueId);
     if (!dialogue || (oldDialogue && oldDialogue.characterId !== dialogue.characterId)) return [];
-    const delta = moved && moved.dialogueId === event.dialogueId ? moved.deltaMs : 0;
+    const delta = resolveMovedDeltaMs(moved, event.dialogueId);
     const window = intersectMouthPoseWindow(dialogue, { startMs: event.startMs + delta, endMs: event.endMs + delta });
     if (!window) return [];
     if (event.origin === 'manual') return [{ ...event, ...window }];

@@ -9,12 +9,16 @@ import {
   pasteTargetKeysAtTime,
   pasteTargetKeySnapshotAtTime,
   planTargetKeysRetime,
+  planTargetKeySpanDuration,
   readTargetAuthoredKeyValues,
   retimeTargetKeys,
+  retimeTargetKeySpanDuration,
   setTargetKeyEasing,
   targetCompositeKeyEasing,
   upsertTargetKeyValues,
   type AnimationMotionValues,
+  type TargetKeySpanDurationInput,
+  type TargetKeySpanDurationPlan,
   type TargetKeysRetimeInput,
   type TargetKeysRetimePlan,
 } from '../animation-track-ops';
@@ -94,6 +98,10 @@ export interface LayerRetimeKeyInput extends LayerMotionTargetInput {
 }
 
 export interface LayerBatchRetimeInput extends LayerMotionTargetInput, TargetKeysRetimeInput {}
+
+export interface LayerKeySpanDurationInput
+  extends LayerMotionTargetInput,
+    TargetKeySpanDurationInput {}
 
 export interface LayerPasteKeysInput extends LayerMotionTargetInput {
   readonly fromTimeMs: number;
@@ -791,6 +799,50 @@ export class LayerMotionService {
       throw new Error('找不到可移动的关键帧。');
     }
     const nextTracks = retimeTargetKeys(
+      existing.tracks,
+      layerTargetRef(layer.id),
+      shot.durationMs,
+      input,
+    );
+    if (nextTracks === existing.tracks) return project;
+    return this.commitLayerClip(project, shot.id, layer.id, {
+      ...existing,
+      tracks: nextTracks,
+    });
+  }
+
+  planKeySpanDuration(
+    project: Project,
+    input: LayerKeySpanDurationInput,
+  ): TargetKeySpanDurationPlan {
+    const { shot, layer } = resolveLayerContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const existing = layerRootMotionClip(layer);
+    return planTargetKeySpanDuration(
+      existing?.tracks ?? [],
+      layerTargetRef(layer.id),
+      shot.durationMs,
+      input,
+    );
+  }
+
+  retimeKeySpanDuration(
+    project: Project,
+    input: LayerKeySpanDurationInput,
+  ): Project {
+    const { shot, layer } = assertMutableLayerContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const existing = layerRootMotionClip(layer);
+    if (!existing) {
+      throw new Error('找不到可调整时长的关键帧选段。');
+    }
+    const nextTracks = retimeTargetKeySpanDuration(
       existing.tracks,
       layerTargetRef(layer.id),
       shot.durationMs,

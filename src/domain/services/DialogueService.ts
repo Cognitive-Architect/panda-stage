@@ -1,4 +1,7 @@
-import { reconcileDialogueMouthPoses } from './mouthPoses';
+import {
+  reconcileDialogueMouthPoses,
+  type DialogueMouthPoseMove,
+} from './mouthPoses';
 import {
   DIALOGUE_SPEAKER_CHARACTER,
   DIALOGUE_SPEAKER_NARRATOR,
@@ -25,11 +28,15 @@ export type DialogueServiceErrorCode =
   | 'INVALID_DIALOGUE_TEXT'
   | 'DIALOGUE_OVERLAP'
   | 'DIALOGUE_NO_AVAILABLE_SLOT'
+  | 'DIALOGUE_BATCH_TOO_SMALL'
+  | 'DIALOGUE_NOT_TIMED'
+  | 'DIALOGUE_BATCH_OUT_OF_RANGE'
   | 'AUDIO_ASSET_NOT_FOUND'
   | 'AUDIO_ASSET_NOT_AUDIO'
   | 'AUDIO_ASSET_DURATION_UNAVAILABLE'
   | 'AUDIO_CLIP_NOT_FOUND'
   | 'AUDIO_CLIP_TOO_SHORT'
+  | 'AUDIO_CLIP_OUT_OF_RANGE'
   | 'AUDIO_DIALOGUE_NO_ROOM'
   | 'ID_GENERATION_FAILED';
 
@@ -129,6 +136,63 @@ export interface MoveDialogueInput {
   shotId: string;
   dialogueId: string;
   deltaMs: number;
+}
+
+export type SharedAudioClipPolicy = 'split' | 'include';
+
+export type BatchBoundaryMode = 'reject' | 'clamp';
+
+export interface MoveManyDialoguesInput {
+  readonly shotId: string;
+  readonly dialogueIds: readonly string[];
+  readonly deltaMs: number;
+  /**
+   * How to handle an AudioClip shared with an unselected Dialogue:
+   * - `'split'` (default): keep the original clip untouched for unselected
+   *   dialogues and create a shifted copy for the selected dialogues.
+   * - `'include'`: explicitly include the unselected dialogues that share the
+   *   clip into the batch shift so they move together with one unified delta.
+   */
+  readonly sharedClipPolicy?: SharedAudioClipPolicy;
+  /**
+   * How to handle shot boundary limits:
+   * - `'reject'` (default): reject deltas outside the group's legal range.
+   * - `'clamp'`: clamp the single unified delta for the whole group to
+   *   `[minDeltaMs, maxDeltaMs]` without per-item clamping.
+   */
+  readonly boundaryMode?: BatchBoundaryMode;
+}
+
+export interface DialogueBatchMoveEntry {
+  readonly dialogueId: string;
+  readonly characterId?: string;
+  readonly speakerType?: DialogueSpeakerType;
+  readonly originalStartMs: number;
+  readonly originalEndMs: number;
+  readonly startMs: number;
+  readonly endMs: number;
+  readonly audioClipId: string | null;
+  readonly audioStartMs: number | null;
+  readonly audioEndMs: number | null;
+  readonly includedBySharedClip: boolean;
+}
+
+export interface DialogueBatchMovePlan {
+  readonly shotId: string;
+  readonly requestedDeltaMs: number;
+  readonly deltaMs: number;
+  readonly clamped: boolean;
+  readonly allowedDeltaRange: {
+    readonly minDeltaMs: number;
+    readonly maxDeltaMs: number;
+  };
+  readonly sharedClipPolicy: SharedAudioClipPolicy;
+  readonly entries: readonly DialogueBatchMoveEntry[];
+  readonly includedDialogueIds: readonly string[];
+  readonly splitAudioClipIds: readonly string[];
+  readonly earliestStartMs: number;
+  readonly latestEndMs: number;
+  readonly audioClipCount: number;
 }
 
 export interface ResizeDialogueInput {
@@ -463,6 +527,292 @@ export class DialogueService {
       dialogue.id,
       timing,
       startMs - dialogue.startMs,
+    );
+  }
+
+  /**
+   * Validates a batch shift of timed Dialogues (and bound AudioClips) from the
+   * original Shot snapshot without mutating Project. Uses a single unified
+   * delta for the entire group so adjacent lines never cause false intermediate
+   * collisions and relative spacing is always preserved.
+   */
+  planMoveMany(
+    project: Project,
+    input: MoveManyDialoguesInput,
+  ): DialogueBatchMovePlan {
+    const shot = this.shot(project, input.shotId);
+    this.validInteger(input.deltaMs, '移动量');
+    const requestedIds = [...new Set(input.dialogueIds)];
+    if (requestedIds.length < 1) {
+      throw new DialogueServiceError(
+        'DIALOGUE_BATCH_TOO_SMALL',
+        '至少选择一条对白才能移动。',
+      );
+    }
+
+    const sharedClipPolicy: SharedAudioClipPolicy =
+      input.sharedClipPolicy ?? 'split';
+    const boundaryMode: BatchBoundaryMode = input.boundaryMode ?? 'reject';
+
+    const requestedDialogues = requestedIds.map((dialogueId) =>
+      this.dialogue(shot, dialogueId),
+    );
+    const requestedSet = new Set(requestedIds);
+
+    const referencedClipIds = new Set<string>();
+    for (const dialogue of requestedDialogues) {
+      if (dialogue.audioClipId) referencedClipIds.add(dialogue.audioClipId);
+    }
+
+    const includedDialogueIds: string[] = [];
+    const splitAudioClipIds: string[] = [];
+    const effectiveIds = new Set(requestedIds);
+
+    for (const clipId of referencedClipIds) {
+      const unselectedSharing = shot.dialogues.filter(
+        (candidate) =>
+          candidate.audioClipId === clipId && !requestedSet.has(candidate.id),
+      );
+      if (unselectedSharing.length === 0) continue;
+      if (sharedClipPolicy === 'include') {
+        for (const candidate of unselectedSharing) {
+          if (!effectiveIds.has(candidate.id)) {
+            effectiveIds.add(candidate.id);
+            includedDialogueIds.push(candidate.id);
+          }
+        }
+      } else {
+        splitAudioClipIds.push(clipId);
+      }
+    }
+
+    const effectiveDialogues = shot.dialogues.filter((candidate) =>
+      effectiveIds.has(candidate.id),
+    );
+    for (const dialogue of effectiveDialogues) {
+      if (dialogue.endMs <= dialogue.startMs) {
+        throw new DialogueServiceError(
+          'DIALOGUE_NOT_TIMED',
+          `「${this.dialogueLabel(project, dialogue)}」还没有确定时长，不能整体移动。`,
+        );
+      }
+    }
+
+    // Validate all referenced audio clips once and compute group delta bounds.
+    const clipsById = new Map<string, AudioClip>();
+    let minDeltaMs = Number.NEGATIVE_INFINITY;
+    let maxDeltaMs = Number.POSITIVE_INFINITY;
+    for (const dialogue of effectiveDialogues) {
+      minDeltaMs = Math.max(minDeltaMs, -dialogue.startMs);
+      maxDeltaMs = Math.min(maxDeltaMs, shot.durationMs - dialogue.endMs);
+      if (!dialogue.audioClipId) continue;
+      if (!clipsById.has(dialogue.audioClipId)) {
+        const clip = this.audioClip(shot, dialogue.audioClipId);
+        const asset = this.audioAsset(project, clip.assetId);
+        this.assertAudioRange(asset, clip.offsetMs, clip.endMs - clip.startMs);
+        clipsById.set(clip.id, clip);
+        minDeltaMs = Math.max(minDeltaMs, -clip.startMs);
+        maxDeltaMs = Math.min(maxDeltaMs, shot.durationMs - clip.endMs);
+      }
+    }
+
+    const effectiveDeltaMs =
+      boundaryMode === 'clamp'
+        ? Math.min(Math.max(input.deltaMs, minDeltaMs), maxDeltaMs)
+        : input.deltaMs;
+    const clamped = effectiveDeltaMs !== input.deltaMs;
+
+    const obstacles = shot.dialogues.filter(
+      (candidate) => !effectiveIds.has(candidate.id),
+    );
+    const direction = input.deltaMs < 0 ? '向前' : '向后';
+    const deltaLabel = this.formatDeltaSeconds(input.deltaMs);
+
+    const entries = effectiveDialogues.map(
+      (dialogue): DialogueBatchMoveEntry => {
+        const startMs = dialogue.startMs + effectiveDeltaMs;
+        const endMs = dialogue.endMs + effectiveDeltaMs;
+        if (startMs < 0) {
+          throw new DialogueServiceError(
+            'DIALOGUE_BATCH_OUT_OF_RANGE',
+            `再${direction}移动 ${deltaLabel} 秒会超出镜头开头。`,
+          );
+        }
+        if (endMs > shot.durationMs) {
+          throw new DialogueServiceError(
+            'DIALOGUE_BATCH_OUT_OF_RANGE',
+            `再${direction}移动 ${deltaLabel} 秒会超出镜头结尾。`,
+          );
+        }
+
+        const conflict = obstacles.find(
+          (candidate) =>
+            candidate.endMs > candidate.startMs &&
+            startMs < candidate.endMs &&
+            endMs > candidate.startMs,
+        );
+        if (conflict) {
+          throw new DialogueServiceError(
+            'DIALOGUE_OVERLAP',
+            `「${this.dialogueLabel(project, dialogue)}」移动后会与「${this.dialogueLabel(
+              project,
+              conflict,
+            )}」的对白重叠；首尾相接可以。`,
+          );
+        }
+
+        if (!dialogue.audioClipId) {
+          return {
+            dialogueId: dialogue.id,
+            ...(dialogue.characterId !== undefined
+              ? { characterId: dialogue.characterId }
+              : {}),
+            ...(dialogue.speakerType !== undefined
+              ? { speakerType: dialogue.speakerType }
+              : {}),
+            originalStartMs: dialogue.startMs,
+            originalEndMs: dialogue.endMs,
+            startMs,
+            endMs,
+            audioClipId: null,
+            audioStartMs: null,
+            audioEndMs: null,
+            includedBySharedClip: !requestedSet.has(dialogue.id),
+          };
+        }
+
+        const clip = clipsById.get(dialogue.audioClipId)!;
+        const audioStartMs = clip.startMs + effectiveDeltaMs;
+        const audioEndMs = clip.endMs + effectiveDeltaMs;
+        if (audioStartMs < 0 || audioEndMs > shot.durationMs) {
+          throw new DialogueServiceError(
+            'AUDIO_CLIP_OUT_OF_RANGE',
+            `「${this.dialogueLabel(project, dialogue)}」的配音会超出镜头范围。`,
+          );
+        }
+        return {
+          dialogueId: dialogue.id,
+          ...(dialogue.characterId !== undefined
+            ? { characterId: dialogue.characterId }
+            : {}),
+          ...(dialogue.speakerType !== undefined
+            ? { speakerType: dialogue.speakerType }
+            : {}),
+          originalStartMs: dialogue.startMs,
+          originalEndMs: dialogue.endMs,
+          startMs,
+          endMs,
+          audioClipId: clip.id,
+          audioStartMs,
+          audioEndMs,
+          includedBySharedClip: !requestedSet.has(dialogue.id),
+        };
+      },
+    );
+
+    return {
+      shotId: shot.id,
+      requestedDeltaMs: input.deltaMs,
+      deltaMs: effectiveDeltaMs,
+      clamped,
+      allowedDeltaRange: { minDeltaMs, maxDeltaMs },
+      sharedClipPolicy,
+      entries,
+      includedDialogueIds,
+      splitAudioClipIds,
+      earliestStartMs: Math.min(...entries.map((entry) => entry.startMs)),
+      latestEndMs: Math.max(...entries.map((entry) => entry.endMs)),
+      audioClipCount: clipsById.size,
+    };
+  }
+
+  /**
+   * Shifts multiple Timed Dialogues, their bound AudioClips, and their bound
+   * MouthPoseEvents together in one atomic Shot replacement. Shared AudioClips
+   * are shifted at most once and never silently moved for unselected dialogues.
+   */
+  moveMany(project: Project, input: MoveManyDialoguesInput): Project {
+    const plan = this.planMoveMany(project, input);
+    if (plan.deltaMs === 0) return project;
+
+    const shot = this.shot(project, input.shotId);
+    const entryByDialogueId = new Map(
+      plan.entries.map((entry) => [entry.dialogueId, entry]),
+    );
+    const effectiveIds = new Set(entryByDialogueId.keys());
+
+    const usedIds = this.collectIds(project);
+    const replacedClips = new Map<string, AudioClip>();
+    const clipIdForSelected = new Map<string, string>();
+    const appendedClips: AudioClip[] = [];
+    const selectedIdsByClipId = new Map<string, Set<string>>();
+
+    for (const dialogue of shot.dialogues) {
+      if (!effectiveIds.has(dialogue.id) || !dialogue.audioClipId) continue;
+      const ids = selectedIdsByClipId.get(dialogue.audioClipId) ?? new Set();
+      ids.add(dialogue.id);
+      selectedIdsByClipId.set(dialogue.audioClipId, ids);
+    }
+
+    for (const [clipId, selectedForClip] of selectedIdsByClipId) {
+      const clip = this.audioClip(shot, clipId);
+      const references = shot.dialogues.filter(
+        (candidate) => candidate.audioClipId === clipId,
+      );
+      const timing = {
+        startMs: clip.startMs + plan.deltaMs,
+        endMs: clip.endMs + plan.deltaMs,
+      };
+      const hasUnselectedReference = references.some(
+        (candidate) => !selectedForClip.has(candidate.id),
+      );
+      if (!hasUnselectedReference) {
+        replacedClips.set(clipId, { ...clip, ...timing });
+        clipIdForSelected.set(clipId, clipId);
+        continue;
+      }
+      const copy: AudioClip = {
+        ...clip,
+        id: this.nextId(usedIds),
+        ...timing,
+      };
+      appendedClips.push(copy);
+      clipIdForSelected.set(clipId, copy.id);
+    }
+
+    const movedDeltas = new Map<string, number>();
+    const nextDialogues: Dialogue[] = shot.dialogues.map((dialogue) => {
+      const entry = entryByDialogueId.get(dialogue.id);
+      if (!entry) return dialogue;
+      movedDeltas.set(dialogue.id, plan.deltaMs);
+      const audioClipId = dialogue.audioClipId
+        ? (clipIdForSelected.get(dialogue.audioClipId) ?? dialogue.audioClipId)
+        : undefined;
+      const moved: Dialogue = {
+        ...dialogue,
+        startMs: entry.startMs,
+        endMs: entry.endMs,
+      };
+      if (audioClipId !== undefined) {
+        moved.audioClipId = audioClipId;
+      }
+      return moved;
+    });
+
+    return this.replaceShot(
+      project,
+      shot.id,
+      {
+        ...shot,
+        audioClips: [
+          ...shot.audioClips.map(
+            (clip) => replacedClips.get(clip.id) ?? clip,
+          ),
+          ...appendedClips,
+        ],
+        dialogues: nextDialogues,
+      },
+      movedDeltas,
     );
   }
 
@@ -838,11 +1188,28 @@ export class DialogueService {
     return { startMs, endMs: startMs + durationMs };
   }
 
+  private dialogueLabel(project: Project, dialogue: Dialogue): string {
+    if (dialogue.speakerType === DIALOGUE_SPEAKER_NARRATOR) return '旁白';
+    const characterName = dialogue.characterId
+      ? project.characters.find((candidate) => candidate.id === dialogue.characterId)?.name
+      : undefined;
+    const text = dialogue.text.trim();
+    if (characterName) return text ? `${characterName}：${text.slice(0, 10)}` : characterName;
+    return text ? text.slice(0, 12) : '对白';
+  }
+
+  private formatDeltaSeconds(ms: number): string {
+    const seconds = Math.abs(ms) / 1_000;
+    return Number.isInteger(seconds)
+      ? String(seconds)
+      : seconds.toFixed(3).replace(/0+$/u, '').replace(/\.$/u, '');
+  }
+
   private replaceShot(
     project: Project,
     shotId: string,
     replacement: Shot,
-    moved?: { dialogueId: string; deltaMs: number },
+    moved?: DialogueMouthPoseMove,
   ): Project {
     const timelineEvents = reconcileDialogueMouthPoses(this.shot(project, shotId), replacement, moved);
     return this.finish(project, {

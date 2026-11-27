@@ -18,5 +18,6 @@ export * from './LayerService';
 export * from './PositionProjectService';
 export * from './ShotService';
 export * from './SubtitleStyleService';
+export * from './TimelineEventBatchService';
 export * from './AssetService';
 export * from './mouthPoses';
