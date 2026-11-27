@@ -97,7 +97,7 @@
 - `docs/evidence/day-14/recent-projects.png`
 - `docs/evidence/day-14/ui-results.json`
 - `docs/evidence/day-14/results.json`
-- `docs/m1-results.md`
+- [`docs/m1-results.md` (historical summary)](https://github.com/Cognitive-Architect/panda-stage/blob/a38d9318dffef6ab115c433b61f8ea266c92a44d/docs/m1-results.md); the authoritative receipt remains [`M1.md`](./M1.md).
 
 ### 回滚
 

@@ -3,7 +3,7 @@
 - Issue: [#713](https://github.com/Cognitive-Architect/panda-stage/issues/713)
 - Mother PR: [#677](https://github.com/Cognitive-Architect/panda-stage/pull/677)
 - Prerequisite: #712 is CLOSED.
-- Result: Gates 0–C are complete; Gate D is **PENDING_MAINTAINER**.
+- Final result (2026-10-06): Gates 0–D PASS; **HUMAN FULL-MOTION PASS / ACCEPTED**, as recorded in [Issue #713](https://github.com/Cognitive-Architect/panda-stage/issues/713). Mother PR #677 subsequently merged. This acceptance covers the one locked fixture, not general FLA compatibility.
 
 ## Source and method
 
@@ -119,10 +119,18 @@ Clip SHA-256:
 
 ## Gate D — maintainer full-motion review
 
-**PENDING_MAINTAINER.** The clip and contact sheets are ready for review. The
-approved source/material-site animation reference has not been recorded in the
-receipt, so no human PASS, PARTIAL, or FAIL is claimed. Do not close Issue #713
-or mark mother PR #677 Ready based on the automated reconstruction alone.
+**HUMAN FULL-MOTION PASS (2026-10-06).** The maintainer compared the complete
+F0–F46, 47-frame, source-timed 30 FPS clip and interval contact sheets against
+the previously supplied source/material-site animation reference. The Issue
+records continuous motion, stable final pose, and no unexplained reverse motion,
+pose jump, smoke reset, frame reorder, flash, or final-state drift. See the
+[final acceptance in Issue #713](https://github.com/Cognitive-Architect/panda-stage/issues/713).
+The accepted scope remains one real fixture and the bounded semantics described
+above; it does not establish universal FLA animation compatibility.
+
+The original external run receipt predates final acceptance and may still
+record Gate D as pending. External evidence was not rewritten by this
+repository cleanup. Use the Issue's final acceptance for the recorded result.
 
 ## Validation
 
@@ -139,6 +147,8 @@ or mark mother PR #677 Ready based on the automated reconstruction alone.
   unit tests, integration tests, build, manifest-selected subsystem regression,
   and the final CI result ([run #37417928248](https://github.com/Cognitive-Architect/panda-stage/actions/runs/37417928248)).
 
-No Full CI or repository-wide verifier sweep was run manually. The mother PR’s
-automated risk-based route completed successfully. Gate D remains pending
-maintainer review against the approved source/material-site animation.
+No Full CI or repository-wide verifier sweep was run manually for the original
+research. The mother PR's automated risk-based route completed successfully.
+[Documentation CI #1195](https://github.com/Cognitive-Architect/panda-stage/actions/runs/37418955687)
+also passed according to the final Issue receipt; the maintainer's subsequent
+Gate D PASS is recorded above.
