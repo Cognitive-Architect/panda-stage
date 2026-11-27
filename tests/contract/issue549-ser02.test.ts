@@ -1,3 +1,4 @@
+import { assertDesignV2StylesheetRevision } from '../helpers/css-runtime-revisions';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
@@ -266,6 +267,9 @@ describe('Issue #549 SER-02 final stylesheet contract', () => {
       const relocation = manifest.semanticRelocations.find(({ id }) => id === expected.id);
       expect(relocation).toBeDefined();
       const target = normalize(readFileSync(resolve(root, expected.targetPath), 'utf8'));
+
+      expect(relocation!.sourceSha256).toBe(expectedSer02TargetSha256[expected.id]);
+      if (assertDesignV2StylesheetRevision(expected.id, target)) continue;
 
       let historical = target;
       if (expected.id === 'G026') {

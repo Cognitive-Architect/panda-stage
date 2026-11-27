@@ -55,8 +55,8 @@ describe('Issue #648 Repair A — Delete keeps the shared touch target', () => {
 
   it('reuses the shared touch tokens rather than a PK-06 private one', () => {
     const tokens = readSource('src/renderer/styles/tokens.css');
-    expect(tokens).toContain('--ui-touch-icon: 44px;');
-    expect(tokens).toContain('--ui-touch-regular: 48px;');
+    expect(tokens).toContain('--ui-touch-icon: 28px;');
+    expect(tokens).toContain('--ui-touch-regular: 28px;');
     expect(css).not.toMatch(/--ui-touch-[a-z]+:\s*[0-9]/u);
   });
 });

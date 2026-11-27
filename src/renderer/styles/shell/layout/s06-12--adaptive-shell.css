@@ -120,7 +120,7 @@
   border-radius: 14px;
   background: #122018;
   box-shadow: 18px 0 34px rgb(0 0 0 / 32%);
-  scrollbar-color: #3f6d4e #0a100c;
+  scrollbar-color: var(--ui-color-border) var(--ui-color-surface-app);
   transition:
     opacity 120ms ease,
     transform 120ms ease,

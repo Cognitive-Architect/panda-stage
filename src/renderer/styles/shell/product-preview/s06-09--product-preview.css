@@ -11,7 +11,7 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgb(6 14 11 / 82%);
+  background: rgb(0 0 0 / 82%);
 }
 
 .product-preview-overlay[data-preview-surface='warming'] {
@@ -31,8 +31,8 @@
   max-height: calc(100vh - 32px);
   padding: 12px 14px;
   overflow: hidden;
-  background: #101c17;
-  border: 1px solid #2a4438;
+  background: var(--ui-color-surface-overlay);
+  border: 1px solid var(--ui-color-border);
   border-radius: 10px;
   box-shadow: 0 26px 60px rgb(0 0 0 / 48%);
   opacity: 1;
@@ -55,9 +55,9 @@
   max-width: min(420px, calc(100vw - 32px));
   gap: 10px;
   padding: 9px 10px 9px 12px;
-  color: #dcebe0;
-  background: rgb(16 28 23 / 94%);
-  border: 1px solid #2a4438;
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+  border: 1px solid var(--ui-color-border);
   border-radius: 9px;
   box-shadow: 0 10px 24px rgb(0 0 0 / 24%);
   pointer-events: auto;
@@ -67,9 +67,9 @@
 .product-preview-warmup-cancel {
   min-height: 30px;
   padding: 4px 9px;
-  color: #cfe4d7;
+  color: var(--ui-color-text-primary);
   background: transparent;
-  border: 1px solid #496958;
+  border: 1px solid var(--ui-color-border);
   border-radius: 6px;
   white-space: nowrap;
 }
@@ -99,7 +99,7 @@
   justify-content: center;
   min-height: 0;
   overflow: hidden;
-  background: #0a1310;
+  background: var(--ui-color-surface-app);
   border: 0;
   border-radius: 8px;
 }
@@ -139,14 +139,14 @@
 .product-preview-empty strong,
 .product-preview-message strong {
   font-size: 1rem;
-  color: #eaf6ee;
+  color: var(--ui-color-text-primary);
 }
 
 .product-preview-empty span,
 .product-preview-message span {
   max-width: 44ch;
   font-size: 0.86rem;
-  color: #9db4a6;
+  color: var(--ui-color-text-secondary);
 }
 
 .product-preview-warning strong {
@@ -200,19 +200,18 @@
 .product-preview-scrubber {
   width: 100%;
   min-width: 0;
-  accent-color: #7fd6a0;
 }
 
 .product-preview-timecode {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   font-size: 0.86rem;
-  color: #cfe4d7;
+  color: var(--ui-color-text-primary);
 }
 
 .product-preview-hint {
   margin: 0;
   font-size: 0.78rem;
-  color: #8fa89a;
+  color: var(--ui-color-text-secondary);
 }
 

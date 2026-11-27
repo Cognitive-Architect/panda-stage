@@ -167,7 +167,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
       dialog.indexOf('className="close-confirm-actions"'),
       dialog.indexOf('className="close-confirm-hint"'),
     );
-    expect(actions.match(/<button/gu)).toHaveLength(3);
+    expect(actions.match(/<(?:button|Button)\b/gu)).toHaveLength(3);
     expect(actions.match(/onChoose\('/gu)).toHaveLength(3);
     expect(actions).toContain("onChoose('save-and-close')");
     expect(actions).toContain("onChoose('close-without-saving')");

@@ -756,7 +756,7 @@ describe('product preview overlay contract', () => {
     );
     expect(styles).toContain('background: transparent;');
     expect(surfaceStyles).toMatch(
-      /\.product-preview-overlay\[data-preview-surface='active'\]\s*\{\s*background:\s*rgb\(6 14 11\);\s*\}/u,
+      /\.product-preview-overlay\[data-preview-surface='active'\]\s*\{\s*background:\s*var\(--ui-color-surface-app\);\s*\}/u,
     );
     expect(surfaceStyles).toMatch(
       /\.editor-layout\[data-preview-surface-active='true'\]\s*>\s*\.editor-top-region,\s*\.editor-layout\[data-preview-surface-active='true'\]\s*>\s*\.editor-body,\s*\.editor-layout\[data-preview-surface-active='true'\]\s*>\s*\.bottom-workspace\s*\{\s*visibility:\s*hidden;/u,

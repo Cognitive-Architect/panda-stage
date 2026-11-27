@@ -9,8 +9,8 @@ import {
   type DockviewApi, type DockviewReadyEvent, type IDockviewHeaderActionsProps,
   type IDockviewPanelHeaderProps, type IDockviewPanelProps,
 } from 'dockview-react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
-import { Button, IconButton } from '../ui';
+import { Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Button, DecorativeIcon, IconButton } from '../ui';
 import { defaultWorkbenchLayout, addWorkbenchPanel, restoreWorkbenchLayout, saveWorkbenchLayout,
   WORKBENCH_PANELS, WORKBENCH_TITLES, type WorkbenchPanel, type FoldState,
 } from './editorWorkbenchLayout';
@@ -180,21 +180,23 @@ export function EditorWorkbench({ controls, canHide, header, panels }: EditorWor
           <Menu.Trigger asChild>
             <Button ref={windowMenu} variant="secondary" data-testid="workbench-window-menu">窗口</Button>
           </Menu.Trigger>
-          <Menu.Content className="workbench-menu" sideOffset={4} align="start">
-            {WORKBENCH_PANELS.map((id) => <Menu.CheckboxItem key={id}
-              data-panel={id}
-              checked={shown.includes(id)}
-              disabled={shown.includes(id) && !canHide(id)}
-              onCheckedChange={(visible) => visible ? controls.current?.show(id) : mounts.close(id)}>
-              <Menu.ItemIndicator>✓</Menu.ItemIndicator>{WORKBENCH_TITLES[id]}
-            </Menu.CheckboxItem>)}
-            <Menu.Separator />
-            <Menu.Item onSelect={() => {
-              if (!dock.current) return;
-              defaultWorkbenchLayout(dock.current);
-              saveWorkbenchLayout(dock.current);
-            }}>恢复默认布局</Menu.Item>
-          </Menu.Content>
+          <Menu.Portal>
+            <Menu.Content className="workbench-menu" sideOffset={4} align="start">
+              {WORKBENCH_PANELS.map((id) => <Menu.CheckboxItem key={id}
+                data-panel={id}
+                checked={shown.includes(id)}
+                disabled={shown.includes(id) && !canHide(id)}
+                onCheckedChange={(visible) => visible ? controls.current?.show(id) : mounts.close(id)}>
+                <Menu.ItemIndicator><DecorativeIcon icon={Check} /></Menu.ItemIndicator>{WORKBENCH_TITLES[id]}
+              </Menu.CheckboxItem>)}
+              <Menu.Separator />
+              <Menu.Item onSelect={() => {
+                if (!dock.current) return;
+                defaultWorkbenchLayout(dock.current);
+                saveWorkbenchLayout(dock.current);
+              }}>恢复默认布局</Menu.Item>
+            </Menu.Content>
+          </Menu.Portal>
         </Menu.Root>
         {header}
       </div>

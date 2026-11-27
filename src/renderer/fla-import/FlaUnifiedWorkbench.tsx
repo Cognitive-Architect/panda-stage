@@ -1,3 +1,5 @@
+import { Minus, Plus } from 'lucide-react';
+import { DecorativeIcon } from '../ui';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { FlaUnifiedImportReceipt } from './fla-unified-import';
 import { FlaStageGImporting, type FlaStageGImportKind } from './FlaStageGTerminal';
@@ -451,7 +453,7 @@ export function FlaUnifiedWorkbench({
               {status ? <output data-testid={testId('focused-status', 'fla-c03-focused-status')}>{status}</output> : null}
             </div>
             <div className="fla-c03-zoom-tools" role="group" aria-label="预览缩放">
-              <button aria-label="缩小预览" disabled={!canZoom} onClick={() => updateZoom(-0.25)} type="button">−</button>
+              <button aria-label="缩小预览" disabled={!canZoom} onClick={() => updateZoom(-0.25)} type="button"><DecorativeIcon icon={Minus} /></button>
               <button
                 aria-label="恢复默认预览大小"
                 disabled={!canZoom}
@@ -461,7 +463,7 @@ export function FlaUnifiedWorkbench({
               >
                 适中
               </button>
-              <button aria-label="放大预览" disabled={!canZoom} onClick={() => updateZoom(0.25)} type="button">+</button>
+              <button aria-label="放大预览" disabled={!canZoom} onClick={() => updateZoom(0.25)} type="button"><DecorativeIcon icon={Plus} /></button>
             </div>
           </header>
           <div

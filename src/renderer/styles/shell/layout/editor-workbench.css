@@ -1,29 +1,4 @@
-/* R01 workbench tokens stay scoped to the migrated editor. */
 .editor-workbench {
-  --ui-color-surface-app: #111316;
-  --ui-color-surface-work: #20242a;
-  --ui-color-surface-panel: #1a1d22;
-  --ui-color-surface-overlay: #22262d;
-  --ui-color-border: #30353d;
-  --ui-color-separator: #30353d;
-  --ui-color-text-primary: #e3e7ed;
-  --ui-color-text-secondary: #a0a8b6;
-  --ui-color-text-muted: #8a94a2;
-  --ui-color-action-primary: #54cdf3;
-  --ui-color-action-hover: #2c333d;
-  --ui-color-action-pressed: #23363f;
-  --ui-color-focus-ring: #54cdf3;
-  --ui-color-selected-surface: #23343e;
-  --ui-color-selected-border: #54cdf3;
-  --ui-color-disabled-surface: #20242a;
-  --ui-color-disabled-text: #8a94a2;
-  --ui-font-body: 13px/1.4 "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
-  --ui-radius-small: 5px;
-  --ui-radius-medium: 5px;
-  --ui-touch-icon: 28px;
-  --ui-touch-regular: 28px;
-  --ui-touch-emphasized: 30px;
-
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 0;
@@ -72,32 +47,8 @@
   font-weight: 600;
 }
 
-.editor-workbench :is(button, input, select, textarea):focus-visible {
-  outline: 2px solid var(--ui-color-focus-ring);
-  outline-offset: -2px;
-}
-
-.workbench-toolbar select,
-.editor-workbench .ui-field :is(input, select):not([type='checkbox'], [type='range']) {
-  min-height: 28px;
-  min-width: 0;
-  padding-inline: 6px;
-  border: 1px solid var(--ui-color-border);
-  border-radius: var(--ui-radius-small);
-  background: var(--ui-color-surface-work);
-  color: var(--ui-color-text-primary);
-  font: var(--ui-font-body);
-}
-
 .workbench-toolbar select {
   max-width: min(26vw, 230px);
-}
-
-.editor-workbench button[data-ui-button][data-ui-variant='primary']:enabled {
-  color: #13212a;
-}
-.editor-workbench button[data-ui-button][data-ui-variant='primary']:hover:enabled {
-  background: #87ddf9;
 }
 
 .workbench-toolbar .quick-action-drawer[data-docked] {
@@ -122,10 +73,6 @@
   display: grid;
   min-width: 164px;
   padding: 4px;
-  border: 1px solid var(--ui-color-border);
-  border-radius: var(--ui-radius-small);
-  background: var(--ui-color-surface-overlay);
-  color: var(--ui-color-text-primary);
   box-shadow: 0 6px 18px rgb(0 0 0 / 30%);
 }
 
@@ -140,8 +87,6 @@
   cursor: default;
 }
 
-.workbench-menu [data-highlighted] { background: var(--ui-color-action-hover); }
-.workbench-menu [data-disabled] { color: var(--ui-color-disabled-text); }
 .workbench-menu [role='separator'] { border-top: 1px solid var(--ui-color-separator); margin-block: 4px; }
 .workbench-menu [role='menuitemcheckbox'] > span { position: absolute; left: 8px; color: var(--ui-color-selected-border); }
 
@@ -400,47 +345,6 @@
   color: var(--ui-color-text-secondary);
 }
 
-/* Native controls in the docked editor share the same palette as the primitives. */
-.editor-workbench button:where(:not([data-ui-button], .dv-default-tab-action, .asset-card, .layer-delete-button, .close-confirm-discard, [data-layer-id] button, .timeline-lane-content button, .character-motion-part-select)) {
-  min-height: var(--ui-touch-regular);
-  border-color: var(--ui-color-border);
-  border-radius: var(--ui-radius-small);
-  background-color: var(--ui-color-surface-work);
-  color: var(--ui-color-text-primary);
-}
-
-.editor-workbench button[data-ui-button]:not([data-ui-size='icon']) {
-  padding-block: 3px;
-  font-weight: 600;
-}
-
-.editor-workbench :is(.workbench-toolbar, .workbench-panel-content, .export-options-dialog)
-  :is(select, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='hidden']), textarea) {
-  min-width: 0;
-  min-height: 28px;
-  padding-block: 3px;
-  border: 1px solid var(--ui-color-border);
-  border-radius: var(--ui-radius-small);
-  background-color: var(--ui-color-surface-work);
-  color: var(--ui-color-text-primary);
-  font: var(--ui-font-body);
-}
-
-.editor-workbench input[type='number'] {
-  min-height: 29px;
-  font-variant-numeric: tabular-nums;
-}
-
-.editor-workbench input:is([type='checkbox'], [type='radio'], [type='range']) {
-  accent-color: var(--ui-color-selected-border);
-}
-
-.editor-workbench :is(button[data-ui-button], button.ui-icon-label, input, textarea, select):disabled {
-  border-color: var(--ui-color-border);
-  background-color: var(--ui-color-disabled-surface);
-  color: var(--ui-color-disabled-text);
-}
-
 .workbench-toolbar .quick-action-drawer[data-docked] .quick-action-drawer-export {
   flex: 0 0 auto;
   width: auto;
@@ -463,20 +367,6 @@
 
 .editor-workbench .quick-action-drawer[data-docked] .quick-action-drawer-play:hover:enabled {
   background: var(--ui-color-action-hover);
-}
-
-.editor-workbench :is(.right-rail-stack, .timeline-toolbar, .resource-activity-header, .history-actions)
-  button:where(:not([data-ui-variant='primary'], [data-ui-variant='danger'])):hover:not(:disabled),
-.editor-workbench :is(.asset-library, .right-inspector, .animation-curve-panel)
-  button:where(:not([data-ui-variant='primary'], [data-ui-variant='danger'], .layer-delete-button)):hover:not(:disabled) {
-  background-color: var(--ui-color-action-hover);
-  color: var(--ui-color-text-primary);
-}
-
-.editor-workbench :is(.workbench-toolbar, .workbench-panel-content) button:is([aria-pressed='true'], [aria-checked='true'], .asset-category-active):not(:disabled) {
-  border-color: var(--ui-color-selected-border);
-  background-color: var(--ui-color-action-pressed);
-  color: var(--ui-color-selected-border);
 }
 
 .editor-workbench :is(.asset-library .asset-category-tabs button, .asset-library-usage-filter-trigger, .resource-activity-panel button:not(.asset-card)) {
@@ -620,12 +510,6 @@
   color: var(--ui-color-text-primary);
 }
 
-.workbench-timeline .timeline-zoom button {
-  display: grid;
-  place-items: center;
-  font-size: 0;
-}
-
 .workbench-timeline .timeline-timecode {
   gap: 5px;
   color: var(--ui-color-text-secondary);
@@ -673,33 +557,6 @@
   color: #65c5a0;
 }
 
-.editor-workbench .close-confirm-overlay {
-  background: rgb(12 14 17 / 75%);
-}
-
-.editor-workbench .close-confirm-actions button {
-  min-width: 0;
-  min-height: 28px;
-}
-
-.editor-workbench .close-confirm-actions .close-confirm-save:enabled {
-  border-color: var(--ui-color-selected-border);
-  background: var(--ui-color-action-primary);
-  color: #13212a;
-}
-
-.editor-workbench .close-confirm-actions .close-confirm-discard {
-  border-color: var(--ui-color-action-danger);
-  background: var(--ui-color-action-danger);
-}
-
-.editor-workbench :is(.close-confirm-project, .close-confirm-hint, .layer-transform-guidance) {
+.layer-transform-guidance {
   color: var(--ui-color-text-secondary);
-}
-
-.editor-workbench :is(.export-options-dialog, .close-confirm-frame) {
-  border-color: var(--ui-color-border);
-  border-radius: 6px;
-  background: var(--ui-color-surface-panel);
-  color: var(--ui-color-text-primary);
 }

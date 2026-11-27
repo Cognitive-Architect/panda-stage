@@ -132,7 +132,7 @@ export function StartScreen({
                 </code>
               </div>
             </div>
-            <button
+            <Button
               className="launcher-continue-button task4-hit-target"
               data-task4-core="return-to-editor"
               data-testid="return-to-editor"
@@ -142,7 +142,7 @@ export function StartScreen({
             >
               <span>继续创作</span>
               <DecorativeIcon icon={ArrowRight} size={19} strokeWidth={2.2} />
-            </button>
+            </Button>
           </section>
         ) : (
           <div

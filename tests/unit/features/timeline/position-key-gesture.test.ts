@@ -113,7 +113,7 @@ describe('Issue #649 Delete overlay outer-height contract', () => {
     const tokens = readFileSync('src/renderer/styles/tokens.css', 'utf8');
     const primitives = readFileSync('src/renderer/styles/primitives.css', 'utf8');
     const local = readFileSync('src/renderer/styles/features/timeline/pk06-position-lane.css', 'utf8');
-    expect(tokens).toMatch(/--ui-touch-regular:\s*48px;/u);
+    expect(tokens).toMatch(/--ui-touch-regular:\s*28px;/u);
     expect(primitives).toMatch(/button\[data-ui-button\]\s*\{[^}]*min-height:\s*var\(--ui-touch-regular\);/u);
     expect(local).toMatch(/\.position-key-action\s*\{[^}]*box-sizing:\s*border-box;[^}]*padding:\s*3px;[^}]*border:\s*1px /u);
     const localButtonRule = /\.position-key-action \[data-ui-button\]\s*\{([^}]*)\}/u.exec(local)?.[1];

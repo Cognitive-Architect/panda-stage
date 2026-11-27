@@ -115,7 +115,7 @@
   .asset-category-tabs button.asset-category-active {
   border-color: rgb(131 211 154 / 42%);
   color: var(--ui-color-text-primary, #e6f7ea);
-  background: rgb(45 104 62 / 24%);
+  background: var(--ui-color-selected-surface);
   box-shadow: inset 0 -2px 0 var(--ui-color-selected-border, #83d39a);
 }
 

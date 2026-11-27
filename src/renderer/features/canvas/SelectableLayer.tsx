@@ -1,3 +1,4 @@
+import { readCanvasControlColor } from './canvasControlColors';
 import { Fragment } from 'react';
 import Konva from 'konva';
 import { CharacterMotionPart, type CharacterMotionCanvas } from './CharacterMotionPart';
@@ -69,7 +70,6 @@ export interface SelectableLayerProps {
   nodeRef: React.RefObject<Konva.Group | null>;
   render: StageLayerRenderInstruction;
   selected: boolean;
-  selectionAccent?: string;
   directEditingEnabled?: boolean;
   inheritedSpace?: boolean;
   projected?: boolean;
@@ -117,7 +117,6 @@ export function SelectableLayer({
   nodeRef,
   render,
   selected,
-  selectionAccent,
   visual,
   visualSourceKeys,
   directEditingEnabled = true,
@@ -133,8 +132,8 @@ export function SelectableLayer({
   onPositionAuthoringCommit = () => undefined,
   onError,
 }: SelectableLayerProps): React.JSX.Element {
-  const selectionStroke = selectionAccent ?? '#83d39a';
-  const guideStroke = selectionAccent ? '#a0a8b6' : '#8fb5a0';
+  const selectionStroke = readCanvasControlColor('action-primary');
+  const guideStroke = readCanvasControlColor('text-secondary');
   const headGroupRef: { current: Konva.Group | null } = { current: null };
   const canSelect = true;
   const positionAuthoringEnabled = positionAuthoringSession !== null;

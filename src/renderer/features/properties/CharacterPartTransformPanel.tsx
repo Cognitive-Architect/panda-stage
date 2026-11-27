@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { Check, RotateCcw } from 'lucide-react';
+import { Check, Minus, Plus, RotateCcw } from 'lucide-react';
 import {
   CHARACTER_NODE_MOTION_CAPABILITIES,
   CHARACTER_PART_MAX_SCALE,
@@ -159,9 +159,9 @@ export function CharacterPartTransformPanel({
         <div key={key} className="layer-transform-control-row layer-transform-stepper-row">
           <span className="layer-transform-control-label">{label}</span>
           <div className="layer-transform-stepper" role="group" aria-label={label}>
-            <button type="button" data-character-motion-action disabled={disabled || rowDisabled} aria-label={decrease} onPointerDown={actionPointerDown} onClick={() => step(key, -1)}>−</button>
+            <button type="button" data-character-motion-action disabled={disabled || rowDisabled} aria-label={decrease} onPointerDown={actionPointerDown} onClick={() => step(key, -1)}><DecorativeIcon icon={Minus} /></button>
             <label className="layer-transform-stepper-value">{field(key, fieldLabel, rowDisabled)}<span aria-hidden="true">{unit}</span></label>
-            <button type="button" data-character-motion-action disabled={disabled || rowDisabled} aria-label={increase} onPointerDown={actionPointerDown} onClick={() => step(key, 1)}>+</button>
+            <button type="button" data-character-motion-action disabled={disabled || rowDisabled} aria-label={increase} onPointerDown={actionPointerDown} onClick={() => step(key, 1)}><DecorativeIcon icon={Plus} /></button>
           </div>
         </div>)}
       <div className="layer-transform-action-row" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', borderTop: 0, paddingTop: 0 }}>

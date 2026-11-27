@@ -1,3 +1,4 @@
+import { readCanvasControlColor } from './canvasControlColors';
 import type { FlaInstanceColor } from '../../../shared/fla-instance-color';
 import { layoutFlaStaticText } from '../../../shared/fla-static-text';
 import type { FlaGraphicInstanceTextOverrides } from '../../../domain/models/flaGraphicInstanceText';
@@ -847,7 +848,7 @@ export function FlaGraphicStructureProjection({
             height={content.height}
             listening={false}
             name="fla-structure-selected-bounds"
-            stroke="#83d39a"
+            stroke={readCanvasControlColor('action-primary')}
             strokeWidth={2}
             width={content.width}
             x={content.x}

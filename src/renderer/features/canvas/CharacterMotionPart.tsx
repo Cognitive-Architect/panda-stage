@@ -1,3 +1,4 @@
+import { readCanvasControlColor } from './canvasControlColors';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Group, Rect, Circle, Line } from 'react-konva';
 import type Konva from 'konva';
@@ -134,6 +135,7 @@ export function CharacterMotionPart({
     try { g.session.commit(g.changes); } catch (error) { motion.error(error instanceof Error ? error.message : '部件编辑失败。'); }
   };
   const unit = 1 / Math.max(0.01, Math.abs(owner.current?.getAbsoluteScale?.().x ?? 1));
+  const selectionStroke = selected ? readCanvasControlColor('action-primary') : undefined;
   const bounds = interactionBounds ?? { x: 0, y: 0, width: 0, height: 0 };
   const x = bounds.x + (part.imageTransform ? 0 : part.localRect.x);
   const y = bounds.y + (part.imageTransform ? 0 : part.localRect.y);
@@ -165,20 +167,20 @@ export function CharacterMotionPart({
         </Group>}
       </Group>
     {selected ? <>
-      <Line name="character-motion-selection" points={corners.flatMap(p => [p.x, p.y])} closed stroke="#83d39a" strokeWidth={unit} listening={false} />
+      <Line name="character-motion-selection" points={corners.flatMap(p => [p.x, p.y])} closed stroke={selectionStroke} strokeWidth={unit} listening={false} />
       {caps.rotation ? (
-        <Line points={[top.x, top.y, rotationHandle.x, rotationHandle.y]} stroke="#83d39a" strokeWidth={unit} listening={false} />
+        <Line points={[top.x, top.y, rotationHandle.x, rotationHandle.y]} stroke={selectionStroke} strokeWidth={unit} listening={false} />
       ) : null}
       {caps.uniformScale ? corners.map((point, index) => <Rect key={index} name={index === 0 ? 'character-motion-scale' : `character-motion-scale-${index}`}
         x={point.x} y={point.y} offsetX={5 * unit} offsetY={5 * unit} width={10 * unit} height={10 * unit}
-        fill="#eef6f0" stroke="#83d39a" strokeWidth={unit} hitStrokeWidth={16 * unit}
+        fill="#eef6f0" stroke={selectionStroke} strokeWidth={unit} hitStrokeWidth={16 * unit}
         {...handleEvents('scale', index % 2 ? 'nesw-resize' : 'nwse-resize')} />) : null}
       {caps.rotation ? (
-        <Circle name="character-motion-rotate" {...rotationHandle} radius={6 * unit} fill="#eef6f0" stroke="#83d39a" strokeWidth={unit} hitStrokeWidth={16 * unit}
+        <Circle name="character-motion-rotate" {...rotationHandle} radius={6 * unit} fill="#eef6f0" stroke={selectionStroke} strokeWidth={unit} hitStrokeWidth={16 * unit}
           {...handleEvents('rotate', rotationCursor)} />
       ) : null}
       <Line name="character-motion-pivot" points={[pivot.x - 4 * unit, pivot.y, pivot.x + 4 * unit, pivot.y, pivot.x, pivot.y, pivot.x, pivot.y - 4 * unit, pivot.x, pivot.y + 4 * unit]}
-        stroke="#83d39a" strokeWidth={unit} opacity={0.55} listening={false} />
+        stroke={selectionStroke} strokeWidth={unit} opacity={0.55} listening={false} />
     </> : null}
   </Group>;
 }

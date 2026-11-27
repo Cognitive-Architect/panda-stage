@@ -1,3 +1,5 @@
+import { X } from 'lucide-react';
+import { DecorativeIcon } from '../../ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type {
@@ -1496,7 +1498,7 @@ export function FlaCharacterImportFlow({
               onClick={() => void closeFlow()}
               type="button"
             >
-              ×
+              <DecorativeIcon icon={X} />
             </button>
           </div>
         </header>

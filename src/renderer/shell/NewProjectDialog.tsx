@@ -1,3 +1,4 @@
+import { Button } from '../ui';
 import { validateNewProjectInput } from './projectCreateFlow';
 
 export interface NewProjectDialogProps {
@@ -82,7 +83,8 @@ export function NewProjectDialog({
               placeholder={savingTemplate ? '选择或输入模板的存放文件夹' : '选择或输入新项目的存放文件夹'}
               value={parentDirectory}
             />
-            <button
+            <Button
+              variant="secondary"
               className="task4-hit-target"
               data-task4-core="new-project-choose-directory"
               data-testid="new-project-choose-directory"
@@ -91,7 +93,7 @@ export function NewProjectDialog({
               type="button"
             >
               浏览…
-            </button>
+            </Button>
           </span>
           {showParentDirectoryValidation ? (
             <small
@@ -131,7 +133,7 @@ export function NewProjectDialog({
           {status}
         </output>
         <div className="new-project-actions">
-          <button
+          <Button
             className="task4-hit-target"
             data-task4-core="new-project-confirm"
             data-testid="new-project-confirm"
@@ -140,8 +142,9 @@ export function NewProjectDialog({
             type="button"
           >
             {savingTemplate ? '保存模板' : '创建项目'}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="secondary"
             className="task4-hit-target"
             data-task4-core="new-project-cancel"
             data-testid="new-project-cancel"
@@ -150,7 +153,7 @@ export function NewProjectDialog({
             type="button"
           >
             取消
-          </button>
+          </Button>
         </div>
       </div>
     </div>

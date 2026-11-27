@@ -1,3 +1,4 @@
+import { readCanvasControlColor } from './canvasControlColors';
 import { useEffect, useRef } from 'react';
 import Konva from 'konva';
 import { Transformer } from 'react-konva';
@@ -78,7 +79,6 @@ export interface LayerTransformerProps {
   locked: boolean;
   scale: number;
   scaleY?: number;
-  selectionAccent?: string;
 }
 
 export function LayerTransformer({
@@ -88,7 +88,6 @@ export function LayerTransformer({
   locked,
   scale,
   scaleY = scale,
-  selectionAccent,
 }: LayerTransformerProps): React.JSX.Element | null {
   const transformerRef = useRef<Konva.Transformer>(null);
 
@@ -103,10 +102,10 @@ export function LayerTransformer({
   if (!selected || locked) return null;
   return (
     <Transformer
-      anchorFill={selectionAccent ? '#e3e7ed' : '#e8fff0'}
+      anchorFill={readCanvasControlColor('text-primary')}
       anchorSize={18}
-      anchorStroke={selectionAccent ?? '#235739'}
-      borderStroke={selectionAccent ?? '#83d39a'}
+      anchorStroke={readCanvasControlColor('action-primary')}
+      borderStroke={readCanvasControlColor('action-primary')}
       borderStrokeWidth={3}
       boundBoxFunc={(oldBox, newBox) =>
         isTransformerBoxAllowed(oldBox, newBox, scale, scaleY)

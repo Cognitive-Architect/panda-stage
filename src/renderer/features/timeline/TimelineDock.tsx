@@ -411,7 +411,6 @@ export function TimelineDock({
             onClick={() => timelineUiStore.setZoom(ui.zoom / 2)}
           >
             <ZoomOut aria-hidden="true" focusable="false" size={16} />
-            −
           </button>
           <span className="timeline-zoom-value" data-testid="timeline-zoom-value">
             {ui.zoom}×
@@ -425,7 +424,6 @@ export function TimelineDock({
             onClick={() => timelineUiStore.setZoom(ui.zoom * 2)}
           >
             <ZoomIn aria-hidden="true" focusable="false" size={16} />
-            +
           </button>
         </div>
       </header>

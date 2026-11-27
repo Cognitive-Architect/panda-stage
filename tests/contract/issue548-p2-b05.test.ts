@@ -1,3 +1,4 @@
+import { assertDesignV2StylesheetRevision } from '../helpers/css-runtime-revisions';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
@@ -364,6 +365,7 @@ describe('Issue #548 P2-B05 dialogue properties and subtitle-style relocation', 
   it('keeps every P2-10 target byte-exact after Phase 3 begins', () => {
     for (const relocation of expectedB05) {
       const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
+      if (assertDesignV2StylesheetRevision(relocation.id, target)) continue;
       expect(sha256(target)).toBe(relocation.sourceSha256);
       expect(Buffer.byteLength(target, 'utf8')).toBe(
         relocation.sourceEndByteExclusive - relocation.sourceStartByte,

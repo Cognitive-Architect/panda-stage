@@ -1,3 +1,4 @@
+import { readCanvasControlColor } from './canvasControlColors';
 import { Circle, Group, Line, Shape, Text } from 'react-konva';
 import type { CubicBezier2D, Point } from '../../../domain';
 
@@ -19,7 +20,8 @@ export function CurveMotionStageOverlay({ draft, scale }: {
 }): React.JSX.Element {
   const { p0, p1, p2, p3 } = draft.curve;
   const unit = 1 / Math.max(0.05, scale);
-  const accent = '#65e4a3';
+  const accent = readCanvasControlColor('action-primary');
+  const handleFill = readCanvasControlColor('selected-surface');
   return <Group name="curve-motion-overlay">
     <Line points={[p0.x, p0.y, p1.x, p1.y]} stroke={accent} strokeWidth={unit} listening={false} />
     <Line points={[p3.x, p3.y, p2.x, p2.y]} stroke={accent} strokeWidth={unit} listening={false} />
@@ -38,7 +40,7 @@ export function CurveMotionStageOverlay({ draft, scale }: {
       const draggable = handle !== 'p0' && (handle !== 'p3' || !draft.fixedEnd);
       return <Group key={handle}>
         <Circle name={'curve-motion-' + handle} x={point.x} y={point.y} radius={6 * unit}
-          hitStrokeWidth={10 * unit} stroke={accent} strokeWidth={2 * unit} fill={draggable ? '#164a39' : accent}
+          hitStrokeWidth={10 * unit} stroke={accent} strokeWidth={2 * unit} fill={draggable ? handleFill : accent}
           draggable={draggable} onDragMove={(event) => {
             if (handle === 'p0' || !draggable) return;
             event.cancelBubble = true;

@@ -1,3 +1,4 @@
+import { assertDesignV2StylesheetRevision } from '../helpers/css-runtime-revisions';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -167,6 +168,7 @@ describe('Issue #546 P2-B06 ordered semantic stylesheet continuation', () => {
 
     for (const relocation of actual) {
       const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
+      if (assertDesignV2StylesheetRevision(relocation.id, target)) continue;
       expect(sha256(target)).toBe(relocation.sourceSha256);
       expect(relocation.sourceRange.startLine).toBeLessThanOrEqual(relocation.sourceRange.endLine);
     }

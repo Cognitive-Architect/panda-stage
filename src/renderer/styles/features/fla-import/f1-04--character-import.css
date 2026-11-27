@@ -105,7 +105,7 @@
 .fla-character-import-create {
   min-width: var(--ui-touch-icon);
   min-height: var(--ui-touch-icon);
-  padding: 8px 14px;
+  padding: 3px 8px;
   border: 1px solid var(--ui-color-border);
   border-radius: var(--ui-radius-medium);
   background: var(--ui-color-surface-overlay);
@@ -114,8 +114,9 @@
 }
 
 .fla-character-import-close {
+  display: inline-grid;
   padding: 0;
-  font-size: 24px;
+  place-items: center;
 }
 
 .fla-character-import-change-file:hover:not(:disabled),
@@ -599,13 +600,14 @@
   background: var(--ui-color-selected-surface);
 }
 
-.fla-character-import-create {
+.fla-character-import-create:enabled {
   border-color: var(--ui-color-selected-border);
   background: var(--ui-color-action-primary);
+  color: var(--ui-color-on-accent);
 }
 
-.fla-character-import-create:hover:not(:disabled) {
-  background: var(--ui-color-action-hover);
+.fla-character-import-create:hover:enabled {
+  background: var(--ui-color-accent-hover);
 }
 
 .fla-character-import-create:disabled,

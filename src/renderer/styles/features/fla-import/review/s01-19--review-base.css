@@ -10,9 +10,9 @@
   min-height: 0;
   padding: 20px;
   overflow: hidden;
-  border: 1px solid rgb(127 199 148 / 52%);
-  border-radius: 18px;
-  background: #122018;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-large);
+  background: var(--ui-color-surface-overlay);
   box-shadow:
     0 22px 60px rgb(0 0 0 / 46%),
     0 0 0 100vmax rgb(0 0 0 / 42%);
@@ -39,7 +39,7 @@
 .fla-review-readonly-note,
 .fla-review-session > output {
   margin: 0;
-  color: #9aaca0;
+  color: var(--ui-color-text-secondary);
   font-size: 12px;
 }
 
@@ -104,7 +104,7 @@
 }
 
 .fla-review-compatibility > ul:first-of-type span {
-  color: #9aaca0;
+  color: var(--ui-color-text-secondary);
   font-size: 12px;
 }
 
@@ -143,7 +143,7 @@
 }
 
 .fla-review-selection-toolbar output {
-  color: #83d39a;
+  color: var(--ui-color-selected-border);
   font-size: 11px;
 }
 
@@ -183,13 +183,13 @@
 }
 
 .fla-review-media-card-selected {
-  border-color: #83d39a;
-  background: rgb(45 104 62 / 27%);
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-selected-surface);
 }
 
 .fla-review-media-card:hover,
 .fla-review-media-card:focus-visible {
-  border-color: rgb(131 211 154 / 72%);
+  border-color: var(--ui-color-selected-border);
 }
 
 .fla-review-media-card:focus-visible {
@@ -235,7 +235,7 @@
 }
 
 .fla-review-media-card > span {
-  color: #9aaca0;
+  color: var(--ui-color-text-secondary);
 }
 
 .fla-review-name-warnings {
@@ -342,9 +342,9 @@
   justify-content: space-between;
   flex-wrap: wrap;
   padding: 10px 12px;
-  border: 1px solid rgb(131 211 154 / 42%);
+  border: 1px solid var(--ui-color-border);
   border-radius: 10px;
-  background: rgb(45 104 62 / 22%);
+  background: var(--ui-color-surface-panel);
   gap: 12px;
 }
 
@@ -355,36 +355,36 @@
 }
 
 .fla-review-commit-copy strong {
-  color: #e4f7e8;
+  color: var(--ui-color-text-primary);
   font-size: 13px;
 }
 
 .fla-review-commit-copy span {
   overflow-wrap: anywhere;
-  color: #b5c9ba;
+  color: var(--ui-color-text-secondary);
   font-size: 11px;
 }
 
 .fla-review-commit-primary {
-  min-height: 46px;
+  min-height: var(--ui-touch-regular);
   flex: 0 1 auto;
-  border-color: #83d39a;
-  background: #2d683e;
-  color: #f2fff4;
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-action-primary);
+  color: var(--ui-color-on-accent);
   font-weight: 800;
   white-space: normal;
 }
 
 .fla-review-commit-primary:hover:not(:disabled),
 .fla-review-commit-primary:focus-visible:not(:disabled) {
-  border-color: #b0f0bf;
-  background: #3d8150;
+  border-color: var(--ui-color-accent-hover);
+  background: var(--ui-color-accent-hover);
 }
 
 .fla-review-commit-primary:disabled {
-  border-color: rgb(131 211 154 / 34%);
-  background: rgb(45 104 62 / 45%);
-  color: #9aaca0;
+  border-color: var(--ui-color-border);
+  background: var(--ui-color-disabled-surface);
+  color: var(--ui-color-text-secondary);
 }
 
 .fla-review-body {

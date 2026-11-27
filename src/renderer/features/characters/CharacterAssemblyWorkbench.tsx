@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Eye, EyeOff, Minus, MoreHorizontal, Pencil, Play, Plus, RefreshCw, RotateCcw } from 'lucide-react';
+import { DecorativeIcon } from '../../ui';
 import {
   CHARACTER_PART_MAX_SCALE,
   CHARACTER_PART_MIN_SCALE,
@@ -4784,63 +4785,63 @@ function CompositeCharacterAssemblyWorkbench({
                 <>
                   <div aria-label="身体左右位置" className="character-assembly-control-set" role="group">
                     <span className="character-assembly-control-label">身体左右</span>
-                    <button aria-label="向左移动身体" data-testid="character-assembly-body-left-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(-1, 0)} type="button">−</button>
+                    <button aria-label="向左移动身体" data-testid="character-assembly-body-left-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(-1, 0)} type="button"><DecorativeIcon icon={Minus} /></button>
                     <output aria-label="身体水平位置" data-testid="character-assembly-body-offset-x">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).offsetX.toFixed(1)}</output>
-                    <button aria-label="向右移动身体" data-testid="character-assembly-body-right-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(1, 0)} type="button">+</button>
+                    <button aria-label="向右移动身体" data-testid="character-assembly-body-right-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(1, 0)} type="button"><DecorativeIcon icon={Plus} /></button>
                   </div>
                   <div aria-label="身体上下位置" className="character-assembly-control-set" role="group">
                     <span className="character-assembly-control-label">身体上下</span>
-                    <button aria-label="向上移动身体" data-testid="character-assembly-body-up-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(0, -1)} type="button">−</button>
+                    <button aria-label="向上移动身体" data-testid="character-assembly-body-up-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(0, -1)} type="button"><DecorativeIcon icon={Minus} /></button>
                     <output aria-label="身体垂直位置" data-testid="character-assembly-body-offset-y">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).offsetY.toFixed(1)}</output>
-                    <button aria-label="向下移动身体" data-testid="character-assembly-body-down-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(0, 1)} type="button">+</button>
+                    <button aria-label="向下移动身体" data-testid="character-assembly-body-down-step" disabled={isTestingHeadMotion} onClick={() => nudgeBody(0, 1)} type="button"><DecorativeIcon icon={Plus} /></button>
                   </div>
                   <div aria-label="身体大小" className="character-assembly-control-set" role="group">
                     <span className="character-assembly-control-label">身体大小</span>
-                    <button aria-label="缩小身体" data-testid="character-assembly-body-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustBodyScale(-0.05)} type="button">−</button>
+                    <button aria-label="缩小身体" data-testid="character-assembly-body-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustBodyScale(-0.05)} type="button"><DecorativeIcon icon={Minus} /></button>
                     <output aria-label="身体大小" data-testid="character-assembly-body-scale">{(session.draft.bodyPlacement ?? DEFAULT_BODY_PLACEMENT).scale.toFixed(2)}×</output>
-                    <button aria-label="放大身体" data-testid="character-assembly-body-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustBodyScale(0.05)} type="button">+</button>
+                    <button aria-label="放大身体" data-testid="character-assembly-body-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustBodyScale(0.05)} type="button"><DecorativeIcon icon={Plus} /></button>
                   </div>
                 </>
               ) : activeEditTarget === 'head' && head ? (
                 <>
                   <div aria-label="头部左右位置" className="character-assembly-control-set" role="group">
                     <span className="character-assembly-control-label">头部左右</span>
-                    <button aria-label="向左移动头部" data-testid="character-assembly-head-left-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(-1, 0)} type="button">−</button>
+                    <button aria-label="向左移动头部" data-testid="character-assembly-head-left-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(-1, 0)} type="button"><DecorativeIcon icon={Minus} /></button>
                     <output aria-label="头部水平位置" data-testid="character-assembly-head-offset-x">{head.placement.offsetX.toFixed(1)}</output>
-                    <button aria-label="向右移动头部" data-testid="character-assembly-head-right-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(1, 0)} type="button">+</button>
+                    <button aria-label="向右移动头部" data-testid="character-assembly-head-right-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(1, 0)} type="button"><DecorativeIcon icon={Plus} /></button>
                   </div>
                   <div aria-label="头部上下位置" className="character-assembly-control-set" role="group">
                     <span className="character-assembly-control-label">头部上下</span>
-                    <button aria-label="向上移动头部" data-testid="character-assembly-head-up-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, -1)} type="button">−</button>
+                    <button aria-label="向上移动头部" data-testid="character-assembly-head-up-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, -1)} type="button"><DecorativeIcon icon={Minus} /></button>
                     <output aria-label="头部垂直位置" data-testid="character-assembly-head-offset-y">{head.placement.offsetY.toFixed(1)}</output>
-                    <button aria-label="向下移动头部" data-testid="character-assembly-head-down-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, 1)} type="button">+</button>
+                    <button aria-label="向下移动头部" data-testid="character-assembly-head-down-step" disabled={isTestingHeadMotion} onClick={() => nudgeHead(0, 1)} type="button"><DecorativeIcon icon={Plus} /></button>
                   </div>
                   <div aria-label="头部大小" className="character-assembly-control-set" role="group">
                     <span className="character-assembly-control-label">头部大小</span>
-                    <button aria-label="缩小头部" data-testid="character-assembly-head-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(-0.05)} type="button">−</button>
+                    <button aria-label="缩小头部" data-testid="character-assembly-head-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(-0.05)} type="button"><DecorativeIcon icon={Minus} /></button>
                     <output aria-label="头部大小" data-testid="character-assembly-head-scale">{head.placement.scale.toFixed(2)}×</output>
-                    <button aria-label="放大头部" data-testid="character-assembly-head-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(0.05)} type="button">+</button>
+                    <button aria-label="放大头部" data-testid="character-assembly-head-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustHeadScale(0.05)} type="button"><DecorativeIcon icon={Plus} /></button>
                   </div>
                 </>
               ) : (
                 <>
                   <div aria-label="左右" className="character-assembly-control-set" role="group">
                     <span className="character-assembly-control-label">左右</span>
-                    <button aria-label="向左移动脸部" data-testid="character-assembly-left-step" disabled={isTestingHeadMotion} onClick={() => moveFace(-1, 0)} type="button">−</button>
+                    <button aria-label="向左移动脸部" data-testid="character-assembly-left-step" disabled={isTestingHeadMotion} onClick={() => moveFace(-1, 0)} type="button"><DecorativeIcon icon={Minus} /></button>
                     <output aria-label="左右偏移" data-testid="character-assembly-offset-x">{session.draft.facePlacement.offsetX.toFixed(1)}</output>
-                    <button aria-label="向右移动脸部" data-testid="character-assembly-right-step" disabled={isTestingHeadMotion} onClick={() => moveFace(1, 0)} type="button">+</button>
+                    <button aria-label="向右移动脸部" data-testid="character-assembly-right-step" disabled={isTestingHeadMotion} onClick={() => moveFace(1, 0)} type="button"><DecorativeIcon icon={Plus} /></button>
                   </div>
                   <div aria-label="上下" className="character-assembly-control-set" role="group">
                     <span className="character-assembly-control-label">上下</span>
-                    <button aria-label="向上移动脸部" data-testid="character-assembly-up-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, -1)} type="button">−</button>
+                    <button aria-label="向上移动脸部" data-testid="character-assembly-up-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, -1)} type="button"><DecorativeIcon icon={Minus} /></button>
                     <output aria-label="上下偏移" data-testid="character-assembly-offset-y">{session.draft.facePlacement.offsetY.toFixed(1)}</output>
-                    <button aria-label="向下移动脸部" data-testid="character-assembly-down-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, 1)} type="button">+</button>
+                    <button aria-label="向下移动脸部" data-testid="character-assembly-down-step" disabled={isTestingHeadMotion} onClick={() => moveFace(0, 1)} type="button"><DecorativeIcon icon={Plus} /></button>
                   </div>
                   <div aria-label="大小" className="character-assembly-control-set" role="group">
                     <span className="character-assembly-control-label">大小</span>
-                    <button aria-label="缩小脸部" data-testid="character-assembly-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustScale(-0.05)} type="button">−</button>
+                    <button aria-label="缩小脸部" data-testid="character-assembly-scale-down" disabled={isTestingHeadMotion} onClick={() => adjustScale(-0.05)} type="button"><DecorativeIcon icon={Minus} /></button>
                     <output aria-label="脸部大小" data-testid="character-assembly-scale">{session.draft.facePlacement.scale.toFixed(2)}×</output>
-                    <button aria-label="放大脸部" data-testid="character-assembly-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustScale(0.05)} type="button">+</button>
+                    <button aria-label="放大脸部" data-testid="character-assembly-scale-up" disabled={isTestingHeadMotion} onClick={() => adjustScale(0.05)} type="button"><DecorativeIcon icon={Plus} /></button>
                   </div>
                 </>
               )}

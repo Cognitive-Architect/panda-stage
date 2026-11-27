@@ -591,7 +591,7 @@
   padding: 3px;
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 999px;
-  background: #18231c;
+  background: var(--ui-color-surface-work);
   align-items: center;
   transition: background 120ms ease;
 }
@@ -603,7 +603,7 @@
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  background: #82958a;
+  background: var(--ui-color-text-muted);
   transition: transform 120ms ease;
 }
 
@@ -613,7 +613,7 @@
   .character-flip-switch[aria-checked='true']
   .character-switch-track {
   border-color: rgb(127 199 148 / 38%);
-  background: rgb(55 122 73 / 62%);
+  background: var(--ui-color-selected-surface);
 }
 
 .editor-layout[data-shell-mode='landscape']
@@ -621,7 +621,7 @@
   .character-manager[data-character-presentation='landscape']
   .character-flip-switch[aria-checked='true']
   .character-switch-track > span {
-  background: #d5f3dd;
+  background: var(--ui-color-selected-border);
   transform: translateX(20px);
 }
 

@@ -8,7 +8,6 @@ export interface CanvasWorkspaceProps {
   curveMotionDraft?: CurveMotionStageDraft | null;
   dialogueSilence?: DialogueSilence;
   showHeading?: boolean;
-  selectionAccent?: string;
   showToolbar?: boolean;
   onCharacterPartSelected?: () => void;
 }
@@ -25,7 +24,6 @@ export function CanvasWorkspace({
   curveMotionDraft,
   dialogueSilence,
   showHeading = true,
-  selectionAccent,
   showToolbar = true,
   onCharacterPartSelected,
 }: CanvasWorkspaceProps = {}): React.JSX.Element {
@@ -40,7 +38,6 @@ export function CanvasWorkspace({
         curveMotionDraft={curveMotionDraft}
         dialogueSilence={dialogueSilence}
         showHeading={showHeading}
-        selectionAccent={selectionAccent}
         showToolbar={showToolbar}
         onCharacterPartSelected={onCharacterPartSelected}
       />

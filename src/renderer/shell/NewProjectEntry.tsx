@@ -1,6 +1,6 @@
 import { FolderOpen, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { DecorativeIcon } from '../ui';
+import { Button, DecorativeIcon } from '../ui';
 import { validateProjectOpenCandidate } from './projectOpenFlow';
 
 export interface NewProjectEntryProps {
@@ -38,10 +38,11 @@ export function NewProjectEntry({
         className="project-launcher-actions"
         data-testid="project-launcher-actions"
       >
-        <button
+        <Button
           className={`launcher-action-tile launcher-action-new new-project-button task4-hit-target${
             !hasCurrentProject ? ' launcher-action-primary' : ''
           }`}
+          variant={hasCurrentProject ? 'secondary' : 'primary'}
           data-task4-core="new-project"
           data-testid="new-project-button"
           disabled={busy || newProjectDialogOpen}
@@ -49,15 +50,16 @@ export function NewProjectEntry({
           type="button"
         >
           <span aria-hidden="true" className="launcher-action-icon">
-            <DecorativeIcon icon={Plus} size={22} strokeWidth={2.1} />
+            <DecorativeIcon icon={Plus} />
           </span>
           <span className="launcher-action-copy">
             <strong>新建项目</strong>
             <small>从一个空白项目开始</small>
           </span>
-        </button>
-        <button
+        </Button>
+        <Button
           className="launcher-action-tile launcher-action-open launcher-open-project-button task4-hit-target"
+          variant="secondary"
           data-task4-core="open-project"
           data-testid="open-project"
           disabled={busy}
@@ -65,13 +67,13 @@ export function NewProjectEntry({
           type="button"
         >
           <span aria-hidden="true" className="launcher-action-icon">
-            <DecorativeIcon icon={FolderOpen} size={22} strokeWidth={1.9} />
+            <DecorativeIcon icon={FolderOpen} />
           </span>
           <span className="launcher-action-copy">
             <strong>打开项目</strong>
             <small>打开已有 Panda Stage 项目</small>
           </span>
-        </button>
+        </Button>
       </div>
 
       {/*
