@@ -1,8 +1,10 @@
 import { useState, useSyncExternalStore } from 'react';
 import { LayerMotionService, LayerService, layerHasNonNeutralMotion, type Layer, type Project } from '../../../domain';
 import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
+import { layoutPreviewStore } from '../../stores/layoutPreviewStore';
 import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
+import { BatchLayoutControls } from './BatchLayoutControls';
 import { BatchRenameFields } from './BatchRenameFields';
 
 const service = new LayerService();
@@ -50,6 +52,7 @@ export function BatchLayerControls({ snapshot, shotId, layers }: {
     if (event.key === 'Delete' || event.key === 'Backspace') event.stopPropagation();
   }} onToggle={(event) => {
     if (event.currentTarget.open) return;
+    layoutPreviewStore.clear();
     selectionStore.clearBatchLayers();
     setDeleteSelection(undefined);
   }}>
@@ -58,6 +61,12 @@ export function BatchLayerControls({ snapshot, shotId, layers }: {
       <label><input type="checkbox" checked={selectedIds.includes(layer.id)}
         onChange={() => selectionStore.toggleBatchLayer(layer.id)} />{layer.name}{layer.locked ? '（已锁定）' : ''}</label>
     </li>)}</ul>
+    <BatchLayoutControls
+      snapshot={snapshot}
+      shotId={shotId}
+      selectedLayers={selected}
+      onApply={apply}
+    />
     <BatchRenameFields entries={editable} onApply={(names) => apply('批量改名图层',
       (project) => service.renameContentLayers(project, shotId, names))} />
     <div className="layer-order-actions">

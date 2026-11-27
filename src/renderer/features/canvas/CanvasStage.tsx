@@ -76,6 +76,7 @@ import {
 import { layerStore } from '../../stores/layerStore';
 import { useOpacityPreview } from '../../stores/opacityPreviewStore';
 import { useDepthPreview } from '../../stores/depthPreviewStore';
+import { useLayoutPreview } from '../../stores/layoutPreviewStore';
 import {
   usePositionAuthoringSession,
   positionAuthoringSessionStore,
@@ -404,6 +405,7 @@ export function CanvasStage({
   const [motionError, setMotionError] = useState('');
   const opacityPreview = useOpacityPreview();
   const depthPreview = useDepthPreview();
+  const layoutPreview = useLayoutPreview();
   const layerNodeRefs = useRef(
     new Map<string, React.RefObject<Konva.Group | null>>(),
   );
@@ -444,9 +446,19 @@ export function CanvasStage({
     depthPreview.timeMs === timelineUi.currentTimeMs
     ? depthPreview
     : null;
+  const activeLayoutPreview = !armAssembly && layoutPreview &&
+    layoutPreview.projectInstanceId === projectInstanceId &&
+    layoutPreview.projectId === snapshot?.project.id &&
+    layoutPreview.projectRoot === snapshot?.projectRoot &&
+    layoutPreview.revision === snapshot?.revision &&
+    layoutPreview.shotId === currentShotId &&
+    layoutPreview.timeMs === timelineUi.currentTimeMs
+    ? layoutPreview
+    : null;
   const effectiveCameraProject =
     activeCameraCurveDraft?.project ??
     activeDepthPreview?.previewProject ??
+    activeLayoutPreview?.previewProject ??
     snapshot?.project ??
     null;
   const effectiveCameraShot =
@@ -477,6 +489,7 @@ export function CanvasStage({
     activeCameraCurveDraft?.timeMs ??
     timelineUi.currentTimeMs;
   const effectivePreviewProject =
+    activeLayoutPreview?.previewProject ??
     activeDepthPreview?.previewProject ??
     activeCameraCurveDraft?.project ??
     activeCurveDraft?.project ??
