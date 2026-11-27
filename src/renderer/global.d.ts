@@ -6,6 +6,14 @@ import type {
   AssetImportResponse,
 } from '../shared/asset-import-api';
 import type {
+  ProjectResourceImportApplyRequest,
+  ProjectResourceImportApplyResponse,
+  ProjectResourceImportChooseRequest,
+  ProjectResourceImportChooseResponse,
+  ProjectResourceImportPreviewRequest,
+  ProjectResourceImportPreviewResponse,
+} from '../shared/project-resource-import-api';
+import type {
   AssetMetadataCancelResponse,
   AssetMetadataRequest,
   AssetMetadataResponse,
@@ -233,6 +241,17 @@ declare global {
         getAudioInfo: (
           request: AssetPreviewAudioReadRequest,
         ) => Promise<AssetPreviewAudioInfoResponse>;
+      };
+      projectResourceImport: {
+        chooseSource: (
+          request: ProjectResourceImportChooseRequest,
+        ) => Promise<ProjectResourceImportChooseResponse>;
+        preview: (
+          request: ProjectResourceImportPreviewRequest,
+        ) => Promise<ProjectResourceImportPreviewResponse>;
+        apply: (
+          request: ProjectResourceImportApplyRequest,
+        ) => Promise<ProjectResourceImportApplyResponse>;
       };
       recentProjects: {
         list: () => Promise<RecentProjectsListResponse>;

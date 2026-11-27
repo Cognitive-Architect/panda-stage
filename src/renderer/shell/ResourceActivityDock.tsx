@@ -46,6 +46,7 @@ import {
   Clapperboard,
   CirclePlus,
   FileArchive,
+  FolderInput,
   Images,
   Plus,
   Smile,
@@ -195,6 +196,8 @@ export function ResourceActivityDock({
     useState<HTMLDivElement | null>(null);
   const [assetImportRequest, setAssetImportRequest] = useState(0);
   const [assetFlaReviewRequest, setAssetFlaReviewRequest] = useState(0);
+  const [assetCrossProjectImportRequest, setAssetCrossProjectImportRequest] =
+    useState(0);
   const [assetReviewCloseRequest, setAssetReviewCloseRequest] = useState(0);
   const [pendingExternalAdaptiveCharacter, setPendingExternalAdaptiveCharacter] = useState<{
     readonly characterId: string;
@@ -677,34 +680,64 @@ export function ResourceActivityDock({
                   </button>
                 )}
               {showLandscapeAssetActionGroup ? (
-                <button
-                  aria-label="导入 FLA"
-                  className="resource-activity-fla-action"
-                  data-resource-action="assets-import-fla"
-                  data-testid="resource-asset-import-fla"
-                  onClick={() =>
-                    setAssetFlaReviewRequest((value) => value + 1)
-                  }
-                  type="button"
-                >
-                  <DecorativeIcon icon={FileArchive} size={18} />
-                  <span>导入 FLA</span>
-                </button>
+                <>
+                  <button
+                    aria-label="导入 FLA"
+                    className="resource-activity-fla-action"
+                    data-resource-action="assets-import-fla"
+                    data-testid="resource-asset-import-fla"
+                    onClick={() =>
+                      setAssetFlaReviewRequest((value) => value + 1)
+                    }
+                    type="button"
+                  >
+                    <DecorativeIcon icon={FileArchive} size={18} />
+                    <span>导入 FLA</span>
+                  </button>
+                  <button
+                    aria-label="从其他工程导入"
+                    className="resource-activity-fla-action"
+                    data-resource-action="assets-import-project"
+                    data-testid="resource-asset-import-project"
+                    onClick={() =>
+                      setAssetCrossProjectImportRequest((value) => value + 1)
+                    }
+                    type="button"
+                  >
+                    <DecorativeIcon icon={FolderInput} size={18} />
+                    <span>从其他工程导入</span>
+                  </button>
+                </>
               ) : null}
               {showPortraitAssetActionGroup ? (
-                <button
-                  aria-label="导入 FLA"
-                  className="resource-activity-fla-action"
-                  data-resource-action="assets-import-fla"
-                  data-testid="resource-asset-import-fla"
-                  onClick={() =>
-                    setAssetFlaReviewRequest((value) => value + 1)
-                  }
-                  type="button"
-                >
-                  <DecorativeIcon icon={FileArchive} size={18} />
-                  <span>导入 FLA</span>
-                </button>
+                <>
+                  <button
+                    aria-label="导入 FLA"
+                    className="resource-activity-fla-action"
+                    data-resource-action="assets-import-fla"
+                    data-testid="resource-asset-import-fla"
+                    onClick={() =>
+                      setAssetFlaReviewRequest((value) => value + 1)
+                    }
+                    type="button"
+                  >
+                    <DecorativeIcon icon={FileArchive} size={18} />
+                    <span>导入 FLA</span>
+                  </button>
+                  <button
+                    aria-label="从其他工程导入"
+                    className="resource-activity-fla-action"
+                    data-resource-action="assets-import-project"
+                    data-testid="resource-asset-import-project"
+                    onClick={() =>
+                      setAssetCrossProjectImportRequest((value) => value + 1)
+                    }
+                    type="button"
+                  >
+                    <DecorativeIcon icon={FolderInput} size={18} />
+                    <span>从其他工程导入</span>
+                  </button>
+                </>
               ) : null}
               {hidePortraitAssetsChrome ? null : hidePortraitShotChrome ? null : (
                 <button
@@ -785,6 +818,7 @@ export function ResourceActivityDock({
             ) : activeActivity === 'assets' ? (
               <AssetLibrary
                 closeRequestToken={assetReviewCloseRequest}
+                crossProjectImportRequestToken={assetCrossProjectImportRequest}
                 flaReviewRequestToken={assetFlaReviewRequest}
                 hideHeading={hideLocalActivityTabs}
                 importRequestToken={assetImportRequest}

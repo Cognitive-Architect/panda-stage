@@ -42,6 +42,8 @@ import { confirmPendingExportWork } from './windows/export-close-confirmation';
 import { AssetImportService } from './services/AssetImportService';
 import { declaredMimeTypeForPath } from './services/MediaInspectionService';
 import { registerAssetImportIpcHandlers } from './ipc/register-asset-import-ipc-handlers';
+import { ProjectResourceImportService } from './services/ProjectResourceImportService';
+import { registerProjectResourceImportIpcHandlers } from './ipc/register-project-resource-import-ipc-handlers';
 import { CacheService } from './services/CacheService';
 import {
   FFmpegThumbnailGenerator,
@@ -91,6 +93,7 @@ let removeProjectIpcHandlers: (() => void) | null = null;
 let removeRecoveryIpcHandlers: (() => void) | null = null;
 let removeRecentProjectsIpcHandlers: (() => void) | null = null;
 let removeAssetImportIpcHandlers: (() => void) | null = null;
+let removeProjectResourceImportIpcHandlers: (() => void) | null = null;
 let removeAssetMetadataIpcHandlers: (() => void) | null = null;
 let removeAssetLibraryIpcHandlers: (() => void) | null = null;
 let removeFlaImportIpcHandlers: (() => void) | null = null;
@@ -568,6 +571,19 @@ async function initialize(): Promise<void> {
     getCurrentProjectSnapshot: (projectRoot) =>
       autosaveService?.getProjectSnapshot(projectRoot) ?? null,
   });
+  const projectResourceImportService = new ProjectResourceImportService({
+    projectService,
+    getCurrentProjectSnapshot: (projectRoot) =>
+      autosaveService?.getProjectSnapshot(projectRoot) ?? null,
+    pathService,
+  });
+  removeProjectResourceImportIpcHandlers =
+    registerProjectResourceImportIpcHandlers({
+      getMainWindow: () => mainWindow,
+      projectResourceImportService,
+      selectSourceProjectDirectory: (window) =>
+        selectProjectDirectory(window, '选择来源 Panda Stage 项目文件夹'),
+    });
   removeAssetImportIpcHandlers = registerAssetImportIpcHandlers({
     getMainWindow: () => mainWindow,
     assetImportService,
@@ -1005,6 +1021,8 @@ app.on('will-quit', () => {
   removeRecentProjectsIpcHandlers = null;
   removeAssetImportIpcHandlers?.();
   removeAssetImportIpcHandlers = null;
+  removeProjectResourceImportIpcHandlers?.();
+  removeProjectResourceImportIpcHandlers = null;
   removeAssetMetadataIpcHandlers?.();
   removeAssetMetadataIpcHandlers = null;
   removeAssetLibraryIpcHandlers?.();

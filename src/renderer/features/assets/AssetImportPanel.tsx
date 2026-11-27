@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FileArchive, X } from 'lucide-react';
+import { FileArchive, FolderInput, X } from 'lucide-react';
 import type {
   AssetImportResponse,
 } from '../../../shared/asset-import-api';
@@ -24,6 +24,7 @@ export interface AssetImportPanelProps {
   snapshot: EditorProjectSnapshot | null;
   importRequestToken?: number;
   onImportFla: () => void;
+  onImportFromProject?: () => void;
   compact?: boolean;
   showFlaAction?: boolean;
   onImportedAudioAssets?: (
@@ -60,6 +61,7 @@ export function AssetImportPanel({
   snapshot,
   importRequestToken,
   onImportFla,
+  onImportFromProject,
   compact = false,
   showFlaAction = true,
   onImportedAudioAssets,
@@ -393,7 +395,18 @@ export function AssetImportPanel({
               <DecorativeIcon icon={FileArchive} size={18} />
               <span>导入 FLA</span>
             </button>
-            <span>打开 FLA 后可先预览并选择需要的素材，确认导入前不会修改项目。</span>
+            {onImportFromProject ? (
+              <button
+                className="asset-import-fla-button"
+                data-testid="asset-import-from-project"
+                disabled={snapshot === null || busy}
+                onClick={onImportFromProject}
+                type="button"
+              >
+                <DecorativeIcon icon={FolderInput} size={18} />
+                <span>从其他工程导入</span>
+              </button>
+            ) : null}
           </div>
         ) : null}
         {!snapshot ? (
