@@ -7,7 +7,7 @@ import {
   buildProjectResourceImportPreview,
   collectProjectResourceClosure,
   collectProjectUuidValues,
-  findProvablyReusableTargetAsset,
+  findProvablyReusableTargetAssets,
   ProjectSchema,
   type Asset,
   type Character,
@@ -395,13 +395,26 @@ export class ProjectResourceImportService {
           }> = [];
 
           for (const item of preflight) {
-            const reusable = request.reuseIdenticalAssets
-              ? findProvablyReusableTargetAsset(
-                  current.project,
-                  item.sourceAsset,
+            let reusable: Asset | null = null;
+            if (request.reuseIdenticalAssets) {
+              const candidates = findProvablyReusableTargetAssets(
+                current.project,
+                item.sourceAsset,
+                item.sha256,
+              );
+              for (const candidateAsset of candidates) {
+                const verified = await this.verifyReusableTargetAsset(
+                  transaction.projectRoot,
+                  candidateAsset,
                   item.sha256,
-                )
-              : null;
+                  item.sourceAsset,
+                );
+                if (verified) {
+                  reusable = candidateAsset;
+                  break;
+                }
+              }
+            }
 
             if (reusable) {
               plannedAssets.push({
@@ -507,31 +520,35 @@ export class ProjectResourceImportService {
       this.selections.delete(request.sourceToken);
       return operation;
     } catch (error) {
-      if (error instanceof AssetImportFileSystemCleanupError) {
-        throw this.error(
-          'PROJECT_RESOURCE_ROLLBACK_FAILED',
-          targetRoot,
-          '复制文件清理未完成，请手动检查目标项目中的残留文件。',
-          { cause: error, residualPaths: error.residualPaths },
-        );
-      }
+      const residualPaths: string[] =
+        error instanceof AssetImportFileSystemCleanupError
+          ? [...error.residualPaths]
+          : [];
+      const seenResiduals = new Set(residualPaths);
+
       if (copiedPaths.length > 0) {
-        const failures: string[] = [];
-        for (const copiedPath of copiedPaths.reverse()) {
+        for (const copiedPath of [...copiedPaths].reverse()) {
           try {
             await this.fileSystem.rollbackImportedFile(copiedPath);
           } catch {
-            failures.push(copiedPath);
+            if (!seenResiduals.has(copiedPath)) {
+              seenResiduals.add(copiedPath);
+              residualPaths.push(copiedPath);
+            }
           }
         }
-        if (failures.length > 0) {
-          throw this.error(
-            'PROJECT_RESOURCE_ROLLBACK_FAILED',
-            targetRoot,
-            '导入失败且部分新文件未能清理，请手动检查目标项目中的残留文件。',
-            { cause: error, residualPaths: failures },
-          );
-        }
+        copiedPaths.length = 0;
+      }
+
+      if (residualPaths.length > 0) {
+        throw this.error(
+          'PROJECT_RESOURCE_ROLLBACK_FAILED',
+          targetRoot,
+          error instanceof AssetImportFileSystemCleanupError
+            ? '复制文件清理未完成，请手动检查目标项目中的残留文件。'
+            : '导入失败且部分新文件未能清理，请手动检查目标项目中的残留文件。',
+          { cause: error, residualPaths },
+        );
       }
       if (error instanceof ProjectResourceImportServiceError) throw error;
       throw this.error(
@@ -670,6 +687,78 @@ export class ProjectResourceImportService {
       );
     }
     return planned;
+  }
+
+  /**
+   * Verifies a JSON-indexed target asset candidate against the actual on-disk
+   * file in `targetRoot/assets` before allowing reuse. Only inspects the
+   * specific candidate file (no repo-wide hashing); missing, replaced, escaped,
+   * or incompatible files return `false` so the caller safely falls back to
+   * copying a fresh non-colliding file.
+   */
+  private async verifyReusableTargetAsset(
+    targetRoot: string,
+    candidate: Asset,
+    expectedSourceSha256: string,
+    sourceAsset: Asset,
+  ): Promise<boolean> {
+    let targetPath: string | null;
+    try {
+      targetPath = await resolveProjectAssetPath(
+        targetRoot,
+        candidate.relativePath,
+        { preservePermissionErrors: true },
+      );
+    } catch {
+      return false;
+    }
+    if (!targetPath) return false;
+
+    const normalizedMime = candidate.mimeType.trim().toLowerCase();
+    if (candidate.kind === 'image' && normalizedMime === 'image/svg+xml') {
+      if (path.extname(targetPath).toLowerCase() !== '.svg') return false;
+      try {
+        const stats = await stat(targetPath);
+        if (!stats.isFile() || stats.size === 0 || stats.size > MAX_SVG_BYTES) {
+          return false;
+        }
+        const content = await readFile(targetPath, 'utf8');
+        if (!/<svg[\s>]/iu.test(content)) return false;
+        const actualSha256 = (await this.hashService.hashFile(targetPath)).hex;
+        return actualSha256 === expectedSourceSha256;
+      } catch {
+        return false;
+      }
+    }
+
+    if (candidate.kind === 'image' || candidate.kind === 'audio') {
+      try {
+        const media = await this.inspectionService.inspect(
+          targetPath,
+          candidate.mimeType,
+        );
+        const actualSha256 = (await this.hashService.hashFile(targetPath)).hex;
+        if (actualSha256 !== expectedSourceSha256) return false;
+        if (media.kind !== candidate.kind || media.mimeType !== normalizedMime) {
+          return false;
+        }
+        if (
+          candidate.kind === 'image' &&
+          sourceAsset.kind === 'image' &&
+          (media.width !== sourceAsset.width ||
+            media.height !== sourceAsset.height ||
+            media.width !== candidate.width ||
+            media.height !== candidate.height)
+        ) {
+          return false;
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    return false;
   }
 
   private async inspectSvgAsset(

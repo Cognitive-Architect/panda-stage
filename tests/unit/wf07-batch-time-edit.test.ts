@@ -8,6 +8,7 @@ import {
   TimelineEventBatchService,
   TimelineEventBatchError,
   frameTimeMs,
+  layerCompositeKeyTimes,
   reconcileDialogueMouthPoses,
   resolveLayerAnimationTimeLink,
   type AudioAsset,
@@ -883,5 +884,235 @@ describe('WF-07 TimelineEventBatchService: action batch shift, unified duration,
     dialogueSelection.dispose();
     layerSelection.dispose();
     shotStore.dispose();
+  });
+
+  it('R7: keeps dialogues, audio, mouth poses, timeline events, and LayerMotion keyframes in sync on 24fps grid for non-frame deltas, bounds, negative shifts, and repeated shifts without degrading pure-ms editing', () => {
+    const voiced = buildVoicedDialogueProject();
+    const actions = buildActionProject();
+    const motionService = new LayerMotionService();
+
+    // Combine voiced dialogues + timeline events + LayerMotion keyframes at frame 12 (500ms) and frame 24 (1000ms)
+    const mergedAssets = [
+      ...voiced.assets,
+      ...actions.assets.filter(
+        (asset) => !voiced.assets.some((existing) => existing.id === asset.id),
+      ),
+    ];
+    let combined = ProjectSchema.parse({
+      ...voiced,
+      assets: mergedAssets,
+      animations: actions.animations,
+      characters: [
+        {
+          ...voiced.characters[0]!,
+          actions: actions.characters[0]!.actions,
+        },
+      ],
+      shots: [
+        {
+          ...voiced.shots[0]!,
+          layers: actions.shots[0]!.layers,
+          timelineEvents: [
+            ...voiced.shots[0]!.timelineEvents,
+            ...actions.shots[0]!.timelineEvents,
+          ],
+        },
+      ],
+    });
+    const k1 = frameTimeMs(12); // 500ms (aligned with EV_MOVE startMs=500ms)
+    const k2 = frameTimeMs(24); // 1000ms
+    combined = motionService.applyTransform(
+      combined,
+      { shotId: IDS.shot, layerId: IDS.animationLayer, timeMs: k1, autoKey: true },
+      { x: 960 },
+    );
+    combined = motionService.applyTransform(
+      combined,
+      { shotId: IDS.shot, layerId: IDS.animationLayer, timeMs: k2, autoKey: true },
+      { x: 1120 },
+    );
+
+    const batchService = new TimelineEventBatchService();
+    const spanRef = {
+      id: `span:${IDS.animationLayer}`,
+      layerId: IDS.animationLayer,
+      startMs: k1,
+      endMs: k2,
+    };
+
+    // 1. Non-whole-frame input (+100ms = 2.4 frames -> +2 frames = +83ms):
+    // preview and applied result must match identically across dialogue, audio, mouth pose, event, and keyframes!
+    const preview100 = batchService.planCrossTypeShift(combined, {
+      shotId: IDS.shot,
+      dialogueIds: [DLG_1, DLG_2, DLG_3],
+      eventIds: [EV_MOVE],
+      layerMotionSpans: [spanRef],
+      deltaMs: 100,
+    });
+    expect(preview100.deltaFrames).toBe(2);
+    expect(preview100.frameSnapped).toBe(true);
+    expect(preview100.deltaMs).toBe(frameTimeMs(14) - frameTimeMs(12)); // 83ms
+    expect(preview100.dialoguePlan?.deltaMs).toBe(83);
+    expect(preview100.actionPlan?.entries[0]).toMatchObject({
+      nextStartMs: 583,
+      nextEndMs: 1_583,
+    });
+    expect(preview100.actionPlan?.motionSpanEntries[0]).toMatchObject({
+      nextStartMs: frameTimeMs(14),
+      nextEndMs: frameTimeMs(26),
+    });
+
+    // Apply via TimelineBatchStore to also verify single Undo/Redo!
+    const editorStore = new EditorProjectStore();
+    editorStore.open('C:\\temp\\wf07-r7', combined);
+    const localShotStore = new ShotStore(editorStore, new ShotService());
+    const localBatchStore = new TimelineBatchStore(
+      editorStore,
+      localShotStore,
+      batchService,
+    );
+    localBatchStore.applyCrossTypeShift({
+      dialogueIds: [DLG_1, DLG_2, DLG_3],
+      eventIds: [EV_MOVE],
+      layerMotionSpans: [spanRef],
+      deltaMs: 100,
+    });
+    expect(editorStore.history.getSnapshot().undoCount).toBe(1);
+    const shiftedOnce = editorStore.getSnapshot()!.project;
+    const shotAfter1 = shiftedOnce.shots[0]!;
+    expect(shotAfter1.dialogues.find((d) => d.id === DLG_1)).toMatchObject({
+      startMs: 283,
+      endMs: 1_283,
+    });
+    expect(shotAfter1.audioClips.find((c) => c.id === CLIP_1)).toMatchObject({
+      startMs: 283,
+      endMs: 1_283,
+    });
+    expect(
+      shotAfter1.timelineEvents.find((e) => e.id === POSE_GEN_1),
+    ).toMatchObject({
+      startMs: 383,
+      endMs: 983,
+    });
+    expect(shotAfter1.timelineEvents.find((e) => e.id === EV_MOVE)).toMatchObject({
+      startMs: 583,
+      endMs: 1_583,
+    });
+    // Unselected dialogue & mouth pose remain untouched!
+    expect(shotAfter1.dialogues.find((d) => d.id === DLG_5)).toMatchObject({
+      startMs: 6_500,
+      endMs: 7_500,
+    });
+    const animLayer1 = shotAfter1.layers.find((l) => l.id === IDS.animationLayer)!;
+    const movedKeys1 = layerCompositeKeyTimes(animLayer1);
+    expect(movedKeys1).toEqual([0, frameTimeMs(14), frameTimeMs(26)]);
+    // Exact 0ms relative offset between EV_MOVE and LayerMotion span start!
+    expect(shotAfter1.timelineEvents.find((e) => e.id === EV_MOVE)!.startMs).toBe(
+      movedKeys1[1],
+    );
+
+    // 1 Undo restores exact original positions across dialogues, events, and keyframes!
+    editorStore.undo();
+    const afterUndoShot = editorStore.getSnapshot()!.project.shots[0]!;
+    expect(afterUndoShot.dialogues.find((d) => d.id === DLG_1)!.startMs).toBe(200);
+    expect(afterUndoShot.timelineEvents.find((e) => e.id === EV_MOVE)!.startMs).toBe(500);
+    expect(
+      layerCompositeKeyTimes(
+        afterUndoShot.layers.find((l) => l.id === IDS.animationLayer)!,
+      ),
+    ).toEqual([0, 500, 1_000]);
+    localShotStore.dispose();
+
+    // 2. Negative shift (-100ms = -2 frames = -83ms) round-trips back to exact original positions!
+    const shiftedBack = batchService.applyCrossTypeShift(shiftedOnce, {
+      shotId: IDS.shot,
+      dialogueIds: [DLG_1, DLG_2, DLG_3],
+      eventIds: [EV_MOVE],
+      layerMotionSpans: [
+        {
+          id: spanRef.id,
+          layerId: IDS.animationLayer,
+          startMs: frameTimeMs(14),
+          endMs: frameTimeMs(26),
+        },
+      ],
+      deltaMs: -100,
+    });
+    const shotBack = shiftedBack.shots[0]!;
+    expect(shotBack.dialogues.find((d) => d.id === DLG_1)!.startMs).toBe(200);
+    expect(shotBack.timelineEvents.find((e) => e.id === EV_MOVE)!.startMs).toBe(500);
+    expect(
+      layerCompositeKeyTimes(
+        shotBack.layers.find((l) => l.id === IDS.animationLayer)!,
+      ),
+    ).toEqual([0, 500, 1_000]);
+
+    // 3. Repeated +100ms shifts (12 iterations = +24 frames = +1000ms) accumulate ZERO drift!
+    let rolling = combined;
+    let curStart = k1;
+    let curEnd = k2;
+    for (let step = 0; step < 12; step += 1) {
+      const next = batchService.applyCrossTypeShift(rolling, {
+        shotId: IDS.shot,
+        dialogueIds: [DLG_1, DLG_2, DLG_3, DLG_4],
+        eventIds: [EV_MOVE],
+        layerMotionSpans: [
+          { id: spanRef.id, layerId: IDS.animationLayer, startMs: curStart, endMs: curEnd },
+        ],
+        deltaMs: 100,
+      });
+      const layer = next.shots[0]!.layers.find((l) => l.id === IDS.animationLayer)!;
+      const times = layerCompositeKeyTimes(layer);
+      curStart = times[1]!;
+      curEnd = times[2]!;
+      rolling = next;
+    }
+    const shotAfter12 = rolling.shots[0]!;
+    // All three moved by EXACTLY +1000ms (24 frames), zero drift!
+    expect(shotAfter12.dialogues.find((d) => d.id === DLG_1)!.startMs).toBe(1_200);
+    expect(shotAfter12.timelineEvents.find((e) => e.id === EV_MOVE)!.startMs).toBe(1_500);
+    expect(curStart).toBe(1_500);
+    expect(curEnd).toBe(2_000);
+
+    // 4. Boundary clamp respects tightest ms bound on 24fps grid without desync (DLG_1 starts at 200ms -> max left shift -200ms -> -4 frames = -167ms)
+    const clampedPlan = batchService.planCrossTypeShift(combined, {
+      shotId: IDS.shot,
+      dialogueIds: [DLG_1, DLG_2, DLG_3],
+      eventIds: [EV_MOVE],
+      layerMotionSpans: [spanRef],
+      deltaMs: -500,
+      boundaryMode: 'clamp',
+    });
+    expect(clampedPlan.clamped).toBe(true);
+    expect(clampedPlan.deltaFrames).toBe(-4);
+    expect(clampedPlan.deltaMs).toBe(frameTimeMs(8) - frameTimeMs(12)); // -167ms >= -200ms
+    expect(clampedPlan.dialoguePlan?.entries[0]!.startMs).toBe(33);
+    expect(clampedPlan.actionPlan?.entries[0]!.nextStartMs).toBe(333);
+    expect(clampedPlan.actionPlan?.motionSpanEntries[0]!.nextStartMs).toBe(333);
+
+    // Reject mode still rejects genuinely out-of-range shift
+    expect(() =>
+      batchService.planCrossTypeShift(combined, {
+        shotId: IDS.shot,
+        dialogueIds: [DLG_1, DLG_2, DLG_3],
+        eventIds: [EV_MOVE],
+        layerMotionSpans: [spanRef],
+        deltaMs: -500,
+        boundaryMode: 'reject',
+      }),
+    ).toThrow(TimelineEventBatchError);
+
+    // 5. Pure millisecond batch (NO LayerMotion spans) keeps exact millisecond precision!
+    const pureMsPlan = batchService.planCrossTypeShift(combined, {
+      shotId: IDS.shot,
+      dialogueIds: [DLG_1, DLG_2, DLG_3],
+      eventIds: [EV_MOVE],
+      deltaMs: 100,
+    });
+    expect(pureMsPlan.deltaFrames).toBeUndefined();
+    expect(pureMsPlan.frameSnapped).toBeUndefined();
+    expect(pureMsPlan.deltaMs).toBe(100);
+    expect(pureMsPlan.dialoguePlan?.entries[0]!.startMs).toBe(300);
+    expect(pureMsPlan.actionPlan?.entries[0]!.nextStartMs).toBe(600);
   });
 });

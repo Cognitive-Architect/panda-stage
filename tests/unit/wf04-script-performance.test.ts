@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   ProjectSchema,
   applyScriptPerformancePlan,
+  createDraftRowIdGenerator,
+  dialogueDraftSpeakerKey,
   isScriptPerformancePlanStale,
   planScriptPerformance,
   saveActionRecipe,
@@ -380,5 +382,190 @@ describe('WF-04 shared script & performance planner and applier', () => {
       ok: false,
       errorCode: 'STALE_PLAN',
     });
+  });
+
+  it('R3: preserves deterministic audioAssetId and source ranges across same-speaker swap/insert, speaker change, manual swap/clear, and delete->add', () => {
+    const base = buildWf04Project();
+    // Give 师兄 two distinct numbered audio files: 1_师兄 (1800ms) and 2_师兄 (2200ms)
+    const audio1 = makeAudioAsset(AUDIO_IDS.a1, '1_师兄', 1_800);
+    const audio2 = makeAudioAsset(AUDIO_IDS.a2, '2_师兄', 2_200);
+    const audioAlt = makeAudioAsset(AUDIO_IDS.a5, '5_师兄', 1_400);
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: [
+        ...base.assets.filter((a) => a.kind !== 'audio'),
+        audio1,
+        audio2,
+        audioAlt,
+      ],
+    });
+
+    const nextDraftId = createDraftRowIdGenerator();
+    const initialScript = [
+      '镜头：同角色对白',
+      '背景：背景',
+      '出场：师兄、小师妹',
+      '对白：',
+      '师兄：先说第一句。',
+      '师兄：再说第二句。',
+    ].join('\n');
+
+    const plan1 = planScriptPerformance(project, initialScript, {
+      createDraftRowId: nextDraftId,
+    });
+    const rowA = plan1.dialogues[0]!;
+    const rowB = plan1.dialogues[1]!;
+    expect(rowA.audioMatch?.audioAssetId).toBe(audio1.id);
+    expect(rowB.audioMatch?.audioAssetId).toBe(audio2.id);
+
+    // Apply explicit source range on rowA via manual override
+    const plan1WithRange = planScriptPerformance(project, initialScript, {
+      previousDialogueRows: plan1.dialogueDraftRows,
+      createDraftRowId: nextDraftId,
+      overrides: {
+        audioByDraftRowId: {
+          [rowA.draftRowId]: {
+            audioAssetId: audio1.id,
+            sourceStartMs: 200,
+            sourceEndMs: 1_200,
+            speakerKey: dialogueDraftSpeakerKey({
+              speakerType: 'character',
+              characterId: project.characters[0]!.id,
+            }),
+          },
+        },
+      },
+    });
+    expect(plan1WithRange.dialogues[0]).toMatchObject({
+      startMs: 0,
+      endMs: 1_000,
+    });
+    expect(plan1WithRange.dialogueDraftRows[0]).toMatchObject({
+      draftRowId: rowA.draftRowId,
+      confirmedAudioAssetId: audio1.id,
+      sourceStartMs: 200,
+      sourceEndMs: 1_200,
+    });
+
+    // Swap the two lines of the same character AND insert a new line at the top!
+    const swappedAndInserted = [
+      '镜头：同角色对白',
+      '背景：背景',
+      '出场：师兄、小师妹',
+      '对白：',
+      '师兄：新插入的台词。',
+      '师兄：再说第二句。',
+      '师兄：先说第一句。',
+    ].join('\n');
+
+    const plan2 = planScriptPerformance(project, swappedAndInserted, {
+      previousDialogueRows: plan1WithRange.dialogueDraftRows,
+      createDraftRowId: nextDraftId,
+    });
+    // Row 2 (再说第二句) kept audio2; Row 3 (先说第一句) kept audio1 + source range [200, 1200)!
+    expect(plan2.dialogues[1]!.draftRowId).toBe(rowB.draftRowId);
+    expect(plan2.dialogues[1]!.audioMatch?.audioAssetId).toBe(audio2.id);
+    expect(plan2.dialogues[2]!.draftRowId).toBe(rowA.draftRowId);
+    expect(plan2.dialogues[2]!.audioMatch?.audioAssetId).toBe(audio1.id);
+    expect(plan2.dialogues[2]!.audioMatch?.sourceStartMs).toBe(200);
+    expect(plan2.dialogues[2]!.audioMatch?.sourceEndMs).toBe(1_200);
+    // Newly inserted line at ordinal 1 must NOT steal audio1 (`1_师兄`)!
+    expect(plan2.dialogues[0]!.draftRowId).not.toBe(rowA.draftRowId);
+    expect(plan2.dialogues[0]!.draftRowId).not.toBe(rowB.draftRowId);
+    expect(plan2.dialogues[0]!.status).toBe('draft-unready');
+    expect(plan2.dialogues[0]!.issueCode).toBe('AUDIO_AMBIGUOUS');
+
+    // Manual audio swap onto a different asset resets old source range, and explicit clear drops binding
+    const plan3 = planScriptPerformance(project, swappedAndInserted, {
+      previousDialogueRows: plan2.dialogueDraftRows,
+      createDraftRowId: nextDraftId,
+      overrides: {
+        audioByDraftRowId: {
+          [rowA.draftRowId]: {
+            audioAssetId: audioAlt.id,
+            speakerKey: dialogueDraftSpeakerKey({
+              speakerType: 'character',
+              characterId: project.characters[0]!.id,
+            }),
+          },
+          [rowB.draftRowId]: {
+            audioAssetId: null,
+            speakerKey: dialogueDraftSpeakerKey({
+              speakerType: 'character',
+              characterId: project.characters[0]!.id,
+            }),
+          },
+        },
+      },
+    });
+    expect(plan3.dialogues[2]!.audioMatch).toMatchObject({
+      audioAssetId: audioAlt.id,
+      sourceStartMs: 0,
+      sourceEndMs: 1_400,
+    });
+    expect(plan3.dialogues[1]!.status).toBe('draft-unready');
+    expect(plan3.dialogueDraftRows[1]!.confirmedAudioAssetId).toBeUndefined();
+
+    // Changing speaker on an existing line must NOT inherit old character's audio or manual override
+    const speakerChanged = [
+      '镜头：同角色对白',
+      '背景：背景',
+      '出场：师兄、小师妹',
+      '对白：',
+      '小师妹：先说第一句。',
+    ].join('\n');
+    const plan4 = planScriptPerformance(project, speakerChanged, {
+      previousDialogueRows: plan3.dialogueDraftRows,
+      createDraftRowId: nextDraftId,
+      overrides: {
+        audioByDraftRowId: {
+          [rowA.draftRowId]: {
+            audioAssetId: audioAlt.id,
+            speakerKey: dialogueDraftSpeakerKey({
+              speakerType: 'character',
+              characterId: project.characters[0]!.id,
+            }),
+          },
+        },
+      },
+    });
+    expect(plan4.dialogues[0]!.draftRowId).not.toBe(rowA.draftRowId);
+    expect(plan4.dialogues[0]!.audioMatch?.audioAssetId).toBeNull();
+  });
+
+  it('stale-plan audit: detects same-ID ActionRecipe content edits and refuses bypassing allowPartialConfirm', () => {
+    const project = buildWf04Project();
+    const script = [
+      '镜头：配方校验',
+      '背景：背景',
+      '出场：师兄、小师妹',
+      '对白：',
+      '师兄：第一句。',
+      '小师妹：第二句。',
+      '表演：',
+      '2｜配方｜强调登场',
+    ].join('\n');
+
+    const plan = planScriptPerformance(project, script);
+    expect(plan.hasIssues).toBe(false);
+    expect(plan.readyPerformanceCount).toBe(1);
+
+    // Mutate the SAME-ID recipe's step duration so it now overflows the 4200ms shot!
+    const mutatedRecipeProject = ProjectSchema.parse({
+      ...project,
+      actionRecipes: (project.actionRecipes ?? []).map((recipe) => ({
+        ...recipe,
+        steps: recipe.steps.map((step) =>
+          step.kind === 'preset' ? { ...step, durationMs: 5_000 } : step,
+        ),
+      })),
+    });
+
+    const stale = isScriptPerformancePlanStale(mutatedRecipeProject, plan);
+    expect(stale.stale).toBe(true);
+    const applied = applyScriptPerformancePlan(mutatedRecipeProject, plan, {
+      allowPartialConfirm: false,
+    });
+    expect(applied).toMatchObject({ ok: false, errorCode: 'STALE_PLAN' });
   });
 });

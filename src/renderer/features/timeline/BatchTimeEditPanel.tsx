@@ -44,6 +44,10 @@ type PreviewResult =
   | {
       readonly ok: true;
       readonly mode: 'shift';
+      readonly requestedDeltaMs: number;
+      readonly effectiveDeltaMs: number;
+      readonly deltaFrames?: number;
+      readonly frameSnapped?: boolean;
       readonly earliestStartMs: number;
       readonly latestEndMs: number;
       readonly changedCount: number;
@@ -80,6 +84,15 @@ const EVENT_TYPE_FALLBACK_LABEL: Record<TimelineEvent['type'], string> = {
 
 function formatSeconds(ms: number): string {
   return `${(ms / 1_000).toFixed(2)}s`;
+}
+
+function formatSignedDeltaMs(ms: number): string {
+  const sign = ms > 0 ? '+' : ms < 0 ? '-' : '';
+  const seconds = (Math.abs(ms) / 1_000)
+    .toFixed(3)
+    .replace(/0+$/u, '')
+    .replace(/\.$/u, '');
+  return `${sign}${seconds}s`;
 }
 
 function parseSecondsToMs(raw: string): number | null {
@@ -267,6 +280,10 @@ export function BatchTimeEditPanel({
           return {
             ok: true,
             mode: 'shift',
+            requestedDeltaMs: parsedDeltaMs,
+            effectiveDeltaMs: crossTypePlan.deltaMs,
+            deltaFrames: crossTypePlan.deltaFrames,
+            frameSnapped: crossTypePlan.frameSnapped,
             earliestStartMs: crossTypePlan.earliestStartMs,
             latestEndMs: crossTypePlan.latestEndMs,
             changedCount: crossTypePlan.changedCount,
@@ -291,6 +308,8 @@ export function BatchTimeEditPanel({
           return {
             ok: true,
             mode: 'shift',
+            requestedDeltaMs: parsedDeltaMs,
+            effectiveDeltaMs: dialoguePlan.deltaMs,
             earliestStartMs: dialoguePlan.earliestStartMs,
             latestEndMs: dialoguePlan.latestEndMs,
             changedCount:
@@ -311,6 +330,10 @@ export function BatchTimeEditPanel({
         return {
           ok: true,
           mode: 'shift',
+          requestedDeltaMs: parsedDeltaMs,
+          effectiveDeltaMs: actionPlan.effectiveDeltaMs ?? parsedDeltaMs,
+          deltaFrames: actionPlan.deltaFrames,
+          frameSnapped: actionPlan.frameSnapped,
           earliestStartMs: actionPlan.earliestStartMs,
           latestEndMs: actionPlan.latestEndMs,
           changedCount: actionPlan.changedCount,
@@ -360,6 +383,8 @@ export function BatchTimeEditPanel({
       };
     }
   }, [
+    project,
+    shot,
     activeDialogueIds,
     selectedEventIds,
     selectedMotionSpans,
@@ -697,6 +722,15 @@ export function BatchTimeEditPanel({
                     preview.earliestStartMs,
                   )} – ${formatSeconds(preview.latestEndMs)}`}
             </div>
+            {preview.mode === 'shift' &&
+            preview.frameSnapped &&
+            preview.deltaFrames !== undefined ? (
+              <div className="batch-time-note" data-testid="batch-time-frame-sync-note">
+                {`含关键帧，按 24fps 帧网格统一偏移 ${formatSignedDeltaMs(
+                  preview.effectiveDeltaMs,
+                )}（${preview.deltaFrames > 0 ? '+' : ''}${preview.deltaFrames} 帧）`}
+              </div>
+            ) : null}
             {preview.mode === 'shift' && preview.splitAudioClipIds.length > 0 ? (
               <div className="batch-time-note">
                 将拆分 {preview.splitAudioClipIds.length} 段共享配音，未选对白保持原位。

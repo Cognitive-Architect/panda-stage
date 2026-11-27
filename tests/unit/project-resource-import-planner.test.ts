@@ -7,11 +7,13 @@ import {
   collectProjectResourceClosure,
   findProvablyReusableTargetAsset,
   isFlaGraphicDefinition,
+  planMappedCharacterMotion,
   PROJECT_FPS,
   PROJECT_HEIGHT,
   PROJECT_SCHEMA_VERSION,
   PROJECT_WIDTH,
   ProjectSchema,
+  ShotService,
   type Asset,
   type Character,
   type FlaGraphicDefinition,
@@ -672,5 +674,259 @@ describe('ProjectResourceImportPlanner', () => {
     expect(store.getSnapshot()?.project.assets).toHaveLength(0);
     expect(store.redo()).toBe(true);
     expect(store.getSnapshot()?.project.assets).toHaveLength(1);
+  });
+
+  it('R6: remaps cross-character motionMappings completely when both characters are imported and drops dangling mappings while preserving generated actions when imported alone', () => {
+    const src = createGraphicSourceProject();
+    const sourceChar = src.project.characters[0]!;
+    if (sourceChar.mode !== 'adaptive-parts') throw new Error('expected adaptive-parts');
+    const sourceBodyPartId = sourceChar.parts[0]!.partId;
+    const sourceLayeredActionId = randomUUID();
+    const sourceCharWithAction: Character = {
+      ...sourceChar,
+      actions: [
+        ...(sourceChar.actions ?? []),
+        {
+          id: sourceLayeredActionId,
+          name: '挥臂',
+          kind: 'layered',
+          tracks: [
+            {
+              partId: sourceBodyPartId,
+              property: 'transform.rotationDeg',
+              keys: [
+                { timeMs: 0, value: 0, interpolationToNext: 'linear' },
+                { timeMs: 500, value: 18, interpolationToNext: 'linear' },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const targetCharId = randomUUID();
+    const targetVoiceId = randomUUID();
+    const targetBodyPartId = randomUUID();
+    const targetGeneratedActionId = randomUUID();
+    const targetChar: Character = {
+      id: targetCharId,
+      name: '徒弟熊猫',
+      mode: 'adaptive-parts',
+      defaultVoiceProfileId: targetVoiceId,
+      defaultScale: 1,
+      defaultFlipX: false,
+      sourceRootTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+      parts: [
+        {
+          partId: targetBodyPartId,
+          source: {
+            kind: 'source-instance',
+            sourceId: 'src-apprentice-body',
+            sourcePoseFrame: 0,
+            effectiveFrame: 0,
+          },
+          restTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
+          drawOrder: 0,
+          visible: true,
+          displayName: '身体',
+          visualSource: {
+            kind: 'fla-graphic',
+            animationId: src.graphicId,
+            nodePath: ['node-opaque-shape'],
+          },
+        },
+      ],
+      actions: [
+        {
+          id: targetGeneratedActionId,
+          name: '小熊猫 · 挥臂',
+          kind: 'layered',
+          tracks: [
+            {
+              partId: targetBodyPartId,
+              property: 'transform.rotationDeg',
+              keys: [
+                { timeMs: 0, value: 0, interpolationToNext: 'linear' },
+                { timeMs: 500, value: 18, interpolationToNext: 'linear' },
+              ],
+            },
+          ],
+        },
+      ],
+      motionMappings: [
+        {
+          sourceCharacterId: sourceChar.id,
+          sourceActionId: sourceLayeredActionId,
+          generatedActionId: targetGeneratedActionId,
+          rules: [
+            {
+              sourcePartId: sourceBodyPartId,
+              targetPartId: targetBodyPartId,
+              mirror: false,
+              translationScale: 1,
+              pivotOffset: { x: 0, y: 0 },
+              properties: ['transform.rotationDeg'],
+            },
+          ],
+        },
+      ],
+    };
+
+    const sourceProject = ProjectSchema.parse({
+      ...src.project,
+      characters: [sourceCharWithAction, targetChar],
+      voiceProfiles: [
+        ...src.project.voiceProfiles,
+        {
+          id: targetVoiceId,
+          name: '徒弟配音',
+          characterId: targetCharId,
+          locale: 'zh-CN',
+          rate: 1,
+          pitch: 0,
+        },
+      ],
+    });
+
+    const targetLayerId = randomUUID();
+    const emptyTarget = new ShotService().create(
+      makeBaseProject({ name: 'Target With Mapping' }),
+      { name: '镜头 1', durationMs: 3_000 },
+    );
+    const targetShotId = emptyTarget.shots[0]!.id;
+
+    // Case 1: Import BOTH targetChar (listed first!) and sourceChar in the same batch.
+    const bothClosure = collectProjectResourceClosure(sourceProject, [
+      { kind: 'character', id: targetCharId },
+      { kind: 'character', id: sourceChar.id },
+    ]);
+    const bothPlanned = bothClosure.assets.map((asset, idx) => ({
+      sourceAsset: asset,
+      targetId: randomUUID(),
+      reused: false,
+      targetRelativePath: `assets/both-${idx}${asset.mimeType === 'image/svg+xml' ? '.svg' : '.png'}`,
+      sha256: asset.sha256,
+    }));
+    const bothCandidate = buildImportedProjectCandidate({
+      targetProject: emptyTarget,
+      sourceProject,
+      closure: bothClosure,
+      plannedAssets: bothPlanned,
+      createId: randomUUID,
+      updatedAtIso: '2026-11-27T02:00:00.000Z',
+    });
+
+    const reopenedBoth = ProjectSchema.parse(
+      JSON.parse(JSON.stringify(bothCandidate.project)),
+    );
+    const importedSource = reopenedBoth.characters.find((c) => c.name === '小熊猫')!;
+    const importedTarget = reopenedBoth.characters.find((c) => c.name === '徒弟熊猫')!;
+    if (
+      importedSource.mode !== 'adaptive-parts' ||
+      importedTarget.mode !== 'adaptive-parts'
+    ) {
+      throw new Error('expected adaptive-parts');
+    }
+    expect(importedTarget.motionMappings).toHaveLength(1);
+    const remappedMapping = importedTarget.motionMappings![0]!;
+    const remappedSourceAction = importedSource.actions!.find(
+      (a) => a.name === '挥臂',
+    )!;
+    const remappedGeneratedAction = importedTarget.actions!.find(
+      (a) => a.name === '小熊猫 · 挥臂',
+    )!;
+    expect(remappedMapping.sourceCharacterId).toBe(importedSource.id);
+    expect(remappedMapping.sourceCharacterId).not.toBe(sourceChar.id);
+    expect(remappedMapping.sourceActionId).toBe(remappedSourceAction.id);
+    expect(remappedMapping.sourceActionId).not.toBe(sourceLayeredActionId);
+    expect(remappedMapping.generatedActionId).toBe(remappedGeneratedAction.id);
+    expect(remappedMapping.generatedActionId).not.toBe(targetGeneratedActionId);
+    expect(remappedMapping.rules[0]!.sourcePartId).toBe(
+      importedSource.parts[0]!.partId,
+    );
+    expect(remappedMapping.rules[0]!.sourcePartId).not.toBe(sourceBodyPartId);
+    expect(remappedMapping.rules[0]!.targetPartId).toBe(
+      importedTarget.parts[0]!.partId,
+    );
+    expect(remappedMapping.rules[0]!.targetPartId).not.toBe(targetBodyPartId);
+
+    // Formal consumer `planMappedCharacterMotion` must accept the remapped mapping and reuse generatedActionId!
+    const projectWithLayer = ProjectSchema.parse({
+      ...reopenedBoth,
+      shots: reopenedBoth.shots.map((shot) => ({
+        ...shot,
+        layers: [
+          ...shot.layers,
+          {
+            id: targetLayerId,
+            name: importedTarget.name,
+            source: { kind: 'character', characterId: importedTarget.id },
+            x: 960,
+            y: 540,
+            scaleX: 1,
+            scaleY: 1,
+            flipX: false,
+            rotationDeg: 0,
+            anchor: 'center',
+            opacity: 1,
+            zIndex: 1,
+            visible: true,
+            locked: false,
+          },
+        ],
+      })),
+    });
+    const mappedRun = planMappedCharacterMotion(
+      projectWithLayer,
+      targetShotId,
+      targetLayerId,
+      0,
+      {
+        sourceCharacterId: remappedMapping.sourceCharacterId,
+        sourceActionId: remappedMapping.sourceActionId,
+        rules: remappedMapping.rules,
+      },
+    );
+    expect(mappedRun.missingSourcePartIds).toEqual([]);
+    const targetAfterRun = mappedRun.project.characters.find(
+      (c) => c.id === importedTarget.id,
+    )!;
+    expect(targetAfterRun.actions).toHaveLength(1);
+    expect(targetAfterRun.actions![0]!.id).toBe(remappedGeneratedAction.id);
+
+    // Case 2: Import ONLY targetChar (source character NOT selected).
+    const soloClosure = collectProjectResourceClosure(sourceProject, [
+      { kind: 'character', id: targetCharId },
+    ]);
+    expect(soloClosure.characters).toHaveLength(1);
+    const soloPlanned = soloClosure.assets.map((asset, idx) => ({
+      sourceAsset: asset,
+      targetId: randomUUID(),
+      reused: false,
+      targetRelativePath: `assets/solo-${idx}${asset.mimeType === 'image/svg+xml' ? '.svg' : '.png'}`,
+      sha256: asset.sha256,
+    }));
+    const soloCandidate = buildImportedProjectCandidate({
+      targetProject: emptyTarget,
+      sourceProject,
+      closure: soloClosure,
+      plannedAssets: soloPlanned,
+      createId: randomUUID,
+      updatedAtIso: '2026-11-27T02:00:00.000Z',
+    });
+    const reopenedSolo = ProjectSchema.parse(
+      JSON.parse(JSON.stringify(soloCandidate.project)),
+    );
+    const soloImportedTarget = reopenedSolo.characters[0]!;
+    expect(soloImportedTarget.mode).toBe('adaptive-parts');
+    if (soloImportedTarget.mode === 'adaptive-parts') {
+      expect(soloImportedTarget.motionMappings).toBeUndefined();
+      // Independent generated layered action remains intact and remapped to new partId!
+      expect(soloImportedTarget.actions).toHaveLength(1);
+      const action = soloImportedTarget.actions![0]!;
+      expect('kind' in action && action.tracks[0]!.partId).toBe(
+        soloImportedTarget.parts[0]!.partId,
+      );
+    }
   });
 });

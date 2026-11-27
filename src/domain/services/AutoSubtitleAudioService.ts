@@ -46,6 +46,8 @@ export type DialogueAudioMatchIssueCode =
 
 export interface DialogueDraftRowSeed {
   readonly sourceLineNumber: number;
+  /** Optional 1-based logical dialogue ordinal preserved across unresolved lines and partial commits. */
+  readonly logicalOrdinal?: number;
   readonly text: string;
   readonly speakerType: DialogueSpeakerType;
   readonly characterId?: string;
@@ -59,6 +61,20 @@ export interface DialogueDraftRowSeed {
 export interface StableDialogueDraftRow extends DialogueDraftRowSeed {
   readonly draftRowId: string;
   readonly confirmedSpeakerKey?: string;
+}
+
+/**
+ * Creates a monotonic session-scoped `draftRowId` generator so deleting a row
+ * and adding a new row in the same editing session never reuses a retired ID.
+ */
+export function createDraftRowIdGenerator(
+  prefix = 'draft-row',
+): () => string {
+  let counter = 0;
+  return () => {
+    counter += 1;
+    return `${prefix}-${counter}`;
+  };
 }
 
 export interface DialogueAudioMatchRequest {
@@ -290,10 +306,23 @@ export function reconcileDialogueDraftRows(
   createDraftRowId?: () => string,
 ): StableDialogueDraftRow[] {
   const existingIds = new Set(previousRows.map((row) => row.draftRowId));
-  let counter = previousRows.length + 1;
+  let maxNumericSuffix = previousRows.length;
+  for (const row of previousRows) {
+    const suffixMatch = /^draft-row-(\d+)$/u.exec(row.draftRowId);
+    if (suffixMatch) {
+      const parsed = Number(suffixMatch[1]);
+      if (Number.isSafeInteger(parsed) && parsed > maxNumericSuffix) {
+        maxNumericSuffix = parsed;
+      }
+    }
+  }
+  let counter = maxNumericSuffix + 1;
   const nextId = (): string => {
     if (createDraftRowId) {
-      const candidate = createDraftRowId();
+      let candidate = createDraftRowId();
+      while (existingIds.has(candidate)) {
+        candidate = createDraftRowId();
+      }
       existingIds.add(candidate);
       return candidate;
     }
@@ -498,6 +527,42 @@ export function matchDialogueAudioRows(
     ? project.shots.find((candidate) => candidate.id === options.shotId)
     : undefined;
 
+  // Pass A: identify assets explicitly bound by manual, existingDialogueId, or
+  // confirmed bindings so Priority 3 automatic `<ordinal>_<speakerName>` matching
+  // never silently double-binds an already-bound audio asset onto a newly
+  // inserted row. Explicit manual reuse remains allowed.
+  const claimedAutoAssetIds = new Set<string>();
+  for (const request of requests) {
+    if (request.manualAudioAssetId !== undefined) {
+      if (request.manualAudioAssetId !== null && audioById.has(request.manualAudioAssetId)) {
+        claimedAutoAssetIds.add(request.manualAudioAssetId);
+      }
+      continue;
+    }
+    const existingDialogue =
+      request.existingDialogueId && shot
+        ? shot.dialogues.find(
+            (candidate) => candidate.id === request.existingDialogueId,
+          )
+        : undefined;
+    const existingClip =
+      existingDialogue?.audioClipId && shot
+        ? shot.audioClips.find((clip) => clip.id === existingDialogue.audioClipId)
+        : undefined;
+    if (existingClip) {
+      if (audioById.has(existingClip.assetId)) {
+        claimedAutoAssetIds.add(existingClip.assetId);
+      }
+      continue;
+    }
+    if (
+      request.confirmedAudioAssetId !== undefined &&
+      audioById.has(request.confirmedAudioAssetId)
+    ) {
+      claimedAutoAssetIds.add(request.confirmedAudioAssetId);
+    }
+  }
+
   const rows: DialogueAudioMatchRow[] = requests.map((request) => {
     let audioAsset: AudioAsset | null = null;
     let matchSource: DialogueAudioMatchSource;
@@ -558,11 +623,19 @@ export function matchDialogueAudioRows(
           request.speakerName,
           numbered,
         );
-        audioAsset = automatic.asset;
-        matchSource = automatic.asset ? 'auto-numbered' : 'none';
-        issue = automatic.issue;
-        issueMessage = automatic.message;
-        ambiguousCandidates = automatic.ambiguousCandidates;
+        if (automatic.asset && claimedAutoAssetIds.has(automatic.asset.id)) {
+          audioAsset = null;
+          matchSource = 'none';
+          issue = 'AUDIO_AMBIGUOUS';
+          issueMessage = `第 ${request.ordinal} 句配音“${automatic.asset.name}”已绑定到其他台词，请手动选择。`;
+          ambiguousCandidates = [automatic.asset];
+        } else {
+          audioAsset = automatic.asset;
+          matchSource = automatic.asset ? 'auto-numbered' : 'none';
+          issue = automatic.issue;
+          issueMessage = automatic.message;
+          ambiguousCandidates = automatic.ambiguousCandidates;
+        }
       }
     }
 

@@ -1555,34 +1555,32 @@ export function CanvasStage({
         }
         onTransform={setToolbarTransform}
         onViewportChromePointerDown={() => { if (!armAssembly) selectionStore.clear(); }}
-        viewportOverlay={
-          activeScenePreview ? (
-            <div
-              className="canvas-scene-preview-badge"
-              data-testid="canvas-scene-preview-badge"
-              style={{
-                position: 'absolute',
-                top: 12,
-                left: 12,
-                zIndex: 12,
-                padding: '4px 10px',
-                borderRadius: 999,
-                background: 'rgba(18, 22, 30, 0.84)',
-                color: '#f5f7fa',
-                fontSize: 12,
-                lineHeight: 1.4,
-                pointerEvents: 'none',
-              }}
-            >
-              自动布景只读预览 · {activeScenePreview.previewShotName}（
-              {activeScenePreview.shotIndex + 1}/{activeScenePreview.shotCount}）
-            </div>
-          ) : empty ? (
-            <CanvasEmptyState />
-          ) : null
-        }
+        viewportOverlay={empty ? <CanvasEmptyState /> : null}
         viewportChrome={(
-          showToolbar || shot || selectedFlaGraphicTarget ? (
+          <>
+            {activeScenePreview ? (
+              <div
+                className="canvas-scene-preview-badge"
+                data-testid="canvas-scene-preview-badge"
+                style={{
+                  position: 'absolute',
+                  top: 12,
+                  left: 12,
+                  zIndex: 12,
+                  padding: '4px 10px',
+                  borderRadius: 999,
+                  background: 'rgba(18, 22, 30, 0.84)',
+                  color: '#f5f7fa',
+                  fontSize: 12,
+                  lineHeight: 1.4,
+                  pointerEvents: 'none',
+                }}
+              >
+                自动布景只读预览 · {activeScenePreview.previewShotName}（
+                {activeScenePreview.shotIndex + 1}/{activeScenePreview.shotCount}）
+              </div>
+            ) : null}
+            {showToolbar || shot || selectedFlaGraphicTarget ? (
             <CanvasToolbar
               parentControl={canPickParent && shot && selectedLayerId ? (
                 <button type="button" data-ui-button data-ui-variant="secondary" data-canvas-interactive-chrome="true"
@@ -1636,7 +1634,8 @@ export function CanvasStage({
               showStatus={showToolbar}
               transform={toolbarTransform}
             />
-          ) : null
+          ) : null}
+          </>
         )}
       >
         {(transform) => (

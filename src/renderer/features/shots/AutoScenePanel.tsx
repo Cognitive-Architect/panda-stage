@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import '../../styles/features/shots/wf03-auto-scene.css';
 import {
   applyScriptPerformancePlan,
+  createDraftRowIdGenerator,
+  dialogueDraftSpeakerKey,
   isAudioAssetReady,
   isScriptPerformancePlanStale,
   listUsableBackgroundCandidates,
@@ -139,9 +142,10 @@ export function AutoScenePanel({
   const project = snapshot?.project ?? null;
   const [rawInput, setRawInput] = useState('');
   const [sceneOverrides, setSceneOverrides] = useState<ScenePlanOverrides>({});
-  const [audioOverrides, setAudioOverrides] = useState<
-    Readonly<Record<string, ScriptDialogueAudioOverride>>
-  >({});
+  const [audioOverrideState, setAudioOverrideState] = useState<{
+    sessionKey: string;
+    entries: Readonly<Record<string, ScriptDialogueAudioOverride>>;
+  }>({ sessionKey: '', entries: {} });
   const [excludedDirectiveIds, setExcludedDirectiveIds] = useState<readonly string[]>([]);
   const [extendShotForPerformance, setExtendShotForPerformance] = useState(false);
   const [selectedPreviewIndex, setSelectedPreviewIndex] = useState<number | null>(
@@ -154,14 +158,40 @@ export function AutoScenePanel({
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
   const previousDialogueRowsRef = useRef<readonly StableDialogueDraftRow[]>([]);
+  const nextDraftRowIdRef = useRef<() => string>(createDraftRowIdGenerator());
+  const projectSessionKey = `${snapshot?.projectRoot ?? ''}::${project?.id ?? ''}`;
+  const lastProjectSessionKeyRef = useRef<string>(projectSessionKey);
+
+  if (lastProjectSessionKeyRef.current !== projectSessionKey) {
+    lastProjectSessionKeyRef.current = projectSessionKey;
+    previousDialogueRowsRef.current = [];
+    nextDraftRowIdRef.current = createDraftRowIdGenerator();
+  }
+
+  const audioOverrides = useMemo(
+    () =>
+      audioOverrideState.sessionKey === projectSessionKey
+        ? audioOverrideState.entries
+        : {},
+    [audioOverrideState, projectSessionKey],
+  );
+
+  useEffect(() => {
+    setAudioOverrideState({ sessionKey: projectSessionKey, entries: {} });
+    setSceneOverrides({});
+    setExcludedDirectiveIds([]);
+    setPinnedEntry(null);
+    setErrorMessage('');
+  }, [projectSessionKey]);
 
   const inputKey = useMemo(
     () =>
-      `${refreshNonce}::${extendShotForPerformance ? '1' : '0'}::${rawInput}::${JSON.stringify(sceneOverrides)}::${JSON.stringify(audioOverrides)}::${JSON.stringify(excludedDirectiveIds)}`,
+      `${projectSessionKey}::${refreshNonce}::${extendShotForPerformance ? '1' : '0'}::${rawInput}::${JSON.stringify(sceneOverrides)}::${JSON.stringify(audioOverrides)}::${JSON.stringify(excludedDirectiveIds)}`,
     [
       audioOverrides,
       excludedDirectiveIds,
       extendShotForPerformance,
+      projectSessionKey,
       rawInput,
       refreshNonce,
       sceneOverrides,
@@ -179,6 +209,7 @@ export function AutoScenePanel({
     }
     return planScriptPerformance(project, rawInput, {
       previousDialogueRows: previousDialogueRowsRef.current,
+      createDraftRowId: nextDraftRowIdRef.current,
       overrides: {
         scene: sceneOverrides,
         audioByDraftRowId: audioOverrides,
@@ -200,11 +231,30 @@ export function AutoScenePanel({
   useEffect(() => {
     if (!project || !rawInput.trim()) {
       previousDialogueRowsRef.current = [];
+      setAudioOverrideState((current) =>
+        current.sessionKey === projectSessionKey &&
+        Object.keys(current.entries).length === 0
+          ? current
+          : { sessionKey: projectSessionKey, entries: {} },
+      );
       if (pinnedEntry !== null) setPinnedEntry(null);
       return;
     }
     if (activePlan) {
       previousDialogueRowsRef.current = activePlan.dialogueDraftRows;
+      const activeIds = new Set(
+        activePlan.dialogueDraftRows.map((row) => row.draftRowId),
+      );
+      setAudioOverrideState((current) => {
+        if (current.sessionKey !== projectSessionKey) return current;
+        const keys = Object.keys(current.entries);
+        if (keys.every((id) => activeIds.has(id))) return current;
+        const pruned: Record<string, ScriptDialogueAudioOverride> = {};
+        for (const id of keys) {
+          if (activeIds.has(id)) pruned[id] = current.entries[id]!;
+        }
+        return { sessionKey: projectSessionKey, entries: pruned };
+      });
     }
     if (pinnedEntry?.key !== inputKey) {
       setPinnedEntry({
@@ -212,7 +262,7 @@ export function AutoScenePanel({
         plan: activePlan,
       });
     }
-  }, [activePlan, inputKey, pinnedEntry, project, rawInput]);
+  }, [activePlan, inputKey, pinnedEntry, project, projectSessionKey, rawInput]);
 
   const staleCheck = useMemo(() => {
     if (!project || !activePlan) return { stale: false };
@@ -240,11 +290,15 @@ export function AutoScenePanel({
   const updateAudioOverride = (
     draftRowId: string,
     audioAssetId: string | null,
+    speakerKey: string,
   ): void => {
     setErrorMessage('');
-    setAudioOverrides((current) => ({
-      ...current,
-      [draftRowId]: { audioAssetId },
+    setAudioOverrideState((current) => ({
+      sessionKey: projectSessionKey,
+      entries: {
+        ...(current.sessionKey === projectSessionKey ? current.entries : {}),
+        [draftRowId]: { audioAssetId, speakerKey },
+      },
     }));
   };
 
@@ -671,9 +725,16 @@ export function AutoScenePanel({
                     <div className="auto-scene-item-list">
                       {blockSummary.dialogues.map(
                         (dialogueRow: PlannedScriptDialogueRow) => {
-                          const needsAudioPick =
-                            dialogueRow.status === 'draft-unready' &&
+                          const canPickAudio =
+                            (dialogueRow.status === 'draft-unready' ||
+                              dialogueRow.status === 'scheduled') &&
                             readyAudioAssets.length > 0;
+                          const rowSpeakerKey = dialogueDraftSpeakerKey({
+                            speakerType: dialogueRow.speakerType,
+                            ...(dialogueRow.characterId
+                              ? { characterId: dialogueRow.characterId }
+                              : {}),
+                          });
                           return (
                             <div
                               className={`auto-scene-script-row${dialogueRow.status !== 'scheduled' ? ' is-warning' : ''}`}
@@ -685,7 +746,7 @@ export function AutoScenePanel({
                                   {dialogueRow.ordinal}. {dialogueRow.speakerName}
                                   ：{dialogueRow.text}
                                 </span>
-                                {needsAudioPick ? (
+                                {canPickAudio ? (
                                   <select
                                     aria-label={`第 ${dialogueRow.ordinal} 句配音选择`}
                                     data-testid={`auto-scene-audio-select-${dialogueRow.ordinal}`}
@@ -695,6 +756,7 @@ export function AutoScenePanel({
                                         event.target.value === 'none'
                                           ? null
                                           : event.target.value,
+                                        rowSpeakerKey,
                                       )
                                     }
                                     value={
@@ -708,15 +770,14 @@ export function AutoScenePanel({
                                       </option>
                                     ))}
                                   </select>
-                                ) : (
-                                  <span className="auto-scene-item-status">
-                                    {dialogueRow.status === 'scheduled' &&
-                                    dialogueRow.startMs !== null &&
-                                    dialogueRow.endMs !== null
-                                      ? `${(dialogueRow.startMs / 1000).toFixed(2)}–${(dialogueRow.endMs / 1000).toFixed(2)}s`
-                                      : '未就绪'}
-                                  </span>
-                                )}
+                                ) : null}
+                                <span className="auto-scene-item-status">
+                                  {dialogueRow.status === 'scheduled' &&
+                                  dialogueRow.startMs !== null &&
+                                  dialogueRow.endMs !== null
+                                    ? `${(dialogueRow.startMs / 1000).toFixed(2)}–${(dialogueRow.endMs / 1000).toFixed(2)}s`
+                                    : '未就绪'}
+                                </span>
                               </div>
                               {dialogueRow.issueMessage ? (
                                 <span className="auto-scene-row-issue">

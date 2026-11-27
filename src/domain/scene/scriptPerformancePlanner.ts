@@ -18,6 +18,7 @@ import {
 } from '../models';
 import {
   AutoSubtitleAudioService,
+  dialogueDraftSpeakerKey,
   matchDialogueAudioRows,
   reconcileDialogueDraftRows,
   type DialogueAudioMatchReport,
@@ -65,6 +66,8 @@ export interface ScriptDialogueAudioOverride {
   readonly audioAssetId?: string | null;
   readonly sourceStartMs?: number;
   readonly sourceEndMs?: number;
+  /** Optional speaker key guard so speaker edits do not inherit stale audio overrides. */
+  readonly speakerKey?: string;
 }
 
 export interface ScriptPerformanceOverrides {
@@ -175,6 +178,10 @@ export interface ScriptPerformanceStaleCheckToken {
     readonly status?: string;
   }[];
   readonly referencedRecipeIds: readonly string[];
+  readonly referencedRecipes: readonly {
+    readonly id: string;
+    readonly snapshotJson: string;
+  }[];
 }
 
 export interface ScriptPerformancePlan {
@@ -348,9 +355,12 @@ export function isScriptPerformancePlanStale(
     }
   }
 
-  const recipeIds = new Set((currentProject.actionRecipes ?? []).map((r) => r.id));
-  for (const recipeId of plan.staleToken.referencedRecipeIds) {
-    if (!recipeIds.has(recipeId)) {
+  const recipesById = new Map(
+    (currentProject.actionRecipes ?? []).map((recipe) => [recipe.id, recipe]),
+  );
+  for (const recipeRef of plan.staleToken.referencedRecipes) {
+    const currentRecipe = recipesById.get(recipeRef.id);
+    if (!currentRecipe || JSON.stringify(currentRecipe) !== recipeRef.snapshotJson) {
       return {
         stale: true,
         reason: '引用的操作配方已变动或删除，请重新解析剧本计划。',
@@ -398,12 +408,13 @@ export function planScriptPerformance(
   // Step 1: Stable draft-row reconciliation (WF-01)
   const dialogueSeeds: DialogueDraftRowSeed[] = parsed.dialogues.map((line) => ({
     sourceLineNumber: line.sourceLineNumber,
+    logicalOrdinal: line.ordinal,
     text: line.text || line.raw,
     speakerType: line.speakerType,
     ...(line.characterId ? { characterId: line.characterId } : {}),
     speakerName: line.speakerName,
   }));
-  const dialogueDraftRows = reconcileDialogueDraftRows(
+  const reconciledDraftRows = reconcileDialogueDraftRows(
     options.previousDialogueRows ?? [],
     dialogueSeeds,
     options.createDraftRowId,
@@ -411,17 +422,46 @@ export function planScriptPerformance(
   const draftRowIdByOrdinal = new Map<number, string>();
   const draftLineByOrdinal = new Map<number, ScriptDialogueDraftLine>();
   parsed.dialogues.forEach((line, index) => {
-    const draftRow = dialogueDraftRows[index]!;
+    const draftRow = reconciledDraftRows[index]!;
     draftRowIdByOrdinal.set(line.ordinal, draftRow.draftRowId);
     draftLineByOrdinal.set(line.ordinal, line);
   });
 
-  // Step 2: Audio matching (WF-01)
+  // Step 2: Audio matching (WF-01) — preserve confirmed audioAssetId, formal
+  // Dialogue.id, and source range across edits/inserts/reorders while ignoring
+  // stale speaker-mismatched manual overrides and respecting explicit clears.
   const matchRequests: DialogueAudioMatchRequest[] = [];
+  const activeManualByDraftRowId = new Map<string, ScriptDialogueAudioOverride>();
   parsed.dialogues.forEach((line, index) => {
     if (line.parseIssue) return;
-    const draftRow = dialogueDraftRows[index]!;
-    const manual = overrides.audioByDraftRowId?.[draftRow.draftRowId];
+    const draftRow = reconciledDraftRows[index]!;
+    const speakerKey = dialogueDraftSpeakerKey(draftRow);
+    const rawManual = overrides.audioByDraftRowId?.[draftRow.draftRowId];
+    const manual =
+      rawManual &&
+      (rawManual.speakerKey === undefined || rawManual.speakerKey === speakerKey)
+        ? rawManual
+        : undefined;
+    if (manual) {
+      activeManualByDraftRowId.set(draftRow.draftRowId, manual);
+    }
+
+    const manualChangedAsset =
+      manual?.audioAssetId !== undefined &&
+      manual.audioAssetId !== draftRow.confirmedAudioAssetId;
+    const effectiveSourceStartMs =
+      manual?.sourceStartMs !== undefined
+        ? manual.sourceStartMs
+        : manualChangedAsset
+          ? undefined
+          : draftRow.sourceStartMs;
+    const effectiveSourceEndMs =
+      manual?.sourceEndMs !== undefined
+        ? manual.sourceEndMs
+        : manualChangedAsset
+          ? undefined
+          : draftRow.sourceEndMs;
+
     matchRequests.push({
       draftRowId: draftRow.draftRowId,
       ordinal: line.ordinal,
@@ -430,23 +470,67 @@ export function planScriptPerformance(
       speakerType: line.speakerType,
       ...(line.characterId ? { characterId: line.characterId } : {}),
       speakerName: line.speakerName,
+      ...(draftRow.existingDialogueId
+        ? { existingDialogueId: draftRow.existingDialogueId }
+        : {}),
       ...(draftRow.confirmedAudioAssetId
         ? { confirmedAudioAssetId: draftRow.confirmedAudioAssetId }
         : {}),
       ...(manual?.audioAssetId !== undefined
         ? { manualAudioAssetId: manual.audioAssetId }
         : {}),
-      ...(manual?.sourceStartMs !== undefined
-        ? { sourceStartMs: manual.sourceStartMs }
+      ...(effectiveSourceStartMs !== undefined
+        ? { sourceStartMs: effectiveSourceStartMs }
         : {}),
-      ...(manual?.sourceEndMs !== undefined
-        ? { sourceEndMs: manual.sourceEndMs }
+      ...(effectiveSourceEndMs !== undefined
+        ? { sourceEndMs: effectiveSourceEndMs }
         : {}),
     });
   });
   const audioMatchReport = matchDialogueAudioRows(project, matchRequests);
   const audioMatchByDraftRowId = new Map<string, DialogueAudioMatchRow>(
     audioMatchReport.rows.map((row) => [row.draftRowId, row]),
+  );
+
+  // Hydrate returned dialogueDraftRows with confirmed bindings & source ranges
+  // so subsequent inserts/reorders preserve deterministic audio assignments
+  // without falling back to ordinal guessing, while explicit clears drop prior bindings.
+  const dialogueDraftRows: StableDialogueDraftRow[] = reconciledDraftRows.map(
+    (row) => {
+      const match = audioMatchByDraftRowId.get(row.draftRowId);
+      const manual = activeManualByDraftRowId.get(row.draftRowId);
+      if (manual?.audioAssetId === null) {
+        const cleared: StableDialogueDraftRow = {
+          draftRowId: row.draftRowId,
+          sourceLineNumber: row.sourceLineNumber,
+          ...(row.logicalOrdinal !== undefined
+            ? { logicalOrdinal: row.logicalOrdinal }
+            : {}),
+          text: row.text,
+          speakerType: row.speakerType,
+          ...(row.characterId ? { characterId: row.characterId } : {}),
+          speakerName: row.speakerName,
+          ...(row.existingDialogueId
+            ? { existingDialogueId: row.existingDialogueId }
+            : {}),
+        };
+        return cleared;
+      }
+      if (match?.ready && match.audioAssetId) {
+        return {
+          ...row,
+          confirmedAudioAssetId: match.audioAssetId,
+          confirmedSpeakerKey: dialogueDraftSpeakerKey(row),
+          ...(match.sourceStartMs !== null
+            ? { sourceStartMs: match.sourceStartMs }
+            : {}),
+          ...(match.sourceEndMs !== null
+            ? { sourceEndMs: match.sourceEndMs }
+            : {}),
+        };
+      }
+      return row;
+    },
   );
 
   // Step 3: Scene staging (WF-03)
@@ -1251,6 +1335,10 @@ export function planScriptPerformance(
       .filter((asset): asset is AudioAsset => asset.kind === 'audio')
       .map((asset) => [asset.id, asset]),
   );
+  const recipesById = new Map(
+    (project.actionRecipes ?? []).map((recipe) => [recipe.id, recipe]),
+  );
+  const sortedRecipeIds = [...referencedRecipeIds].sort();
   const staleToken: ScriptPerformanceStaleCheckToken = {
     referencedAudio: [...referencedAudioIds].sort().map((id) => {
       const asset = audioById.get(id);
@@ -1260,7 +1348,14 @@ export function planScriptPerformance(
         ...(asset?.metadata?.status ? { status: asset.metadata.status } : {}),
       };
     }),
-    referencedRecipeIds: [...referencedRecipeIds].sort(),
+    referencedRecipeIds: sortedRecipeIds,
+    referencedRecipes: sortedRecipeIds.map((id) => {
+      const recipe = recipesById.get(id);
+      return {
+        id,
+        snapshotJson: recipe ? JSON.stringify(recipe) : '',
+      };
+    }),
   };
 
   const hasIssues =
@@ -1377,6 +1472,23 @@ export function applyScriptPerformancePlan(
       ok: false,
       errorCode: 'APPLY_FAILED',
       message: '重新应用剧本表演计划失败，请重新解析后再试。',
+    };
+  }
+
+  if (options.allowPartialConfirm === false && replanned.hasIssues) {
+    const firstPerfIssue = replanned.performances.find((p) => p.status === 'issue');
+    const firstDialogueIssue = replanned.dialogues.find(
+      (d) => d.status === 'draft-unready' || d.status === 'parse-issue',
+    );
+    const firstSceneIssue = replanned.parsed.sceneParseIssues[0];
+    return {
+      ok: false,
+      errorCode: 'HAS_ISSUES',
+      message:
+        firstPerfIssue?.issueMessage ??
+        firstDialogueIssue?.issueMessage ??
+        firstSceneIssue?.message ??
+        '重新解析后剧本计划存在未处理的行级问题；请重新确认后再应用。',
     };
   }
 

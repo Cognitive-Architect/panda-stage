@@ -158,21 +158,23 @@ export function isAssetSupportedForCrossProjectImport(asset: Asset): string | nu
 }
 
 /**
- * Finds a provably compatible existing asset in the target project.
- * Never matches by name or UUID alone; requires verified content hash +
- * matching kind, MIME type, and image dimensions, and excludes internal
- * FLA Graphic frames owned by a specific definition.
+ * Finds all JSON-level compatible target asset candidates for a source asset.
+ * Never matches by name or UUID alone; requires matching content hash, kind,
+ * MIME type, and image dimensions, and excludes internal FLA Graphic frames.
+ * Main process must still verify the candidate's actual on-disk file & hash
+ * before committing reuse.
  */
-export function findProvablyReusableTargetAsset(
+export function findProvablyReusableTargetAssets(
   targetProject: Project,
   sourceAsset: Asset,
   verifiedSourceSha256?: string,
-): Asset | null {
+): Asset[] {
   const sourceHash = verifiedSourceSha256 ?? sourceAsset.sha256;
-  if (!sourceHash) return null;
+  if (!sourceHash) return [];
   if (sourceAsset.kind === 'image' && sourceAsset.flaGraphicFrame) {
-    return null;
+    return [];
   }
+  const matches: Asset[] = [];
   for (const candidate of targetProject.assets) {
     if (candidate.kind !== sourceAsset.kind) continue;
     if (!candidate.sha256 || candidate.sha256 !== sourceHash) continue;
@@ -190,13 +192,31 @@ export function findProvablyReusableTargetAsset(
       ) {
         continue;
       }
-      return candidate;
+      matches.push(candidate);
+      continue;
     }
     if (candidate.kind === 'audio' && sourceAsset.kind === 'audio') {
-      return candidate;
+      matches.push(candidate);
     }
   }
-  return null;
+  return matches;
+}
+
+/**
+ * Finds the first JSON-level compatible existing asset in the target project.
+ */
+export function findProvablyReusableTargetAsset(
+  targetProject: Project,
+  sourceAsset: Asset,
+  verifiedSourceSha256?: string,
+): Asset | null {
+  return (
+    findProvablyReusableTargetAssets(
+      targetProject,
+      sourceAsset,
+      verifiedSourceSha256,
+    )[0] ?? null
+  );
 }
 
 /**
@@ -705,11 +725,12 @@ function remapCharacterActions(
   remapAnimation: (sourceId: string) => string,
   remapPartId: (sourceId: string) => string,
   allocateId: () => string,
+  preallocatedActionIdMap?: ReadonlyMap<string, string>,
 ): { actions?: CharacterAction[]; actionIdMap: Map<string, string> } {
   const actionIdMap = new Map<string, string>();
   if (!actions) return { actionIdMap };
   const mapped: CharacterAction[] = actions.map((action) => {
-    const nextId = allocateId();
+    const nextId = preallocatedActionIdMap?.get(action.id) ?? allocateId();
     actionIdMap.set(action.id, nextId);
     if ('kind' in action) {
       return {
@@ -908,6 +929,8 @@ export function buildImportedProjectCandidate(options: {
 
   const characterIdMap = new Map<string, string>();
   const characterNameMap = new Map<string, string>();
+  const characterPartIdMaps = new Map<string, Map<string, string>>();
+  const characterActionIdMaps = new Map<string, Map<string, string>>();
   const voiceProfileIdMap = new Map<string, string>();
   const occupiedCharacterNames = new Set(
     targetProject.characters.map((character) =>
@@ -927,6 +950,24 @@ export function buildImportedProjectCandidate(options: {
         sourceName: character.name,
         resolvedName: allocated.name,
       });
+    }
+    // Pre-allocate part and action IDs for every imported character in Phase 1
+    // so cross-character `motionMappings` can remap sourceCharacterId,
+    // sourceActionId, rules.sourcePartId, generatedActionId, and targetPartId
+    // deterministically regardless of character order in the batch.
+    if (character.mode === 'adaptive-parts') {
+      const partIdMap = new Map<string, string>();
+      for (const part of character.parts) {
+        partIdMap.set(part.partId, allocateId());
+      }
+      characterPartIdMaps.set(character.id, partIdMap);
+    }
+    if (character.actions && character.actions.length > 0) {
+      const actionIdMap = new Map<string, string>();
+      for (const action of character.actions) {
+        actionIdMap.set(action.id, allocateId());
+      }
+      characterActionIdMaps.set(character.id, actionIdMap);
     }
   }
   for (const voiceProfile of closure.voiceProfiles) {
@@ -1023,9 +1064,10 @@ export function buildImportedProjectCandidate(options: {
     const targetName = characterNameMap.get(character.id)!;
 
     if (character.mode === 'adaptive-parts') {
-      const partIdMap = new Map<string, string>();
+      const partIdMap =
+        characterPartIdMaps.get(character.id) ?? new Map<string, string>();
       const parts = character.parts.map((part) => {
-        const nextPartId = allocateId();
+        const nextPartId = partIdMap.get(part.partId) ?? allocateId();
         partIdMap.set(part.partId, nextPartId);
         const visualSource = part.visualSource
           ? part.visualSource.kind === 'image'
@@ -1079,6 +1121,7 @@ export function buildImportedProjectCandidate(options: {
         remapAnimation,
         remapPartId,
         allocateId,
+        characterActionIdMaps.get(character.id),
       );
       const bodyPoses: CharacterBodyPose[] | undefined = character.bodyPoses?.map(
         (pose) => ({
@@ -1105,27 +1148,70 @@ export function buildImportedProjectCandidate(options: {
             tip: { ...character.armChain.tip },
           }
         : undefined;
-      // Preserve motionMappings only if generatedActionId was remapped and sourceCharacterId is self or also imported.
+      // Preserve motionMappings only when the referenced source character, its
+      // source action, every rule's sourcePartId, the generatedActionId, and
+      // every defined targetPartId are all completely remapped in this batch.
+      // When the source character is not imported, drop the dangling mapping
+      // while keeping the target character's independent generatedAction usable.
       const motionMappings: CharacterMotionMapping[] | undefined =
-        character.motionMappings
-          ?.filter(
-            (mapping) =>
-              characterIdMap.has(mapping.sourceCharacterId) &&
-              actionIdMap.has(mapping.generatedActionId),
-          )
-          .map((mapping) => ({
-            ...mapping,
-            sourceCharacterId: characterIdMap.get(mapping.sourceCharacterId)!,
-            generatedActionId: actionIdMap.get(mapping.generatedActionId)!,
-            rules: mapping.rules.map((rule) => ({
+        character.motionMappings?.flatMap((mapping): CharacterMotionMapping[] => {
+          const mappedSourceCharacterId = characterIdMap.get(
+            mapping.sourceCharacterId,
+          );
+          if (
+            !mappedSourceCharacterId ||
+            mappedSourceCharacterId === targetCharacterId
+          ) {
+            return [];
+          }
+          const mappedSourceActionId = characterActionIdMaps
+            .get(mapping.sourceCharacterId)
+            ?.get(mapping.sourceActionId);
+          const sourcePartIdMap = characterPartIdMaps.get(
+            mapping.sourceCharacterId,
+          );
+          const mappedGeneratedActionId = actionIdMap.get(
+            mapping.generatedActionId,
+          );
+          if (
+            !mappedSourceActionId ||
+            !sourcePartIdMap ||
+            !mappedGeneratedActionId
+          ) {
+            return [];
+          }
+          const remappedRules: CharacterMotionMapping['rules'] = [];
+          for (const rule of mapping.rules) {
+            const mappedSourcePartId = sourcePartIdMap.get(rule.sourcePartId);
+            if (!mappedSourcePartId) {
+              return [];
+            }
+            const mappedTargetPartId = rule.targetPartId
+              ? partIdMap.get(rule.targetPartId)
+              : undefined;
+            if (rule.targetPartId && !mappedTargetPartId) {
+              return [];
+            }
+            remappedRules.push({
               ...rule,
-              ...(rule.targetPartId
-                ? { targetPartId: remapPartId(rule.targetPartId) }
-                : {}),
+              sourcePartId: mappedSourcePartId,
+              ...(mappedTargetPartId
+                ? { targetPartId: mappedTargetPartId }
+                : { targetPartId: undefined }),
               pivotOffset: { ...rule.pivotOffset },
               properties: [...rule.properties],
-            })),
-          }));
+            });
+          }
+          return [
+            {
+              ...mapping,
+              sourceCharacterId: mappedSourceCharacterId,
+              sourceActionId: mappedSourceActionId,
+              generatedActionId: mappedGeneratedActionId,
+              rules: remappedRules,
+            },
+          ];
+        });
 
       return {
         ...character,
@@ -1207,6 +1293,7 @@ export function buildImportedProjectCandidate(options: {
       remapAnimation,
       unusedPartRemapper,
       allocateId,
+      characterActionIdMaps.get(character.id),
     );
 
     const common = {

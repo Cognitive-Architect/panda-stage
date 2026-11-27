@@ -20,6 +20,7 @@ import {
   type FlaGraphicDefinition,
   type Project,
 } from '../../src/domain';
+import { AssetImportFileSystemService } from '../../src/main/services/AssetImportFileSystemService';
 import { ProjectFileSystemService } from '../../src/main/services/ProjectFileSystemService';
 import { ProjectService } from '../../src/main/services/ProjectService';
 import {
@@ -519,5 +520,274 @@ describe('ProjectResourceImportService integration', () => {
     ).rejects.toMatchObject({
       code: 'PROJECT_RESOURCE_SOURCE_INVALID',
     });
+  });
+
+  it('R4: verifies target reuse candidates on disk — reuses intact match, falls back to safe copy when target file is missing or replaced', async () => {
+    const tempDir = await makeTempDir('panda-wf05-r4-');
+    const source = await createSourceFixture(tempDir);
+    const projectService = new ProjectService();
+
+    // Case 1: Intact target file with matching hash -> reused cleanly (no extra copy)
+    const intactRoot = path.join(tempDir, 'target-intact.pandastage');
+    const intactDoc = await projectService.create(intactRoot, { name: 'Intact Target' });
+    await writeFile(path.join(intactRoot, 'assets', 'existing-bg.png'), TINY_PNG_B);
+    const existingBgId = randomUUID();
+    const intactProject = ProjectSchema.parse({
+      ...intactDoc.project,
+      assets: [
+        {
+          id: existingBgId,
+          name: 'ExistingBg',
+          kind: 'image',
+          relativePath: 'assets/existing-bg.png',
+          mimeType: 'image/png',
+          width: 1,
+          height: 1,
+          usage: 'background',
+          keywords: [],
+          sha256: sha256(TINY_PNG_B),
+        },
+      ],
+    });
+    const intactService = new ProjectResourceImportService({
+      projectService,
+      getCurrentProjectSnapshot: () => ({ project: intactProject, revision: 1 }),
+    });
+    const chosenIntact = await intactService.selectSourceProject(
+      { projectRoot: intactRoot, project: intactProject, baseRevision: 1 },
+      source.sourceRoot,
+    );
+    if (!chosenIntact.ok || chosenIntact.status !== 'selected') throw new Error('expected selected');
+    const intactResult = await intactService.importResources({
+      projectRoot: intactRoot,
+      project: intactProject,
+      baseRevision: 1,
+      sourceToken: chosenIntact.sourceToken,
+      resources: [{ kind: 'image', id: source.bgAssetId }],
+      reuseIdenticalAssets: true,
+    });
+    expect(intactResult.reusedAssetIds).toEqual([existingBgId]);
+    expect(intactResult.importedAssets).toHaveLength(0);
+    expect(await readdir(path.join(intactRoot, 'assets'))).toEqual(['existing-bg.png']);
+
+    // Case 2: Target JSON claims matching sha256, but file on disk is MISSING -> falls back to copying source file
+    const missingRoot = path.join(tempDir, 'target-missing.pandastage');
+    const missingDoc = await projectService.create(missingRoot, { name: 'Missing Target' });
+    const missingAssetId = randomUUID();
+    const missingProject = ProjectSchema.parse({
+      ...missingDoc.project,
+      assets: [
+        {
+          id: missingAssetId,
+          name: 'MissingBgRecord',
+          kind: 'image',
+          relativePath: 'assets/ghost-bg.png',
+          mimeType: 'image/png',
+          width: 1,
+          height: 1,
+          usage: 'background',
+          keywords: [],
+          sha256: sha256(TINY_PNG_B),
+        },
+      ],
+    });
+    const missingService = new ProjectResourceImportService({
+      projectService,
+      getCurrentProjectSnapshot: () => ({ project: missingProject, revision: 1 }),
+    });
+    const chosenMissing = await missingService.selectSourceProject(
+      { projectRoot: missingRoot, project: missingProject, baseRevision: 1 },
+      source.sourceRoot,
+    );
+    if (!chosenMissing.ok || chosenMissing.status !== 'selected') throw new Error('expected selected');
+    const missingResult = await missingService.importResources({
+      projectRoot: missingRoot,
+      project: missingProject,
+      baseRevision: 1,
+      sourceToken: chosenMissing.sourceToken,
+      resources: [{ kind: 'image', id: source.bgAssetId }],
+      reuseIdenticalAssets: true,
+    });
+    expect(missingResult.reusedAssetIds).toEqual([]);
+    expect(missingResult.importedAssets).toHaveLength(1);
+    const copiedMissingAsset = missingResult.importedAssets[0]!;
+    expect(copiedMissingAsset.id).not.toBe(missingAssetId);
+    const copiedMissingBytes = await readFile(
+      path.join(missingRoot, copiedMissingAsset.relativePath),
+    );
+    expect(copiedMissingBytes.equals(TINY_PNG_B)).toBe(true);
+
+    // Case 3: Target JSON claims matching sha256, but file on disk was REPLACED with different bytes -> safe copy without overwriting target file!
+    const replacedRoot = path.join(tempDir, 'target-replaced.pandastage');
+    const replacedDoc = await projectService.create(replacedRoot, { name: 'Replaced Target' });
+    await writeFile(path.join(replacedRoot, 'assets', 'bg.png'), TINY_PNG_A); // Replaced with PNG_A while JSON claims PNG_B!
+    const replacedAssetId = randomUUID();
+    const replacedProject = ProjectSchema.parse({
+      ...replacedDoc.project,
+      assets: [
+        {
+          id: replacedAssetId,
+          name: 'TamperedBgRecord',
+          kind: 'image',
+          relativePath: 'assets/bg.png',
+          mimeType: 'image/png',
+          width: 1,
+          height: 1,
+          usage: 'background',
+          keywords: [],
+          sha256: sha256(TINY_PNG_B),
+        },
+      ],
+    });
+    const replacedService = new ProjectResourceImportService({
+      projectService,
+      getCurrentProjectSnapshot: () => ({ project: replacedProject, revision: 1 }),
+    });
+    const chosenReplaced = await replacedService.selectSourceProject(
+      { projectRoot: replacedRoot, project: replacedProject, baseRevision: 1 },
+      source.sourceRoot,
+    );
+    if (!chosenReplaced.ok || chosenReplaced.status !== 'selected') throw new Error('expected selected');
+    const replacedResult = await replacedService.importResources({
+      projectRoot: replacedRoot,
+      project: replacedProject,
+      baseRevision: 1,
+      sourceToken: chosenReplaced.sourceToken,
+      resources: [{ kind: 'image', id: source.bgAssetId }],
+      reuseIdenticalAssets: true,
+    });
+    expect(replacedResult.reusedAssetIds).toEqual([]);
+    expect(replacedResult.importedAssets).toHaveLength(1);
+    const copiedReplacedAsset = replacedResult.importedAssets[0]!;
+    expect(copiedReplacedAsset.relativePath).not.toBe('assets/bg.png');
+    // Original target file on disk is untouched!
+    expect(
+      (await readFile(path.join(replacedRoot, 'assets', 'bg.png'))).equals(TINY_PNG_A),
+    ).toBe(true);
+    // Newly copied file contains true source bytes (TINY_PNG_B)!
+    expect(
+      (await readFile(path.join(replacedRoot, copiedReplacedAsset.relativePath))).equals(
+        TINY_PNG_B,
+      ),
+    ).toBe(true);
+  });
+
+  it('R5: rolls back previously copied batch files and aggregates all residual paths when a later copy throws AssetImportFileSystemCleanupError', async () => {
+    const tempDir = await makeTempDir('panda-wf05-r5-');
+    const source = await createSourceFixture(tempDir);
+    const projectService = new ProjectService();
+
+    // Scenario A: File 1 succeeds, File 2 fails AND its temp cleanup fails -> File 1 is STILL rolled back cleanly!
+    const targetRootA = path.join(tempDir, 'target-r5a.pandastage');
+    const docA = await projectService.create(targetRootA, { name: 'R5A Target' });
+    await writeFile(path.join(targetRootA, 'assets', 'keep-me.png'), TINY_PNG_A);
+    const jsonBeforeA = await readFile(path.join(targetRootA, 'project.json'), 'utf8');
+
+    let copyCallA = 0;
+    const fsA = new AssetImportFileSystemService({
+      beforeFinalize: () => {
+        copyCallA += 1;
+        if (copyCallA === 2) {
+          throw new Error('simulated finalize failure on second file');
+        }
+      },
+      beforeCopyCleanupRemove: () => {
+        throw new Error('simulated temp cleanup EPERM on second file');
+      },
+    });
+    const serviceA = new ProjectResourceImportService({
+      projectService,
+      fileSystem: fsA,
+      getCurrentProjectSnapshot: () => ({ project: docA.project, revision: 0 }),
+    });
+    const chosenA = await serviceA.selectSourceProject(
+      { projectRoot: targetRootA, project: docA.project, baseRevision: 0 },
+      source.sourceRoot,
+    );
+    if (!chosenA.ok || chosenA.status !== 'selected') throw new Error('expected selected');
+
+    let caughtA: unknown;
+    try {
+      await serviceA.importResources({
+        projectRoot: targetRootA,
+        project: docA.project,
+        baseRevision: 0,
+        sourceToken: chosenA.sourceToken,
+        resources: [
+          { kind: 'image', id: source.bgAssetId },
+          { kind: 'image', id: source.propAssetId },
+        ],
+      });
+    } catch (error) {
+      caughtA = error;
+    }
+    expect(caughtA).toBeInstanceOf(ProjectResourceImportServiceError);
+    const errA = caughtA as ProjectResourceImportServiceError;
+    expect(errA.code).toBe('PROJECT_RESOURCE_ROLLBACK_FAILED');
+    // Only file 2's temp file remains; file 1 was rolled back and pre-existing keep-me.png is intact!
+    expect(errA.residualPaths).toHaveLength(1);
+    expect(path.basename(errA.residualPaths[0]!)).toMatch(/^\.asset-import\./u);
+    const filesAfterA = await readdir(path.join(targetRootA, 'assets'));
+    expect(filesAfterA).toContain('keep-me.png');
+    expect(filesAfterA.some((f) => f.includes('bg'))).toBe(false);
+    expect(filesAfterA.some((f) => f.includes('prop'))).toBe(false);
+    expect(await readFile(path.join(targetRootA, 'project.json'), 'utf8')).toBe(
+      jsonBeforeA,
+    );
+
+    // Scenario B: File 1's outer rollback ALSO fails -> residualPaths aggregates BOTH inner temp AND outer file 1!
+    const targetRootB = path.join(tempDir, 'target-r5b.pandastage');
+    const docB = await projectService.create(targetRootB, { name: 'R5B Target' });
+    let copyCallB = 0;
+    const fsB = new AssetImportFileSystemService({
+      beforeFinalize: () => {
+        copyCallB += 1;
+        if (copyCallB === 2) {
+          throw new Error('simulated finalize failure on second file');
+        }
+      },
+      beforeCopyCleanupRemove: () => {
+        throw new Error('simulated inner cleanup failure');
+      },
+      beforeRollbackRemove: () => {
+        throw new Error('simulated outer rollback failure on file 1');
+      },
+    });
+    const serviceB = new ProjectResourceImportService({
+      projectService,
+      fileSystem: fsB,
+      getCurrentProjectSnapshot: () => ({ project: docB.project, revision: 0 }),
+    });
+    const chosenB = await serviceB.selectSourceProject(
+      { projectRoot: targetRootB, project: docB.project, baseRevision: 0 },
+      source.sourceRoot,
+    );
+    if (!chosenB.ok || chosenB.status !== 'selected') throw new Error('expected selected');
+
+    let caughtB: unknown;
+    try {
+      await serviceB.importResources({
+        projectRoot: targetRootB,
+        project: docB.project,
+        baseRevision: 0,
+        sourceToken: chosenB.sourceToken,
+        resources: [
+          { kind: 'image', id: source.bgAssetId },
+          { kind: 'image', id: source.propAssetId },
+        ],
+      });
+    } catch (error) {
+      caughtB = error;
+    }
+    expect(caughtB).toBeInstanceOf(ProjectResourceImportServiceError);
+    const errB = caughtB as ProjectResourceImportServiceError;
+    expect(errB.code).toBe('PROJECT_RESOURCE_ROLLBACK_FAILED');
+    expect(errB.residualPaths).toHaveLength(2);
+    expect(
+      errB.residualPaths.some((p) => path.basename(p).startsWith('.asset-import.')),
+    ).toBe(true);
+    expect(
+      errB.residualPaths.some((p) => path.basename(p).includes('bg')),
+    ).toBe(true);
   });
 });

@@ -405,4 +405,90 @@ describe('WF-04 integration: UI single-commit + post-apply editing + Undo/Redo +
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it('R3: keeps UI planner and desktop CLI semantically equivalent for manual audio swap, explicit source range, and explicit unlink', () => {
+    const project = buildIntegrationProject();
+    const audio1Id = '14141000-0000-4000-8000-000000000201';
+    const audio4Id = '14141000-0000-4000-8000-000000000204';
+    const singleShotScript = [
+      '镜头：手选源区间验证',
+      '背景：背景',
+      '出场：师兄、小师妹',
+      '站位：双人对话',
+      '对白：',
+      '师兄：第一句换音并裁区间。',
+      '小师妹：第二句显式留草稿。',
+    ].join('\n');
+
+    // Direct UI/domain path
+    const initialUi = planScriptPerformance(project, singleShotScript);
+    const uiPlan = planScriptPerformance(project, singleShotScript, {
+      previousDialogueRows: initialUi.dialogueDraftRows,
+      overrides: {
+        audioByDraftRowId: {
+          [initialUi.dialogues[0]!.draftRowId]: {
+            audioAssetId: audio4Id,
+            sourceStartMs: 250,
+            sourceEndMs: 1_150,
+          },
+          [initialUi.dialogues[1]!.draftRowId]: {
+            audioAssetId: null,
+          },
+        },
+      },
+    });
+    const uiApplied = applyScriptPerformancePlan(project, uiPlan, {
+      allowPartialConfirm: true,
+    });
+    expect(uiApplied.ok).toBe(true);
+    if (!uiApplied.ok) return;
+
+    // CLI / desktop automation path
+    editorProjectStore.open('C:/projects/wf04-r3-cli.pandastage', project);
+    shotStore.select(IDS.shot);
+    const session = {
+      sessionId: SESSION_ID,
+      projectId: project.id,
+      instanceId: editorProjectStore.getProjectInstanceId()!,
+    };
+    const cliRes = executeDesktopAutomation(
+      DesktopAutomationRendererRequestSchema.parse({
+        requestId: REQUEST_ID,
+        sessionId: SESSION_ID,
+        deadlineMs: Date.now() + 5_000,
+        appVersion: '0.1.0',
+        command: {
+          name: 'script.apply',
+          session,
+          script: singleShotScript,
+          allowPartialConfirm: true,
+          audioByOrdinal: {
+            '1': {
+              audioAssetId: audio4Id,
+              sourceStartMs: 250,
+              sourceEndMs: 1_150,
+            },
+            '2': {
+              audioAssetId: null,
+            },
+          },
+        },
+      }),
+      () => true,
+    );
+    expect(cliRes.ok).toBe(true);
+    const cliProject = editorProjectStore.getSnapshot()!.project;
+    expect(extractSemanticSignature(cliProject)).toEqual(
+      extractSemanticSignature(uiApplied.project),
+    );
+    const createdShot = cliProject.shots.find((s) => s.name === '手选源区间验证')!;
+    expect(createdShot.dialogues).toHaveLength(1);
+    expect(createdShot.audioClips[0]).toMatchObject({
+      assetId: audio4Id,
+      offsetMs: 250,
+      startMs: 0,
+      endMs: 900,
+    });
+    expect(createdShot.audioClips[0]!.assetId).not.toBe(audio1Id);
+  });
 });

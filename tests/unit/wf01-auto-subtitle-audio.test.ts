@@ -6,6 +6,7 @@ import {
   ProjectSchema,
   ShotService,
   buildFormalExportAudioMixPlan,
+  createDraftRowIdGenerator,
   evaluateSpeakerFocusCamera,
   integerFrameSpanMs,
   matchDialogueAudioRows,
@@ -735,5 +736,76 @@ describe('WF-01 shared audio matching & real-duration timing planner', () => {
       startMs: 1_500,
       endMs: 3_600,
     });
+  });
+
+  it('R1: never reuses retired draftRowId after delete->add and prevents auto-match stealing an already-confirmed asset', () => {
+    const audio1 = makeAudioAsset(1, '1_熊猫', 1_200);
+    const audio2 = makeAudioAsset(2, '2_老虎', 1_500);
+    const audioCustom = makeAudioAsset(3, 'custom_take', 1_100);
+    const project = buildTwoSpeakerProject([audio1, audio2, audioCustom]);
+
+    const nextDraftId = createDraftRowIdGenerator();
+    const initial = reconcileDialogueDraftRows(
+      [],
+      [
+        { sourceLineNumber: 1, logicalOrdinal: 1, text: '第一句', speakerType: 'character', characterId: IDS.character, speakerName: '熊猫', confirmedAudioAssetId: audio1.id },
+        { sourceLineNumber: 2, logicalOrdinal: 2, text: '第二句', speakerType: 'character', characterId: TIGER_ID, speakerName: '老虎', confirmedAudioAssetId: audio2.id },
+        { sourceLineNumber: 3, logicalOrdinal: 3, text: '第三句', speakerType: 'character', characterId: IDS.character, speakerName: '熊猫', confirmedAudioAssetId: audioCustom.id },
+      ],
+      nextDraftId,
+    );
+    expect(initial.map((r) => r.draftRowId)).toEqual(['draft-row-1', 'draft-row-2', 'draft-row-3']);
+
+    // Delete line 3 -> only 2 rows remain
+    const afterDelete = reconcileDialogueDraftRows(
+      initial,
+      [
+        { sourceLineNumber: 1, logicalOrdinal: 1, text: '第一句', speakerType: 'character', characterId: IDS.character, speakerName: '熊猫' },
+        { sourceLineNumber: 2, logicalOrdinal: 2, text: '第二句', speakerType: 'character', characterId: TIGER_ID, speakerName: '老虎' },
+      ],
+      nextDraftId,
+    );
+    expect(afterDelete.map((r) => r.draftRowId)).toEqual(['draft-row-1', 'draft-row-2']);
+
+    // Add a brand-new line 3 for the same character -> gets fresh draft-row-4 (NEVER draft-row-3!)
+    const afterAdd = reconcileDialogueDraftRows(
+      afterDelete,
+      [
+        { sourceLineNumber: 1, logicalOrdinal: 1, text: '第一句', speakerType: 'character', characterId: IDS.character, speakerName: '熊猫' },
+        { sourceLineNumber: 2, logicalOrdinal: 2, text: '第二句', speakerType: 'character', characterId: TIGER_ID, speakerName: '老虎' },
+        { sourceLineNumber: 3, logicalOrdinal: 3, text: '全新第三句', speakerType: 'character', characterId: IDS.character, speakerName: '熊猫' },
+      ],
+      nextDraftId,
+    );
+    expect(afterAdd[2]!.draftRowId).toBe('draft-row-4');
+    expect(afterAdd[2]!.confirmedAudioAssetId).toBeUndefined();
+
+    // Inserting a new same-speaker line at ordinal 1 while row 1 still owns `1_熊猫`
+    // must NOT silently steal `1_熊猫` onto the newly inserted line.
+    const report = matchDialogueAudioRows(project, [
+      {
+        draftRowId: 'draft-row-5',
+        ordinal: 1,
+        sourceLineNumber: 1,
+        text: '新插入的开场',
+        speakerType: 'character',
+        characterId: IDS.character,
+        speakerName: '熊猫',
+      },
+      {
+        draftRowId: 'draft-row-1',
+        ordinal: 2,
+        sourceLineNumber: 2,
+        text: '第一句',
+        speakerType: 'character',
+        characterId: IDS.character,
+        speakerName: '熊猫',
+        confirmedAudioAssetId: audio1.id,
+      },
+    ]);
+    expect(report.rows[0]!.ready).toBe(false);
+    expect(report.rows[0]!.issue).toBe('AUDIO_AMBIGUOUS');
+    expect(report.rows[1]!.ready).toBe(true);
+    expect(report.rows[1]!.audioAssetId).toBe(audio1.id);
   });
 });

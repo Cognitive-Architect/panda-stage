@@ -11,7 +11,11 @@ import {
   type Shot,
   type TimelineEvent,
 } from '../models';
-import { TIMELINE_FPS, frameTimeMs } from '../timeline/frame-grid';
+import {
+  TIMELINE_FPS,
+  frameTimeMs,
+  lastValidFrameTime,
+} from '../timeline/frame-grid';
 import {
   DialogueService,
   type BatchBoundaryMode,
@@ -212,6 +216,10 @@ export interface BatchTimelineEditPlan {
   readonly shotId: string;
   readonly edit: BatchTimelineEdit;
   readonly effectiveDeltaMs: number | null;
+  /** Unified integer frame shift when LayerMotion keyframe spans participate. */
+  readonly deltaFrames?: number;
+  /** True when the requested shift was quantized to the 24fps frame grid. */
+  readonly frameSnapped?: boolean;
   readonly clamped: boolean;
   readonly allowedDeltaRange: {
     readonly minDeltaMs: number;
@@ -239,6 +247,10 @@ export interface CrossTypeBatchShiftPlan {
   readonly shotId: string;
   readonly requestedDeltaMs: number;
   readonly deltaMs: number;
+  /** Unified integer frame shift when LayerMotion keyframe spans participate. */
+  readonly deltaFrames?: number;
+  /** True when the requested shift was quantized to the 24fps frame grid. */
+  readonly frameSnapped?: boolean;
   readonly clamped: boolean;
   readonly allowedDeltaRange: {
     readonly minDeltaMs: number;
@@ -312,8 +324,149 @@ function retimeEvent(
   }
 }
 
+function frameIndexForTimeMs(timeMs: number): number {
+  return Math.round((timeMs * TIMELINE_FPS) / 1_000);
+}
+
 function deltaMsToFrames(deltaMs: number): number {
   return Math.round((deltaMs * TIMELINE_FPS) / 1_000);
+}
+
+interface FrameAlignedBatchDelta {
+  readonly effectiveDeltaMs: number;
+  readonly deltaFrames: number;
+  readonly clamped: boolean;
+  readonly frameSnapped: boolean;
+  readonly minLegalDeltaMs: number;
+  readonly maxLegalDeltaMs: number;
+}
+
+/**
+ * Resolves ONE unified 24fps frame-grid shift shared by Dialogues,
+ * TimelineEvents, and LayerMotion keyframe spans whenever at least one
+ * LayerMotion span is included in the batch.
+ *
+ * Uses the earliest selected keyframe as the deterministic frame anchor so
+ * repeated shifts (e.g. +100ms repeatedly) step along exact persisted frame
+ * timestamps with zero cumulative quantization drift between keyframes and
+ * millisecond-timed dialogues/events.
+ */
+function resolveFrameAlignedBatchDelta(params: {
+  readonly requestedDeltaMs: number;
+  readonly minDeltaMs: number;
+  readonly maxDeltaMs: number;
+  readonly minSpanDeltaFrames: number;
+  readonly maxSpanDeltaFrames: number;
+  readonly anchorFrameIndex: number;
+  readonly boundaryMode: BatchBoundaryMode;
+}): FrameAlignedBatchDelta {
+  const {
+    requestedDeltaMs,
+    minDeltaMs,
+    maxDeltaMs,
+    minSpanDeltaFrames,
+    maxSpanDeltaFrames,
+    anchorFrameIndex,
+    boundaryMode,
+  } = params;
+  const anchorMs = frameTimeMs(anchorFrameIndex);
+  const msForFrames = (df: number): number =>
+    frameTimeMs(anchorFrameIndex + df) - anchorMs;
+
+  // Compute exact legal frame delta bounds [minLegalFrames, maxLegalFrames]
+  // where BOTH span frame bounds AND ms bounds [minDeltaMs, maxDeltaMs] hold.
+  let minLegalFrames = Math.max(
+    minSpanDeltaFrames,
+    Math.ceil((minDeltaMs * TIMELINE_FPS) / 1_000) - 1,
+  );
+  while (
+    minLegalFrames > minSpanDeltaFrames &&
+    msForFrames(minLegalFrames - 1) >= minDeltaMs
+  ) {
+    minLegalFrames -= 1;
+  }
+  while (
+    minLegalFrames < maxSpanDeltaFrames &&
+    msForFrames(minLegalFrames) < minDeltaMs
+  ) {
+    minLegalFrames += 1;
+  }
+
+  let maxLegalFrames = Math.min(
+    maxSpanDeltaFrames,
+    Math.floor((maxDeltaMs * TIMELINE_FPS) / 1_000) + 1,
+  );
+  while (
+    maxLegalFrames < maxSpanDeltaFrames &&
+    msForFrames(maxLegalFrames + 1) <= maxDeltaMs
+  ) {
+    maxLegalFrames += 1;
+  }
+  while (
+    maxLegalFrames > minSpanDeltaFrames &&
+    msForFrames(maxLegalFrames) > maxDeltaMs
+  ) {
+    maxLegalFrames -= 1;
+  }
+
+  if (minLegalFrames > maxLegalFrames) {
+    minLegalFrames = 0;
+    maxLegalFrames = 0;
+  }
+
+  const minLegalDeltaMs = msForFrames(minLegalFrames);
+  const maxLegalDeltaMs = msForFrames(maxLegalFrames);
+  const rawFrames = deltaMsToFrames(requestedDeltaMs);
+
+  if (boundaryMode === 'clamp') {
+    const clampedFrames = Math.min(
+      Math.max(rawFrames, minLegalFrames),
+      maxLegalFrames,
+    );
+    const effectiveDeltaMs = msForFrames(clampedFrames);
+    return {
+      effectiveDeltaMs,
+      deltaFrames: clampedFrames,
+      clamped:
+        clampedFrames !== rawFrames ||
+        requestedDeltaMs < minDeltaMs ||
+        requestedDeltaMs > maxDeltaMs,
+      frameSnapped: effectiveDeltaMs !== requestedDeltaMs,
+      minLegalDeltaMs,
+      maxLegalDeltaMs,
+    };
+  }
+
+  // Reject mode: if the requested delta itself exceeds [minDeltaMs, maxDeltaMs],
+  // reject cleanly (never silently round an out-of-range request back inside).
+  if (requestedDeltaMs < minDeltaMs || requestedDeltaMs > maxDeltaMs) {
+    if (requestedDeltaMs < minDeltaMs) {
+      throw new TimelineEventBatchError(
+        'TIMELINE_EVENT_BATCH_OUT_OF_RANGE',
+        '批量提前移动会超出镜头起点，请缩小提前量。',
+      );
+    }
+    throw new TimelineEventBatchError(
+      'TIMELINE_EVENT_BATCH_OUT_OF_RANGE',
+      '批量延后移动会超出镜头时长，请缩短延后量或先延长镜头。',
+    );
+  }
+
+  // Requested delta is within ms bounds: align to nearest legal frame inside
+  // [minLegalFrames, maxLegalFrames] so frame-grid rounding never overshoots bounds.
+  const effectiveFrames = Math.min(
+    Math.max(rawFrames, minLegalFrames),
+    maxLegalFrames,
+  );
+  const effectiveDeltaMs = msForFrames(effectiveFrames);
+  return {
+    effectiveDeltaMs,
+    deltaFrames: effectiveFrames,
+    clamped: false,
+    frameSnapped: effectiveDeltaMs !== requestedDeltaMs,
+    minLegalDeltaMs,
+    maxLegalDeltaMs,
+  };
 }
 
 /**
@@ -506,6 +659,8 @@ export class TimelineEventBatchService {
     // Compute unified shift bounds if shift action.
     let allowedDeltaRange: { minDeltaMs: number; maxDeltaMs: number } | null = null;
     let effectiveDeltaMs: number | null = null;
+    let resolvedDeltaFrames: number | undefined;
+    let frameSnapped: boolean | undefined;
     let clamped = false;
     let effectiveEdit = edit;
 
@@ -519,20 +674,57 @@ export class TimelineEventBatchService {
         }
         maxDeltaMs = Math.min(maxDeltaMs, shot.durationMs - event.endMs);
       }
-      for (const { keyTimesMs } of selectedSpans) {
-        const firstKey = keyTimesMs[0]!;
-        const lastKey = keyTimesMs[keyTimesMs.length - 1]!;
-        // Non-0ms keys must stay at >= frame 1.
-        minDeltaMs = Math.max(minDeltaMs, frameTimeMs(1) - firstKey);
-        maxDeltaMs = Math.min(maxDeltaMs, shot.durationMs - lastKey);
+
+      if (selectedSpans.length > 0) {
+        const maxShotFrameTime = lastValidFrameTime(shot.durationMs);
+        const maxShotFrameIndex = frameIndexForTimeMs(maxShotFrameTime);
+        let minSpanDeltaFrames = Number.NEGATIVE_INFINITY;
+        let maxSpanDeltaFrames = Number.POSITIVE_INFINITY;
+        let anchorFrameIndex = Number.POSITIVE_INFINITY;
+
+        for (const { keyTimesMs } of selectedSpans) {
+          const firstKey = keyTimesMs[0]!;
+          const lastKey = keyTimesMs[keyTimesMs.length - 1]!;
+          const firstFrame = frameIndexForTimeMs(firstKey);
+          const lastFrame = frameIndexForTimeMs(lastKey);
+          if (firstFrame < anchorFrameIndex) anchorFrameIndex = firstFrame;
+          // Non-0ms keys must stay within [frame 1, lastValidFrameTime(shot.durationMs)].
+          minSpanDeltaFrames = Math.max(minSpanDeltaFrames, 1 - firstFrame);
+          maxSpanDeltaFrames = Math.min(
+            maxSpanDeltaFrames,
+            maxShotFrameIndex - lastFrame,
+          );
+          minDeltaMs = Math.max(minDeltaMs, frameTimeMs(1) - firstKey);
+          maxDeltaMs = Math.min(maxDeltaMs, maxShotFrameTime - lastKey);
+        }
+
+        const aligned = resolveFrameAlignedBatchDelta({
+          requestedDeltaMs: edit.deltaMs,
+          minDeltaMs,
+          maxDeltaMs,
+          minSpanDeltaFrames,
+          maxSpanDeltaFrames,
+          anchorFrameIndex,
+          boundaryMode,
+        });
+        effectiveDeltaMs = aligned.effectiveDeltaMs;
+        resolvedDeltaFrames = aligned.deltaFrames;
+        frameSnapped = aligned.frameSnapped;
+        clamped = aligned.clamped;
+        allowedDeltaRange = {
+          minDeltaMs: aligned.minLegalDeltaMs,
+          maxDeltaMs: aligned.maxLegalDeltaMs,
+        };
+        effectiveEdit = { action: 'shift', deltaMs: effectiveDeltaMs };
+      } else {
+        allowedDeltaRange = { minDeltaMs, maxDeltaMs };
+        effectiveDeltaMs =
+          boundaryMode === 'clamp'
+            ? Math.min(Math.max(edit.deltaMs, minDeltaMs), maxDeltaMs)
+            : edit.deltaMs;
+        clamped = effectiveDeltaMs !== edit.deltaMs;
+        effectiveEdit = { action: 'shift', deltaMs: effectiveDeltaMs };
       }
-      allowedDeltaRange = { minDeltaMs, maxDeltaMs };
-      effectiveDeltaMs =
-        boundaryMode === 'clamp'
-          ? Math.min(Math.max(edit.deltaMs, minDeltaMs), maxDeltaMs)
-          : edit.deltaMs;
-      clamped = effectiveDeltaMs !== edit.deltaMs;
-      effectiveEdit = { action: 'shift', deltaMs: effectiveDeltaMs };
     }
 
     const entries = selectedEvents.map(
@@ -565,7 +757,8 @@ export class TimelineEventBatchService {
     const motionSpanEntries = selectedSpans.map(
       ({ span, layer, keyTimesMs }): BatchLayerMotionSpanEntry => {
         if (effectiveEdit.action === 'shift') {
-          const deltaFrames = deltaMsToFrames(effectiveEdit.deltaMs);
+          const deltaFrames =
+            resolvedDeltaFrames ?? deltaMsToFrames(effectiveEdit.deltaMs);
           try {
             const retimePlan = this.layerMotionService.planKeysRetime(project, {
               shotId: shot.id,
@@ -650,6 +843,10 @@ export class TimelineEventBatchService {
       shotId: shot.id,
       edit: effectiveEdit,
       effectiveDeltaMs,
+      ...(resolvedDeltaFrames !== undefined
+        ? { deltaFrames: resolvedDeltaFrames }
+        : {}),
+      ...(frameSnapped !== undefined ? { frameSnapped } : {}),
       clamped,
       allowedDeltaRange,
       entries,
@@ -802,11 +999,57 @@ export class TimelineEventBatchService {
       }
     }
 
-    const effectiveDeltaMs =
-      boundaryMode === 'clamp'
-        ? Math.min(Math.max(input.deltaMs, minDeltaMs), maxDeltaMs)
-        : input.deltaMs;
-    const clamped = effectiveDeltaMs !== input.deltaMs;
+    let effectiveDeltaMs: number;
+    let deltaFrames: number | undefined;
+    let frameSnapped: boolean | undefined;
+    let clamped: boolean;
+    let resolvedAllowedRange = { minDeltaMs, maxDeltaMs };
+
+    if (actionProbe && actionProbe.motionSpanEntries.length > 0) {
+      const shot = this.shot(project, input.shotId);
+      const maxShotFrameTime = lastValidFrameTime(shot.durationMs);
+      const maxShotFrameIndex = frameIndexForTimeMs(maxShotFrameTime);
+      let minSpanDeltaFrames = Number.NEGATIVE_INFINITY;
+      let maxSpanDeltaFrames = Number.POSITIVE_INFINITY;
+      let anchorFrameIndex = Number.POSITIVE_INFINITY;
+
+      for (const spanEntry of actionProbe.motionSpanEntries) {
+        const firstFrame = frameIndexForTimeMs(spanEntry.keyTimesMs[0]!);
+        const lastFrame = frameIndexForTimeMs(
+          spanEntry.keyTimesMs[spanEntry.keyTimesMs.length - 1]!,
+        );
+        if (firstFrame < anchorFrameIndex) anchorFrameIndex = firstFrame;
+        minSpanDeltaFrames = Math.max(minSpanDeltaFrames, 1 - firstFrame);
+        maxSpanDeltaFrames = Math.min(
+          maxSpanDeltaFrames,
+          maxShotFrameIndex - lastFrame,
+        );
+      }
+
+      const aligned = resolveFrameAlignedBatchDelta({
+        requestedDeltaMs: input.deltaMs,
+        minDeltaMs,
+        maxDeltaMs,
+        minSpanDeltaFrames,
+        maxSpanDeltaFrames,
+        anchorFrameIndex,
+        boundaryMode,
+      });
+      effectiveDeltaMs = aligned.effectiveDeltaMs;
+      deltaFrames = aligned.deltaFrames;
+      frameSnapped = aligned.frameSnapped;
+      clamped = aligned.clamped;
+      resolvedAllowedRange = {
+        minDeltaMs: aligned.minLegalDeltaMs,
+        maxDeltaMs: aligned.maxLegalDeltaMs,
+      };
+    } else {
+      effectiveDeltaMs =
+        boundaryMode === 'clamp'
+          ? Math.min(Math.max(input.deltaMs, minDeltaMs), maxDeltaMs)
+          : input.deltaMs;
+      clamped = effectiveDeltaMs !== input.deltaMs;
+    }
 
     const dialoguePlan =
       dialogueIds.length > 0
@@ -849,8 +1092,10 @@ export class TimelineEventBatchService {
       shotId: input.shotId,
       requestedDeltaMs: input.deltaMs,
       deltaMs: effectiveDeltaMs,
+      ...(deltaFrames !== undefined ? { deltaFrames } : {}),
+      ...(frameSnapped !== undefined ? { frameSnapped } : {}),
       clamped,
-      allowedDeltaRange: { minDeltaMs, maxDeltaMs },
+      allowedDeltaRange: resolvedAllowedRange,
       dialoguePlan,
       actionPlan,
       skipped: actionPlan ? actionPlan.skipped : skippedOnlyActionError,

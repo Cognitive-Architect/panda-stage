@@ -395,6 +395,7 @@ export function AssetImportPanel({
               <DecorativeIcon icon={FileArchive} size={18} />
               <span>导入 FLA</span>
             </button>
+            <span>打开 FLA 后可先预览并选择需要的素材，确认导入前不会修改项目。</span>
             {onImportFromProject ? (
               <button
                 className="asset-import-fla-button"
