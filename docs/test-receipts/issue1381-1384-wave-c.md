@@ -49,3 +49,6 @@
 - 经授权将 `main` 的 `06b565f` 合并至母 PR。保留原生相机、父子级、深度及 FLA 输出链。复制复用 A00 的偏移与事件优先级语义，并保留 v46 同镜头父级与时间联动处理、跨镜头解绑规则。图层效果使用 v47 的可选实例字段。v46 迁移保留镜头和图层数据，旧工程默认无效果。
 - 施工方 Windows Electron。半透明图层在真实下层图像上从正常叠加 RGB `[140,144,116]` 切换至正片叠底 `[39,104,111]`。预览取消时 revision 仍为 0。应用一次入 History，撤销与重做恢复对应像素。修改为混合加描边后，保存重开与 Product Preview 一致，在原边界之外仍采到描边。正式 PNG 与预览采样相同，正式 MP4 代表像素各通道相差最多 3。清除效果后保存的图层省略该字段。回执为 `D:/PandaStage-Acceptance/issue-1386/effects-Y4Z873/receipt.json`。
 - 施工方 Windows Electron。结构 Graphic 的 RGBA、矢量遮罩与独立过滤子树在应用外描边后仍保留。描边进入遮罩外缘，离轮廓较远的遮罩外采样仍等于背景。Definition 原样保存。正式 PNG 与产品预览的五个代表像素一致，编辑画布的软边渐变像素在不同显示缩放下最多相差 5。回执为 `D:/PandaStage-Acceptance/issue-1386/structured-effects-qlExjy/receipt.json`。局部边缘羽化沿图层边界处理。
+
+- C02 相机与路径。带原生手工相机的 v46 工程在 Windows Electron 打开并保存为 v47，1065px 和 745px 画布上的控制点拖动均同步数值，草稿保持 revision。确认写入两条各 25 枚关键帧的 X/Y 轨道。500ms 的编辑舞台、重开、产品预览与正式 MP4 的四边差小于 2 个逻辑像素。回执为 `D:/PandaStage-Acceptance/issue-1386/camera-path-b03YLq/receipt.json`。
+- 本地定向验证。移动父级与手工相机组合覆盖父级逆变换和选段外轨迹；合并后的 Graphic v2 复制与矩形阵列生成验证保留实例覆盖、轨道归属和事件优先级。C04 覆盖 v46 冻结、迁移、设置、空操作、清除和锁定约束。曲线路径持久化与 FLA 组合的 20 条定向集成测试通过。PR 保持 Draft，OWNER UAT 待验。
