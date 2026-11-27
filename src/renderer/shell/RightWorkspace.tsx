@@ -1,3 +1,4 @@
+import type { CurveMotionStageDraft } from '../features/canvas/CurveMotionStageOverlay';
 import {
   useEffect,
   useImperativeHandle,
@@ -47,6 +48,7 @@ export interface RightWorkspaceProps {
   autoCameraEnabled: boolean;
   onAutoCameraChange(enabled: boolean): void;
   onPreviewDraft?(project: Project): void;
+  onCurveMotionDraft?(draft: CurveMotionStageDraft | null): void;
 }
 
 export function RightWorkspace({
@@ -54,6 +56,7 @@ export function RightWorkspace({
   autoCameraEnabled,
   onAutoCameraChange,
   onPreviewDraft,
+  onCurveMotionDraft,
 }: RightWorkspaceProps): React.JSX.Element {
   const pendingPlacement = usePendingDialoguePlacement();
   const [activeActivity, setActiveActivity] =
@@ -133,6 +136,7 @@ export function RightWorkspace({
             <ProjectToolsDrawer
               onClose={closeSurface}
               onPreview={onPreviewDraft}
+              onCurveMotionDraft={onCurveMotionDraft}
             />
           )}
         </div>

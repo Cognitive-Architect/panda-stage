@@ -148,13 +148,8 @@ export function resolveLayerAnimationBasis(
 }
 
 /** Recalibrating the frozen pivot is allowed only before non-neutral keys are authored. */
-export function recalibrateLayerAnimationPivot(
-  clip: LayerAnimationClip,
-  target: LayerTargetRef,
-  pivot: TargetLocalPivot,
-): LayerAnimationClip {
-  resolveLayerAnimationBasis(clip, target);
-  const authored = clip.tracks.some(
+export function layerHasNonNeutralMotion(clip: LayerAnimationClip, target: LayerTargetRef): boolean {
+  return clip.tracks.some(
     (track) =>
       sameAnimationTarget(track.target, target) &&
       track.keys.some(
@@ -166,7 +161,15 @@ export function recalibrateLayerAnimationPivot(
             : 0),
       ),
   );
-  if (authored) {
+}
+
+export function recalibrateLayerAnimationPivot(
+  clip: LayerAnimationClip,
+  target: LayerTargetRef,
+  pivot: TargetLocalPivot,
+): LayerAnimationClip {
+  resolveLayerAnimationBasis(clip, target);
+  if (layerHasNonNeutralMotion(clip, target)) {
     throw new Error(
       'Animation pivot is fixed after non-neutral animation is authored; clear the target animation before recalibrating.',
     );
@@ -204,6 +207,27 @@ export function syncLayerAnimationClipBasis(
         : basis,
     ),
   });
+}
+
+/** Deep-clone a Layer Clip v2 for a duplicated Layer, remapping target ownership and syncing its baseTransform. */
+export function duplicateLayerAnimationClip(
+  clip: LayerAnimationClip,
+  targetLayerId: string,
+  baseTransform: LayerBasePose,
+): LayerAnimationClip {
+  const cloned = structuredClone(clip);
+  const remapped: LayerAnimationClip = {
+    ...cloned,
+    targetBases: cloned.targetBases.map((basis) => ({
+      ...basis,
+      target: { ...basis.target, layerId: targetLayerId },
+    })),
+    tracks: cloned.tracks.map((track) => ({
+      ...track,
+      target: { ...track.target, layerId: targetLayerId },
+    })),
+  };
+  return syncLayerAnimationClipBasis(remapped, targetLayerId, baseTransform);
 }
 
 /** Center-anchor mapping from target-local source-canvas coordinates to Layer-local space. */
@@ -322,6 +346,40 @@ export function composeAnimatedLayerTransform(
     throw new Error('Animation produced a non-finite or degenerate Layer transform.');
   }
   return { x, y, scaleX, scaleY, rotationDeg };
+}
+
+/** Back-solve relative Layer Track offsetX/Y for a desired stage anchor point under pivot/rotation/scale/flipX. */
+export function solveLayerRelativeOffsetForStagePoint(
+  localPivot: { readonly x: number; readonly y: number },
+  prePose: LayerBasePose,
+  flipX: boolean,
+  relRotationDeg: number,
+  relScaleX: number,
+  relScaleY: number,
+  stagePoint: { readonly x?: number; readonly y?: number },
+): { readonly offsetX?: number; readonly offsetY?: number } {
+  const vBase = layerPivotStageVector(
+    localPivot,
+    prePose.rotationDeg,
+    prePose.scaleX,
+    prePose.scaleY,
+    flipX,
+  );
+  const vFinal = layerPivotStageVector(
+    localPivot,
+    prePose.rotationDeg + relRotationDeg,
+    prePose.scaleX * relScaleX,
+    prePose.scaleY * relScaleY,
+    flipX,
+  );
+  return {
+    ...(stagePoint.x !== undefined
+      ? { offsetX: stagePoint.x - prePose.x + vFinal.x - vBase.x }
+      : {}),
+    ...(stagePoint.y !== undefined
+      ? { offsetY: stagePoint.y - prePose.y + vFinal.y - vBase.y }
+      : {}),
+  };
 }
 
 /** Read current relative Layer motion values at `timeMs` without allocating a Clip. */

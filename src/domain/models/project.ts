@@ -59,6 +59,7 @@ import {
   ShotV43Schema,
   ShotV44Schema,
   ShotV45Schema,
+  ShotV46Schema,
   ShotV26Schema,
   ShotV27Schema,
   ShotV28Schema,
@@ -817,6 +818,13 @@ const CurrentProjectDataSchema = ProjectV40DataSchema.extend({
   schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
   shots: z.array(ShotSchema),
 });
+
+export const ProjectV46Schema = ProjectV40DataSchema.extend({
+  schemaVersion: z.literal(46),
+  shots: z.array(ShotV46Schema),
+}).superRefine(validateProjectReferences)
+  .superRefine(validateAdaptiveClipOwnership)
+  .superRefine(validateLayerClipOwnership);
 
 export const ProjectV45Schema = ProjectV40DataSchema.extend({
   schemaVersion: z.literal(45),

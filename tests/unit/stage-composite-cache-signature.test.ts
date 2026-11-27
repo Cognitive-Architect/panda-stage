@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type {
   LayerVisualHeadGroup,
 } from '../../src/domain';
+import { defaultLayerVisualEffects } from '../../src/domain/models/layerVisualEffects';
 import type { StageRenderPart } from '../../src/shared/stage/render-model';
 import {
   createStageCompositeCacheSignature,
@@ -329,4 +330,25 @@ describe('stage composite cache signature', () => {
       }),
     ).toBe(false);
   });
+});
+
+it('invalidates effect caching on parameter, structured frame geometry, and resource changes', () => {
+  const base = baseInput();
+  const resource = { id: 'mask', asset: base.orderedParts[0]!.asset, sourceUrl: 'blob:mask:1' };
+  const structuredVisual = {
+    mode: 'instance' as const,
+    frameOrdinal: 0, frameAssetId: 'frame', frameOffset: { x: 0, y: 0 },
+    frameViewport: { x: 0, y: 0, width: 100, height: 100 },
+    canvas: { width: 100, height: 100 }, anchor: { x: 0, y: 0 },
+    structureFrame: { ordinal: 0, layers: [] }, layers: [], resourceAssetIds: [resource.asset.id],
+  };
+  const layerEffects = { effects: { ...defaultLayerVisualEffects, blur: 3 }, structuredVisual, resources: [resource] };
+  const original = signature({ ...base, layerEffects });
+  expect(signature({ ...base, layerEffects: structuredClone(layerEffects) })).toBe(original);
+  expect(signature({ ...base, layerEffects: { ...layerEffects, effects: { ...layerEffects.effects, blur: 9 } } })).not.toBe(original);
+  expect(signature({ ...base, layerEffects: { ...layerEffects,
+    structuredVisual: { ...structuredVisual, frameViewport: { ...structuredVisual.frameViewport, x: 3 } },
+  } })).not.toBe(original);
+  expect(signature({ ...base, layerEffects: { ...layerEffects, resources: [{ ...resource, sourceUrl: 'blob:mask:2' }] } })).not.toBe(original);
+  expect(signature({ ...base, layerEffects, images: new Map([...base.images, ['mask', {}]]) })).not.toBe(original);
 });

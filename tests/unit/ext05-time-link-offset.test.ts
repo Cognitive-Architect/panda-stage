@@ -380,7 +380,6 @@ describe('EXT-05 signed offsetMs on LayerAnimationTimeLink (#1403)', () => {
       eventId: ACTION_EVENT_1,
       offsetMs: -250,
     });
-    expect(linked.schemaVersion).toBe(46);
     expect(linked.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
 
     // Frozen v45 rejects animationTimeLink with offsetMs

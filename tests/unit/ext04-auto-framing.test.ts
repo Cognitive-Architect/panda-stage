@@ -296,7 +296,6 @@ describe('EXT-04 Auto-framing follow zoom & normalized screen target (u, v) (#14
       targetU: 1 / 3,
       targetV: 0.45,
     });
-    expect(updated.schemaVersion).toBe(46);
     expect(updated.schemaVersion).toBe(PROJECT_SCHEMA_VERSION);
     expect(resolveShotAutoFraming(updated.shots[0]!)).toEqual({
       zoom: 2.2,

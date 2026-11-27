@@ -60,10 +60,14 @@ import {
   selectStageVisualFrame,
   type StageVisualFrame,
 } from './stageVisualFrame';
+import type { LayerVisualEffects } from '../../domain/models/layerVisualEffects';
+import type { LayerEffectPreview } from './LayerEffectPreview';
+import { cacheLayerVisualEffects } from './layerVisualEffects';
 import { drawStageLayersSynchronously } from './stage-draw-completion';
 
 interface StageRendererProps {
   solidClear?: boolean;
+  layerEffectPreview?: LayerEffectPreview;
   project: Project;
   evaluatedShot: EvaluatedShot;
   assetUrls: StageAssetUrlMap;
@@ -207,6 +211,7 @@ function buildStagePrewarmSources(
 
 interface StagePartImagesProps {
   ownerLayerId: string;
+  effects?: LayerVisualEffects;
   parts: readonly StageRenderPart[];
   images: ReadonlyMap<string, HTMLImageElement>;
   composite: boolean;
@@ -219,6 +224,7 @@ interface StagePartImagesProps {
 
 export function StagePartImages({
   ownerLayerId,
+  effects,
   parts,
   images,
   composite,
@@ -230,11 +236,9 @@ export function StagePartImages({
 }: StagePartImagesProps): React.JSX.Element {
   const visualRef = useRef<Konva.Group | null>(null);
   const cachedVisualSignatureRef = useRef<string | null>(null);
-  const orderedParts = [...parts].sort(
-    (left, right) =>
-      left.render.zIndex - right.render.zIndex ||
-      left.drawOrder - right.drawOrder,
-  );
+  const orderedParts = useMemo(() => [...parts].sort(
+    (left, right) => left.render.zIndex - right.render.zIndex || left.drawOrder - right.drawOrder,
+  ), [parts]);
   const structuredImages = useMemo(() => {
     const result = new Map<string, HTMLImageElement>();
     for (const part of parts) {
@@ -288,11 +292,29 @@ export function StagePartImages({
     headGroup,
     orderedParts,
     images,
+    layerEffects: effects ? { effects, structuredVisual, resources } : undefined,
   });
+  const appliedEffects = useRef<{ signature: string; sources: (HTMLImageElement | undefined)[] } | null>(null);
   const forceCompositeCacheRebuild = shouldForceCompositeCacheRebuild();
   useLayoutEffect(() => {
     const visual = visualRef.current;
     if (!visual) return;
+    if (effects && (structuredCanvas || complete)) {
+      const sources = [...orderedParts, ...resources].map(({ id }) => images.get(id));
+      const previous = appliedEffects.current;
+      if (!forceCompositeCacheRebuild && visual.isCached() && previous?.signature === cacheInputSignature &&
+        sources.length === previous.sources.length && sources.every((image, index) => image === previous.sources[index])) return;
+      cacheLayerVisualEffects(visual, structuredCanvas?.rect ?? visualBounds, effects);
+      cachedVisualSignatureRef.current = null;
+      appliedEffects.current = { signature: cacheInputSignature, sources };
+      if (scheduleLayerDraw) visual.getLayer()?.batchDraw();
+      return;
+    }
+    if (appliedEffects.current) {
+      appliedEffects.current = null;
+      visual.filters([]);
+      visual.globalCompositeOperation('source-over');
+    }
     const previouslyCached = visual.isCached();
     const cacheEligible =
       composite && complete && orderedParts.length >= 2 &&
@@ -345,11 +367,14 @@ export function StagePartImages({
     cacheInputSignature,
     complete,
     composite,
+    effects,
     forceCompositeCacheRebuild,
     headGroup,
     images,
     orderedParts,
+    resources,
     scheduleLayerDraw,
+    structuredCanvas,
     visualBounds,
   ]);
 
@@ -462,6 +487,7 @@ export function StageRenderer({
   showStageLabel = true,
   drawMode = 'legacy-raf',
   solidClear = false,
+  layerEffectPreview,
 }: StageRendererProps): React.JSX.Element {
   const renderStartedAt = previewDiagnosticNow();
   const [failedExpressionUrls, setFailedExpressionUrls] = useState<ReadonlyMap<string, string>>(
@@ -812,6 +838,8 @@ export function StageRenderer({
                     layer.visual.kind === 'composite-character' ||
                     layer.visual.kind === 'adaptive-parts-character'
                   }
+                  effects={layerEffectPreview?.shotId === displayModel!.shotId &&
+                    layerEffectPreview.layerId === layer.id ? layerEffectPreview.effects : layer.visualEffects}
                   headGroup={layer.visual.headGroup}
                   images={imageState.images}
                   ownerLayerId={layer.id}

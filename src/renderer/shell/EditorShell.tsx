@@ -1,3 +1,5 @@
+import { LayerEffectPreviewContext, LayerEffectPreviewDispatch, type LayerEffectPreview } from '../stage/LayerEffectPreview';
+import type { CurveMotionStageDraft } from '../features/canvas/CurveMotionStageOverlay';
 import {
   useCallback,
   useEffect,
@@ -684,6 +686,8 @@ export function EditorShell({
   const [newProjectStatus, setNewProjectStatus] = useState('');
   const [productPreviewOpen, setProductPreviewOpen] = useState(false);
   const [productPreviewDraft, setProductPreviewDraft] = useState<Project | null>(null);
+  const [curveMotionStageDraft, setCurveMotionStageDraft] = useState<CurveMotionStageDraft | null>(null);
+  const [layerEffectPreview, setLayerEffectPreview] = useState<LayerEffectPreview | null>(null);
   const [animationCurveDraft, setAnimationCurveDraft] = useState<AnimationCurveDraft | null>(null);
   const productPreviewOpenRef = useRef(false);
   const productPreviewSessionRef = useRef(0);
@@ -3106,6 +3110,7 @@ export function EditorShell({
                   dialogueSilence={dialogueSilence}
                   onCharacterPartSelected={() => rightWorkspaceRef.current?.openPropertiesIfIdle()}
                   curveDraft={animationCurveDraft}
+                  curveMotionDraft={curveMotionStageDraft}
                 />
               </div>
               <div className="character-float-host" ref={setCharacterFloatTarget} />
@@ -3154,6 +3159,7 @@ export function EditorShell({
                   key={`right-workspace:${projectSnapshot.projectRoot}`}
                   onAutoCameraChange={setAutoCameraEnabled}
                   onPreviewDraft={openDraftPreview}
+                  onCurveMotionDraft={setCurveMotionStageDraft}
                 />
               )}
               </GraphicFrameTargetProvider>
@@ -3181,6 +3187,10 @@ export function EditorShell({
               onHandoffReady={commitProductPreviewSurface}
               project={projectSnapshot.project}
               draftProject={productPreviewDraft}
+              layerEffectPreview={!productPreviewDraft &&
+                layerEffectPreview?.projectInstanceId === openInstanceId &&
+                layerEffectPreview?.revision === projectSnapshot.revision
+                ? layerEffectPreview : undefined}
               projectRoot={projectSnapshot.projectRoot}
               shotId={currentShotId}
               surfaceActive={productPreviewSurfaceActive}
@@ -3249,7 +3259,13 @@ export function EditorShell({
       ) : null}
     </main>
   );
-  return <AnimationCurveDraftDispatch.Provider value={setAnimationCurveDraft}>
-    <CharacterArmToolProvider>{surface}</CharacterArmToolProvider>
-  </AnimationCurveDraftDispatch.Provider>;
+  return (
+    <LayerEffectPreviewDispatch.Provider value={setLayerEffectPreview}>
+      <LayerEffectPreviewContext.Provider value={layerEffectPreview}>
+        <AnimationCurveDraftDispatch.Provider value={setAnimationCurveDraft}>
+          <CharacterArmToolProvider>{surface}</CharacterArmToolProvider>
+        </AnimationCurveDraftDispatch.Provider>
+      </LayerEffectPreviewContext.Provider>
+    </LayerEffectPreviewDispatch.Provider>
+  );
 }

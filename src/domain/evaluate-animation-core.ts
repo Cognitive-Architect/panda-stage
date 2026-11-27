@@ -1,5 +1,5 @@
 import type {
-  AnimationBezier, AnimationClip, AnimationCurve, AnimationInterpolation, AnimationProperty,
+  AnimationBezier, AnimationClip, AnimationCurve, AnimationInterpolation, AnimationKey, AnimationProperty,
   AnimationTargetRef, AnimationTrack,
 } from './models/animationCore';
 
@@ -216,6 +216,29 @@ export function sliceAnimationCurve(curve: AnimationCurve | undefined, from: num
   const [start, end] = curve?.window ?? [0, 1];
   const span = end - start;
   return { ...curve, window: [start + from * span, start + to * span] };
+}
+
+/** Insert a sampled anchor while preserving the original outgoing motion on both sides. */
+export function insertAnimationTrackSample(keys: AnimationKey[], timeMs: number): AnimationKey[] {
+  if (keys.some((key) => key.timeMs === timeMs)) return keys;
+  const later = keys.findIndex((key) => key.timeMs > timeMs);
+  const index = later < 0 ? keys.length : later;
+  const previous = keys[index - 1];
+  if (!previous) throw new Error('关键帧不能插入到零帧之前。');
+  const following = keys[index];
+  const next = [...keys];
+  const key: AnimationKey = {
+    timeMs, value: evaluateAnimationTrackAtTime({ keys }, timeMs),
+    interpolationToNext: following ? previous.interpolationToNext : 'step',
+  };
+  if (following && (previous.curveToNext ||
+    (previous.interpolationToNext !== 'step' && previous.interpolationToNext !== 'linear'))) {
+    const fraction = (timeMs - previous.timeMs) / (following.timeMs - previous.timeMs);
+    key.curveToNext = sliceAnimationCurve(previous.curveToNext, fraction, 1);
+    next[index - 1] = { ...previous, curveToNext: sliceAnimationCurve(previous.curveToNext, 0, fraction) };
+  }
+  next.splice(index, 0, key);
+  return next;
 }
 
 /** Evaluate a validated track at absolute Shot time, without playback state. */

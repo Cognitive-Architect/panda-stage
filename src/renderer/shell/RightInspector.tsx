@@ -44,6 +44,9 @@ import { useStructuredGraphicSelection } from '../features/properties/useStructu
 import { AnimationPlaybackControls } from '../features/properties/AnimationPlaybackControls';
 import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTimeControl';
 import { CharacterActionAtTimeControl } from '../features/properties/CharacterActionAtTimeControl';
+import { BatchLayerControls } from '../features/properties/BatchLayerControls';
+import { LayerEffectsPreviewControl } from '../features/properties/LayerEffectsPreviewControl';
+import { CharacterMotionTemplateControl } from '../features/properties/CharacterMotionTemplateControl';
 import { CharacterBodyPoseControl } from '../features/properties/CharacterBodyPoseControl';
 import { CharacterArmChainControl } from '../features/properties/CharacterArmChainControl';
 import { CharacterMotionMappingControl } from '../features/properties/CharacterMotionMappingControl';
@@ -782,6 +785,9 @@ export function RightInspector({
           shot={currentShot}
           layer={selection.layer}
         />
+        <CharacterMotionTemplateControl
+          key={String(editorProjectStore.getProjectInstanceId()) + currentShot.id + selection.layer.id}
+          snapshot={snapshot} shot={currentShot} layer={selection.layer} />
         <CharacterBodyPoseControl key={`body-pose:${currentShot.id}:${selection.layer.id}`}
           snapshot={snapshot} shot={currentShot} layer={selection.layer} />
         <CharacterArmChainControl key={`arm-chain:${currentShot.id}:${selection.layer.id}`}
@@ -790,6 +796,13 @@ export function RightInspector({
           snapshot={snapshot} shot={currentShot} layer={selection.layer} />
         </>
       ) : null}
+      {snapshot && currentShot && currentShot.layers.some(({ id }) => id !== currentShot.backgroundLayerId) ?
+        <BatchLayerControls key={String(editorProjectStore.getProjectInstanceId()) + currentShot.id}
+          snapshot={snapshot} shotId={currentShot.id} layers={currentShot.layers
+            .filter(({ id }) => id !== currentShot.backgroundLayerId).sort((left, right) => left.zIndex - right.zIndex)} /> : null}
+      {snapshot && currentShot && selection.layer && selection.layer.id !== currentShot.backgroundLayerId ?
+        <LayerEffectsPreviewControl key={String(editorProjectStore.getProjectInstanceId()) + currentShot.id + selection.layer.id}
+          snapshot={snapshot} shotId={currentShot.id} layer={selection.layer} /> : null}
       {landscapeEmptyState ? null : (
         showMotionInspector && motionNode && motionPanelInput && motionTargetKey && currentShot && selection.layer && snapshot ? (
           <details className="right-inspector-section right-inspector-transform-section" data-testid="right-inspector-transform-section" open>

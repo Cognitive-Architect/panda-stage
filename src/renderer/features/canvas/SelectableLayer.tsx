@@ -33,6 +33,8 @@ import {
 } from './FlaGraphicStructureProjection';
 import { visibleImageRect } from '../characters/characterAssemblyPreview';
 import { measureImageVisibleBounds } from '../characters/measureImageVisibleBounds';
+import { cacheLayerVisualEffects } from '../../stage/layerVisualEffects';
+import type { LayerVisualEffects } from '../../../domain/models/layerVisualEffects';
 import { renderFlaGraphicCanvas } from './flaGraphicCanvasRenderer';
 
 interface Point {
@@ -50,6 +52,7 @@ export interface AxisTransformInput {
 
 export interface SelectableLayerProps {
   characterMotion?: CharacterMotionCanvas;
+  effects?: LayerVisualEffects;
   characterView?: CharacterView | null;
   selectedCharacterNodeId?: CharacterNodeId | null;
   /** Compatibility primary image for ordinary/legacy callers. */
@@ -103,6 +106,7 @@ function stopAndSelect(
 
 export function SelectableLayer({
   characterMotion,
+  effects,
   characterView,
   selectedCharacterNodeId,
   image,
@@ -443,6 +447,12 @@ export function SelectableLayer({
         : visiblePartImages.map(renderHitArea)
       : null;
 
+  const structuredVisual = structuredCanvas && visual?.flaGraphic ? (
+    <KonvaImage {...structuredCanvas.rect} image={structuredCanvas.canvas} listening={canSelect}
+      onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
+      onTap={(event) => stopAndSelect(event, layer.id, onSelect)} />
+  ) : null;
+  const effectBounds = structuredCanvas?.rect ?? visualBounds;
   const clampNode = (node: Konva.Node): void => {
     if (inheritedSpace) return;
     const position = clampLayerPosition({
@@ -594,15 +604,15 @@ export function SelectableLayer({
           </Group>
         ) : flaGraphicEditProjection ? (
           <FlaGraphicStructureProjection {...flaGraphicEditProjection} />
-        ) : structuredCanvas && visual?.flaGraphic ? (
-          <KonvaImage
-            {...structuredCanvas.rect}
-            image={structuredCanvas.canvas}
-            listening={canSelect}
-            onClick={(event) => stopAndSelect(event, layer.id, onSelect)}
-            onTap={(event) => stopAndSelect(event, layer.id, onSelect)}
-          />
-        ) : compositeVisual ? (
+        ) : effects && (structuredVisual || completeVisualReady) ? (
+          <Group name="selectable-layer-effects" ref={(node) => {
+            if (!node) return;
+            cacheLayerVisualEffects(node, effectBounds, effects);
+            node.getLayer()?.batchDraw();
+          }}>
+            {structuredVisual ?? renderedParts}
+          </Group>
+        ) : structuredVisual ?? (compositeVisual ? (
           <Group
             listening={canSelect && (!compositeNodeSelection || Boolean(characterMotion))}
             name="selectable-canvas-visual"
@@ -612,7 +622,7 @@ export function SelectableLayer({
           </Group>
         ) : (
           renderedParts
-        )}
+        ))}
         {!flaGraphicEditProjection && !characterMotion ? renderedHitAreas : null}
         {!flaGraphicEditProjection && animationVisual ? (
           <Rect

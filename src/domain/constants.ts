@@ -1,4 +1,4 @@
-export const PROJECT_SCHEMA_VERSION = 46 as const;
+export const PROJECT_SCHEMA_VERSION = 47 as const;
 
 export const LAYER_DEPTH_MIN = -500;
 export const LAYER_DEPTH_MAX = 10_000;

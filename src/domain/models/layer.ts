@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LayerVisualEffectsSchema } from './layerVisualEffects';
 import { FlaInstanceColorSchema } from '../../shared/fla-instance-color';
 import { AnimationSourceRangeSchema } from './animationSourceRange';
 import {
@@ -531,7 +532,7 @@ export type LayerParentKeyDepthMode = z.infer<typeof LayerParentKeyDepthModeSche
 export type LayerParentKey = z.infer<typeof LayerParentKeySchema>;
 export type LayerAnimationTimeLink = z.infer<typeof LayerAnimationTimeLinkSchema>;
 
-export const LayerSchema = z.strictObject({
+export const LayerV46Schema = z.strictObject({
   ...LayerV45Shape,
   parentKeys: z.array(LayerParentKeySchema).optional(),
   animationTimeLink: LayerAnimationTimeLinkSchema.optional(),
@@ -543,6 +544,10 @@ export const LayerSchema = z.strictObject({
       message: 'Animation time links require an animation layer.',
     });
   }
+});
+
+export const LayerSchema = LayerV46Schema.safeExtend({
+  visualEffects: LayerVisualEffectsSchema.optional(),
 });
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */
