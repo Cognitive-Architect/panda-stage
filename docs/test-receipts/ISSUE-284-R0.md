@@ -1,5 +1,7 @@
 # Issue #284 V2-R0 receipt — Renderer Feasibility Spike (corrected)
 
+> Historical receipt: Issues #284 and #286 are closed/completed, and [PR #285](https://github.com/Cognitive-Architect/panda-stage/pull/285) has merged. R0 was an accepted feasibility spike with limits, not the current production importer. Its standalone experimental tools have been retired from the active tree. The [pre-cleanup snapshot](https://github.com/Cognitive-Architect/panda-stage/tree/4b1521d1e9f8be07b8203114f2f785d1fc2ff3cf) preserves the exact scripts and the original receipt; run the historical reproduction commands below only in that snapshot or the recorded corrective revision. The recorded evidence and production regression tests remain intact.
+
 > Receipt covers both the **initial R0 feasibility spike** and the
 > **R0 corrective closeout** under Issue #286. Per Issue #286:
 > history is preserved, not erased. The R0 stage-final commit is
