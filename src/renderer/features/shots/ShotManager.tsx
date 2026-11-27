@@ -77,6 +77,18 @@ export function ShotManager({
     mutate(() => shotStore.duplicate(selectedShot.id));
   };
 
+  const duplicateSelectedShotStructure = (
+    includeNonDialogueAudio = false,
+  ): void => {
+    if (!selectedShot) return;
+    mutate(() =>
+      shotStore.duplicate(selectedShot.id, {
+        mode: 'structure-only',
+        includeNonDialogueAudio,
+      }),
+    );
+  };
+
   const removeSelectedShot = (): void => {
     if (
       !selectedShot ||
@@ -155,6 +167,7 @@ export function ShotManager({
                   disabled={!snapshot}
                   index={selectedIndex}
                   onDuplicate={duplicateSelectedShot}
+                  onDuplicateStructure={duplicateSelectedShotStructure}
                   onRemove={removeSelectedShot}
                   onRename={renameSelectedShot}
                   onSetDuration={setSelectedShotDuration}
@@ -175,6 +188,7 @@ export function ShotManager({
               index={selectedIndex}
               key={selectedShot?.id ?? 'empty'}
               onDuplicate={duplicateSelectedShot}
+              onDuplicateStructure={duplicateSelectedShotStructure}
               onRemove={removeSelectedShot}
               onRename={renameSelectedShot}
               onSetDuration={setSelectedShotDuration}
