@@ -22,6 +22,7 @@ import {
 } from '../features/assets/AssetCard';
 import { LayerBackgroundControl } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
+import { ShotLayerListPanel } from '../features/properties/ShotLayerListPanel';
 import { layerStore } from '../stores/layerStore';
 import { LayerDepthControl } from '../features/properties/LayerDepthControl';
 import { LayerParentControl } from '../features/properties/LayerParentControl';
@@ -655,8 +656,24 @@ export function RightInspector({
     </section>
   );
 
-  const parentControl = snapshot && currentShot && selection.layer ? <LayerParentControl
-    key={`${currentShot.id}:${selection.layer.id}`} layer={selection.layer} shot={currentShot} project={snapshot.project} /> : null;
+  const focusParentBinding = (): void => {
+    const target = document.getElementById('layer-parent-control-anchor');
+    if (target) {
+      target.scrollIntoView({ block: 'nearest' });
+      const select = target.querySelector('select');
+      if (select instanceof HTMLElement) select.focus();
+    }
+  };
+  const parentControl = snapshot && currentShot && selection.layer ? (
+    <div id="layer-parent-control-anchor">
+      <LayerParentControl
+        key={`${currentShot.id}:${selection.layer.id}`}
+        layer={selection.layer}
+        shot={currentShot}
+        project={snapshot.project}
+      />
+    </div>
+  ) : null;
   const transformPanel = (
     <>
       <LayerTransformPanel
@@ -675,10 +692,13 @@ export function RightInspector({
   );
   const backgroundPanel = <LayerBackgroundControl />;
   const orderPanel = (
-    <LayerOrderControls
-      backgroundLayerSelected={selection.state === 'background'}
-      showLockControl={Boolean(compact) || landscapePresentation}
-    />
+    <>
+      <ShotLayerListPanel onFocusParentBinding={focusParentBinding} />
+      <LayerOrderControls
+        backgroundLayerSelected={selection.state === 'background'}
+        showLockControl={Boolean(compact) || landscapePresentation}
+      />
+    </>
   );
 
   const motionSection = snapshot && currentShot ? <CharacterMotionInspectorSection project={snapshot.project} shot={currentShot} layerId={selectedLayerId} /> : null;

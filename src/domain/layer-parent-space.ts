@@ -126,6 +126,41 @@ export function validLayerParentTargets(
   });
 }
 
+export function batchBaseParentEditCreatesCycle(
+  shot: Shot,
+  childIds: readonly string[],
+  parentId: string,
+): boolean {
+  const selectedSet = new Set(childIds);
+  if (selectedSet.has(parentId)) return true;
+  const candidateLayers = shot.layers.map((layer) =>
+    selectedSet.has(layer.id) ? { ...layer, parentLayerId: parentId } : layer,
+  );
+  const candidateShot: Shot = { ...shot, layers: candidateLayers };
+  const candidateById = new Map(candidateLayers.map((layer) => [layer.id, layer]));
+  for (const childId of selectedSet) {
+    const child = candidateById.get(childId);
+    if (!child) continue;
+    const baseEndMs = child.parentKeys?.[0]?.timeMs ?? Infinity;
+    const sampleTimes = parentCycleSampleTimes(candidateShot, 0, baseEndMs);
+    if (sampleTimes.some((sampleTime) => repeatedParentId(candidateById, childId, parentId, sampleTime) !== undefined)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function validBatchLayerParentTargets(
+  shot: Shot,
+  childIds: readonly string[],
+): Layer[] {
+  const selectedSet = new Set(childIds);
+  if (selectedSet.size === 0) return [];
+  return shot.layers.filter((candidate) =>
+    !selectedSet.has(candidate.id) && !batchBaseParentEditCreatesCycle(shot, childIds, candidate.id),
+  );
+}
+
 export function applyLayerParenting(project: Project, shot: Shot, layers: EvaluatedLayer[], timeMs: number): EvaluatedLayer[] {
   if (!shot.layers.some((layer) =>
     layer.parentLayerId || layer.parentSpaceOffset || layer.parentKeys?.length ||

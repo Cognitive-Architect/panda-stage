@@ -575,6 +575,50 @@ export class LayerStore {
     return next;
   }
 
+  batchSetParent(
+    childIds: readonly string[],
+    parentId: string | null,
+    timeMs: number,
+    target?: LayerAttachmentTarget,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.batchSetParent(project, shotId, childIds, parentId, timeMs, target);
+    if (next !== project) {
+      this.editorStore.updateProject(next, parentId ? '批量绑定父级图层' : '批量解除父级绑定');
+    }
+    return next;
+  }
+
+  batchDetachParent(childIds: readonly string[], timeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.batchDetachParent(project, shotId, childIds, timeMs);
+    if (next !== project) {
+      this.editorStore.updateProject(next, '批量解除父级绑定');
+    }
+    return next;
+  }
+
+  createControllerAndBindLayers(childIds: readonly string[], timeMs: number): Layer {
+    const { project, projectRoot, shotId } = this.context();
+    const result = this.service.createControllerAndBindLayers(project, shotId, childIds, timeMs);
+    this.editorStore.updateProject(
+      result.project,
+      '新建控制层并批量绑定',
+      {},
+      {
+        afterRedo: () =>
+          this.restoreCreatedLayerSelection(
+            project.id,
+            projectRoot,
+            shotId,
+            result.layer.id,
+          ),
+      },
+    );
+    this.layerSelection.select(result.layer.id);
+    return result.layer;
+  }
+
   setParentKey(
     childId: string,
     timeMs: number,

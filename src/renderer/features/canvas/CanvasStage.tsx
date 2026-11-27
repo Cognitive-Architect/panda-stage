@@ -72,6 +72,7 @@ import {
 } from '../../stores/canvasViewportStore';
 import { layerStore } from '../../stores/layerStore';
 import { useOpacityPreview } from '../../stores/opacityPreviewStore';
+import { useDepthPreview } from '../../stores/depthPreviewStore';
 import {
   usePositionAuthoringSession,
   positionAuthoringSessionStore,
@@ -390,6 +391,7 @@ export function CanvasStage({
   const characterNodeSelected = selectedCharacterNodeId !== null && selectedCharacterNodeId !== 'root';
   const [motionError, setMotionError] = useState('');
   const opacityPreview = useOpacityPreview();
+  const depthPreview = useDepthPreview();
   const layerNodeRefs = useRef(
     new Map<string, React.RefObject<Konva.Group | null>>(),
   );
@@ -444,6 +446,16 @@ export function CanvasStage({
   const activeCurveDraft = !cameraViewActive && !armAssembly && curveDraft?.projectInstanceId === projectInstanceId &&
     curveDraft?.revision === snapshot?.revision && curveDraft?.shotId === currentShotId &&
     curveDraft?.layerId === selectedLayerId ? curveDraft : null;
+  const activeDepthPreview = !armAssembly && depthPreview &&
+    depthPreview.projectInstanceId === projectInstanceId &&
+    depthPreview.projectId === snapshot?.project.id &&
+    depthPreview.projectRoot === snapshot?.projectRoot &&
+    depthPreview.revision === snapshot?.revision &&
+    depthPreview.shotId === currentShotId &&
+    depthPreview.layerId === selectedLayerId &&
+    depthPreview.timeMs === timelineUi.currentTimeMs
+    ? depthPreview
+    : null;
   const editContextKey = snapshot && shot && projectInstanceId !== null
     ? JSON.stringify([projectInstanceId, snapshot.project.id, snapshot.projectRoot, shot.id])
     : null;
@@ -903,12 +915,12 @@ export function CanvasStage({
             dialogueSilence,
             currentTimeMs: activeCurveDraft?.timeMs ?? activeCameraCurveDraft?.timeMs ?? timelineUi.currentTimeMs,
             previousVisuals: previousTemporalVisuals,
-            project: activeCurveDraft?.project ?? snapshot.project,
+            project: activeDepthPreview?.previewProject ?? activeCurveDraft?.project ?? snapshot.project,
             readyAssetIds: new Set(imageState.images.keys()),
             readyAssetSourceKeys: imageState.sourceKeys,
             readyResourceKeys: imageState.readyResourceKeys,
             missingAssetIds: imageState.missing,
-            shot: activeCurveDraft?.project.shots.find(({ id }) => id === shot.id) ?? shot,
+            shot: (activeDepthPreview?.previewProject ?? activeCurveDraft?.project)?.shots.find(({ id }) => id === shot.id) ?? shot,
             positionDraft: !cameraViewActive && positionAuthoringSnapshot
               ? {
                   layerId: positionAuthoringSnapshot.layerId,
@@ -921,6 +933,7 @@ export function CanvasStage({
       activeCue?.id,
       activeCameraCurveDraft,
       activeCurveDraft,
+      activeDepthPreview,
       cameraViewActive,
       dialogueSilence,
       imageState.images,

@@ -5,7 +5,7 @@ export interface CameraView {
   rotationDeg?: number;
 }
 
-const NATIVE_CAMERA_FOCAL_LENGTH = 1_000;
+export const NATIVE_CAMERA_FOCAL_LENGTH = 1_000;
 const NATIVE_CAMERA_NEAR_DISTANCE = 10;
 
 export function cameraWorldTransform(camera: CameraView | undefined, width: number, height: number) {

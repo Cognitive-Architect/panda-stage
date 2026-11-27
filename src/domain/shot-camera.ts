@@ -14,6 +14,7 @@ import {
 import {
   cameraLayerTransform,
   cameraWorldTransform,
+  NATIVE_CAMERA_FOCAL_LENGTH,
   solveCameraCenterForWorldPoint,
   type CameraView,
 } from './camera-projection';
@@ -27,7 +28,12 @@ import {
 } from './resolve-speaker-focus-camera';
 import { resolveTimelineFrameTime } from './timeline/frame-grid';
 
-export { cameraLayerTransform, cameraWorldTransform, solveCameraCenterForWorldPoint };
+export {
+  cameraLayerTransform,
+  cameraWorldTransform,
+  NATIVE_CAMERA_FOCAL_LENGTH,
+  solveCameraCenterForWorldPoint,
+};
 
 export const DEFAULT_CAMERA_OVERRIDE_BLEND_MS = 250;
 

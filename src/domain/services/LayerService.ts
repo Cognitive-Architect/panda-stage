@@ -71,7 +71,12 @@ import {
 import type { AssetDropPayload } from '../assetDropPayload';
 import { resolveBackgroundSourceDimensions } from '../selectors/canvasLayers';
 import { PositionProjectService } from './PositionProjectService';
-import { evaluatedLayerWorldMatrix, parentKeyEditCreatesCycle, validLayerParentTargets } from '../layer-parent-space';
+import {
+  batchBaseParentEditCreatesCycle,
+  evaluatedLayerWorldMatrix,
+  parentKeyEditCreatesCycle,
+  validLayerParentTargets,
+} from '../layer-parent-space';
 import { evaluateShotAtTime, type EvaluatedLayer } from '../evaluate-shot-at-time';
 import { remapLayerMotionOwner, syncLayerAnimationClipBasis } from '../layer-animation';
 
@@ -1862,6 +1867,163 @@ export class LayerService {
         parentAttachment: target && targetLocal ? { target, ownerLocalFallback: targetLocal } : undefined,
       } : layer),
     });
+  }
+
+  /**
+   * Atomically bind or detach static base parenting for multiple layers in one
+   * Shot. All pre-edit world poses are captured from the SAME pre-edit snapshot
+   * before computing compensations so selected parent-child pairs keep their
+   * exact world poses. Dynamic `parentKeys` segments are preserved untouched.
+   */
+  batchSetParent(
+    project: Project,
+    shotId: string,
+    childIds: readonly string[],
+    parentId: string | null,
+    timeMs: number,
+    target?: LayerAttachmentTarget,
+  ): Project {
+    const uniqueChildIds = Array.from(new Set(childIds));
+    if (uniqueChildIds.length === 0) return project;
+    const shot = this.shot(project, shotId);
+    const selectedSet = new Set(uniqueChildIds);
+
+    // 1. Validate every selected child up front (atomic: reject entire batch on any invalid input).
+    const children: Layer[] = [];
+    for (const childId of uniqueChildIds) {
+      const child = shot.layers[this.layerIndex(shot, childId)]!;
+      this.assertContentLayer(shot, child);
+      this.assertEditable(shot, child);
+      children.push(child);
+    }
+
+    // 2. Validate parent target (forbid self-binding, missing parent, and cycles in final graph).
+    if (parentId !== null) {
+      this.layerIndex(shot, parentId);
+      if (selectedSet.has(parentId)) {
+        throw new Error('不能将选中的图层绑定到自身。');
+      }
+      if (batchBaseParentEditCreatesCycle(shot, uniqueChildIds, parentId)) {
+        throw new Error('请选择同一镜头内不会形成循环的父级图层。');
+      }
+    }
+
+    const nextTargetKey = parentId && target ? layerAttachmentTargetKey(target) : undefined;
+    const hasAnyChange = children.some((child) => {
+      const prevParentId = child.parentLayerId ?? null;
+      const prevTargetKey = child.parentAttachment?.target
+        ? layerAttachmentTargetKey(child.parentAttachment.target)
+        : undefined;
+      return prevParentId !== parentId || prevTargetKey !== nextTargetKey;
+    });
+    if (!hasAnyChange) return project;
+
+    // 3. Capture ALL pre-edit world poses from the SAME pre-edit snapshot.
+    const hasAnyDynamicKeys = children.some((child) => Boolean(child.parentKeys?.length));
+    const baseEvalShot: Shot = hasAnyDynamicKeys
+      ? {
+          ...shot,
+          layers: shot.layers.map((layer) =>
+            selectedSet.has(layer.id) && layer.parentKeys?.length
+              ? { ...layer, parentKeys: undefined }
+              : layer,
+          ),
+        }
+      : shot;
+    const prePoses = projectShotDialogueVisual(
+      project,
+      baseEvalShot,
+      evaluateShotAtTime(baseEvalShot, timeMs, project),
+    ).layers;
+    const prePosesById = new Map(prePoses.map((pose) => [pose.id, pose]));
+
+    // 4. Compute invariant target parent inverse ONCE from the pre-edit snapshot.
+    let parentInverse: AffineMatrix2D | undefined;
+    let resolvedAttachment: Layer['parentAttachment'];
+    if (parentId !== null) {
+      const parentPose = prePosesById.get(parentId);
+      const owner = baseEvalShot.layers.find(({ id }) => id === parentId);
+      const targetLocal =
+        owner && parentPose && target
+          ? resolveLayerAttachmentLocalMatrix(project, owner, parentPose, target)
+          : undefined;
+      if (target && !targetLocal) {
+        throw new Error('当前帧没有可用的挂接姿态。');
+      }
+      const world =
+        parentPose &&
+        (targetLocal
+          ? layerAttachmentWorldMatrix(parentPose, targetLocal, parentPose.parentSpace)
+          : evaluatedLayerWorldMatrix(parentPose));
+      const inv =
+        world && !parentPose?.parentSpaceUnavailable ? invertAffineMatrix(world) : undefined;
+      if (!inv) {
+        throw new Error('父级图层的当前变换无法反算。请调整父级姿态后重试。');
+      }
+      parentInverse = inv;
+      resolvedAttachment =
+        target && targetLocal ? { target, ownerLocalFallback: targetLocal } : undefined;
+    }
+
+    // 5. Commit all compensated bindings in ONE atomic replaceShot.
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((layer) => {
+        if (!selectedSet.has(layer.id)) return layer;
+        const childPose = prePosesById.get(layer.id);
+        const oldSpace = childPose?.parentSpace;
+        const offset =
+          parentInverse && oldSpace
+            ? multiplyAffineMatrices(parentInverse, oldSpace)
+            : parentInverse || oldSpace;
+        return {
+          ...layer,
+          parentLayerId: parentId ?? undefined,
+          parentSpaceOffset: offset,
+          cameraSpace: parentId ? undefined : childPose?.effectiveCameraSpace,
+          depth: parentId ? layer.depth : preservedDetachedDepth(layer, childPose),
+          parentAttachment: parentId ? resolvedAttachment : undefined,
+        };
+      }),
+    });
+  }
+
+  batchDetachParent(
+    project: Project,
+    shotId: string,
+    childIds: readonly string[],
+    timeMs: number,
+  ): Project {
+    return this.batchSetParent(project, shotId, childIds, null, timeMs);
+  }
+
+  /**
+   * Create a new empty control layer and batch-bind all selected children to it
+   * in a single atomic Project result (one Undo/Redo transaction).
+   */
+  createControllerAndBindLayers(
+    project: Project,
+    shotId: string,
+    childIds: readonly string[],
+    timeMs: number,
+  ): CreateLayerResult {
+    const uniqueChildIds = Array.from(new Set(childIds));
+    const shot = this.shot(project, shotId);
+    for (const childId of uniqueChildIds) {
+      const child = shot.layers[this.layerIndex(shot, childId)]!;
+      this.assertContentLayer(shot, child);
+      this.assertEditable(shot, child);
+    }
+    const created = this.createControl(project, shotId);
+    if (uniqueChildIds.length === 0) return created;
+    const bound = this.batchSetParent(
+      created.project,
+      shotId,
+      uniqueChildIds,
+      created.layer.id,
+      timeMs,
+    );
+    return { project: bound, layer: created.layer };
   }
 
   setParentKey(
