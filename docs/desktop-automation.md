@@ -52,4 +52,5 @@ $read = node $PandaCli --session-file $PandaSessionFile state | ConvertFrom-Json
 - 编辑会等活动拖动结束，再检查工程和目标。等待超过命令期限会返回 `TIMEOUT`。
 - `batch` 接收 `session` 和 `operations`。每项带 `name` 及该编辑的参数，整组使用一次提交和撤销。某一步失败时返回失败步骤，项目保持批次开始前的状态。
 - `sequence` 也接收 `session` 和 `operations`，每项独立执行并按顺序返回结果，支持把 `undo` 作为一步。已经成功的编辑仍记录在对应历史中。
+- `script.plan` 与 `script.apply` 共用与界面一致的多镜头剧本/表演规划与提交服务。输入 `session`、`script`（含 `镜头`、`背景`、`出场`、`站位`、`对白`、`表演` 块），可选 `audioByOrdinal`、`excludedDirectiveIds`、`extendShotForPerformance`，以及 `script.apply` 的 `allowPartialConfirm`（默认 `false`，存在行级问题时拒绝提交而不修改工程）。`script.plan` 仅返回行级预览结果，`script.apply` 一次提交进入撤销历史。
 - 调用返回一行 JSON。`changed`、`revision` 和 `dirty` 反映当前桌面工程状态，`undo` 返回实际撤销的标签。会话凭据文件位于本机应用数据目录，由当前窗口的工具面板提供调用路径。
