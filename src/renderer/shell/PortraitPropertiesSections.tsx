@@ -14,6 +14,7 @@ import {
 export interface PortraitPropertiesSectionsProps {
   backgroundLayerSelected: boolean;
   parentControl?: ReactNode;
+  layerListDocked?: boolean;
   presentation?: LayerBackgroundControlProps['presentation'];
 }
 
@@ -24,6 +25,7 @@ export interface PortraitPropertiesSectionsProps {
 export function PortraitPropertiesSections({
   backgroundLayerSelected,
   parentControl,
+  layerListDocked = false,
   presentation = 'portrait',
 }: PortraitPropertiesSectionsProps): React.JSX.Element {
   const sectionsRef = useRef<HTMLDivElement | null>(null);
@@ -70,7 +72,7 @@ export function PortraitPropertiesSections({
         data-testid="right-inspector-layer-section"
       >
         <summary>图层</summary>
-        <ShotLayerListPanel />
+        {!layerListDocked && <ShotLayerListPanel />}
         <LayerOrderControls
           backgroundLayerSelected={backgroundLayerSelected}
           compact

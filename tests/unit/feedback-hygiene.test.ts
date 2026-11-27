@@ -142,11 +142,11 @@ describe('Issue #641 feedback hierarchy', () => {
     const design = readFileSync('DESIGN.md', 'utf8');
     const agents = readFileSync('AGENTS.md', 'utf8');
     const saveOwner = readFileSync('src/renderer/shell/CompactProjectBar.tsx', 'utf8');
-    for (const phrase of ['操作结果已在界面中直接可见', '极短的加载', '用户确实需要等待', '错误、动作受阻']) {
+    for (const phrase of ['结果已经在界面可见', '极短的素材准备 / 加载', '真正需要等待的长任务', '失败、部分成功、未知结果、资源冲突、恢复']) {
       expect(design).toContain(phrase);
     }
-    expect(design).toContain('项目保存状态属于项目级保存界面');
-    expect(design).toContain('真正耗时的任务仍需保留有意义的进度');
+    expect(design).toContain('项目保存状态由项目级界面负责');
+    expect(design).toContain('不编造进度，不被普通 toast 定时器隐藏');
     expect(agents).toContain('Before adding or changing visible status');
     expect(agents).toContain('项目尚未保存');
     expect(agents).toContain('Do not delete a status');

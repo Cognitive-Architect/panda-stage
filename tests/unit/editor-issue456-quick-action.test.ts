@@ -12,9 +12,9 @@ describe('Issue #456 Quick Action Drawer geometry contract', () => {
   const styles = source('src/renderer/styles.css');
   const gate = source('scripts/verify-issue456-quick-action.cjs');
 
-  it('keeps only portrait top surfaces in flow while mounting the drawer and recovery card in overlays', () => {
+  it('keeps the project bar above the workbench and recovery in its own surface', () => {
     expect(shell).toContain(
-      "data-top-region-layout={isPortrait ? 'flow' : 'overlay'}",
+      'data-top-region-layout="flow"',
     );
     expect(shell).not.toContain(
       "data-top-region-layout={recoveryCandidate || isPortrait ? 'flow' : 'overlay'}",
@@ -28,7 +28,7 @@ describe('Issue #456 Quick Action Drawer geometry contract', () => {
       shell.indexOf('<LeftWorkspace'),
     );
     expect(shell).toContain('<RecoveryCandidateBanner');
-    expect(shell).toContain('<AdaptiveWorkspaceSwitcher');
+    expect(shell).toContain('<EditorWorkbench');
   });
 
   it('locks the overlay geometry so no normal-flow row or touch-target cavity remains', () => {

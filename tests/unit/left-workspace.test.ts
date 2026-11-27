@@ -19,7 +19,7 @@ describe('Stage 2-B left workspace composition contract', () => {
     expect(left).toContain('data-testid="left-workspace-scroll"');
     expect(left).toContain('<ProjectRecoveryPanel');
     expect(left).toContain('<ResourceActivityDock');
-    expect(dock).toContain("useState<ResourceActivity>('shots')");
+    expect(dock).toContain("useState<ResourceActivity>(docked ? 'assets' : 'shots')");
     expect(dock).toContain('data-testid="resource-activity-tabs"');
     expect(dock).toContain(
       "{ id: 'shots', label: '镜头', icon: Clapperboard }",

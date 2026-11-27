@@ -227,7 +227,8 @@ describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
     // Quick/History/Tools ownership checks above, not a whole-file freeze.
     expect(editorShell).toContain('<CompactProjectBar');
     expect(editorShell).toContain('<RightWorkspace');
-    expect(editorShell).toContain('<BottomWorkspace');
+    expect(editorShell).toContain('<TimelineDock');
+    expect(editorShell).not.toContain('<BottomWorkspace');
     expect(manifest.phase2CanonicalMap.approvedForAutomaticRelocation).toBe(false);
     expect(manifest.semanticRelocations.some(({ id }) => id === 'G112')).toBe(true);
   });

@@ -124,12 +124,13 @@ describe('Issue #368 landscape editor chrome', () => {
     expect(styles).toContain(".history-controls[data-history-presentation='compact']");
   });
 
-  it('mounts one History owner in the top drawer and removes landscape headings/history', () => {
+  it('uses the top project bar as the workbench History owner', () => {
     const shell = source('src/renderer/shell/EditorShell.tsx');
     const bottom = source('src/renderer/shell/BottomWorkspace.tsx');
 
     expect(shell).toContain('showHeading={false}');
-    expect(shell).toContain('showHistoryControls={false}');
+    expect(shell).toContain('<CompactProjectBar');
+    expect(shell).not.toContain('<BottomWorkspace');
     expect(shell).not.toContain('showHistoryControls={!isPortrait}');
     expect(bottom).toContain("showHistoryControls = presentation !== 'landscape'");
     expect(bottom).toContain('<HistoryControls presentation="bottom" />');

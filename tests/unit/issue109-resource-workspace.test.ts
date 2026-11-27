@@ -27,7 +27,7 @@ describe('Issue 109 adaptive resource workspace contract', () => {
   it('keeps drawer navigation and primary actions in UI-only state', () => {
     const dock = readSource('src/renderer/shell/ResourceActivityDock.tsx');
 
-    expect(dock).toContain("useState<ResourceActivity>('shots')");
+    expect(dock).toContain("useState<ResourceActivity>(docked ? 'assets' : 'shots')");
     expect(dock).toContain('data-testid="resource-workspace-handle"');
     expect(dock).toContain('data-testid="resource-activity-close"');
     expect(dock).toContain("event.key === 'Escape'");

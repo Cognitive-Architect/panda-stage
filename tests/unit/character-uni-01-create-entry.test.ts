@@ -232,7 +232,7 @@ describe('Issue #1031 F02 – the left Create form is never hidden by kind=creat
       "[data-character-assembly-kind='create']\n  .resource-activity-dock",
     );
     expect(shell).toContain(
-      "const assemblyHidesResourceDrawer = assemblyKind === 'adaptive-parts';",
+      "data-character-assembly-kind={assemblyKind}",
     );
   });
 

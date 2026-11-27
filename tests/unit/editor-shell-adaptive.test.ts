@@ -89,7 +89,7 @@ describe('UI-M2 adaptive EditorShell state', () => {
     }
   });
 
-  it('keeps one production owner and uses hidden slots for portrait focus', () => {
+  it('keeps one production owner per docked panel and retains the assembly surface', () => {
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
     const bar = readSource('src/renderer/shell/CompactProjectBar.tsx');
     const switcher = readSource(
@@ -109,33 +109,17 @@ describe('UI-M2 adaptive EditorShell state', () => {
     expect(shell.match(/<CanvasWorkspace/gu)).toHaveLength(1);
     expect(shell.match(/<RightInspector/gu)).toHaveLength(1);
     expect(shell.match(/<LeftWorkspace/gu)).toHaveLength(1);
-    expect(shell.match(/<BottomWorkspace/gu)).toHaveLength(1);
-    expect(shell).toContain("data-shell-mode={layoutMode}");
-    expect(shell).toContain("const deviceMode: EditorDeviceMode = 'cloud-touch';");
-    expect(shell).not.toContain("useState<EditorDeviceMode>('auto')");
-    expect(shell).toContain('data-editor-device-mode={deviceMode}');
-    expect(shell).not.toContain('onDeviceModeChange={setDeviceMode}');
-    expect(shell).toContain('data-active-workspace=');
-    expect(shell).toContain('data-portrait-surface={portraitContextSurface}');
-    expect(shell).not.toContain('portrait-canvas-context-actions');
-    expect(shell).toContain(
-      "setPortraitCanvasSurface(workspace === 'canvas' ? 'shots' : 'none')",
-    );
-    expect(shell).toContain(
-      'className="character-assembly-canvas-owner"\n                data-character-assembly-inactive={assemblyActive ? \'true\' : \'false\'}\n                hidden={!portraitCanvasVisible && !assemblyActive}',
-    );
+    expect(shell.match(/<TimelineDock/gu)).toHaveLength(1);
+    expect(shell).not.toContain('<BottomWorkspace');
+    expect(shell).toContain('data-editor-device-mode="desktop"');
+    expect(shell).toContain('<EditorWorkbench');
+    expect(shell).not.toContain('<AdaptiveWorkspaceSwitcher');
+    expect(shell).toContain('className="character-assembly-canvas-owner"');
     expect(shell).toContain('inert={Boolean(characterFloatMode) || assemblyActive || undefined}');
     expect(assemblySurface).toContain(
       ".editor-workspace-slot-canvas[data-character-assembly-active='true']",
     );
     expect(assemblySurface).toContain('visibility: hidden;');
-    expect(shell).toContain(
-      '<CanvasWorkspace\n                  showHeading={false}\n                  showToolbar={canvasToolbarVisible}',
-    );
-    expect(shell).toContain(
-      "hidden={\n                isPortrait && portraitWorkspace !== 'timeline' && !assemblyActive",
-    );
-    expect(shell).toContain('aria-hidden={');
     expect(bar).not.toContain('EDITOR_DEVICE_MODE_OPTIONS');
     expect(bar).not.toContain('editor-device-mode-selector');
     expect(bar).not.toContain('editor-device-mode-');
@@ -191,7 +175,13 @@ describe('UI-M2 adaptive EditorShell state', () => {
     }
 
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
-    expect(shell).toContain('DOM/CSS contract');
+    const workbench = readSource('src/renderer/shell/EditorWorkbench.tsx');
+    const preference = readSource('src/renderer/shell/editorWorkbenchLayout.ts');
+    expect(workbench).toContain('createPortal(panels[id], mounts.nodes[id], id)');
+    expect(preference).toContain("panda-stage:editor-workbench:v1");
+    for (const layoutSource of [workbench, preference]) {
+      expect(layoutSource).not.toMatch(/updateProject|editorProjectStore|historyStore|window\.pandaStage/u);
+    }
     expect(shell).not.toContain('localStorage');
     expect(shell).not.toContain('sessionStorage');
   });

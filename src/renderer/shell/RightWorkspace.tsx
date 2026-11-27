@@ -46,6 +46,7 @@ export interface RightWorkspaceHandle {
 export interface RightWorkspaceProps {
   ref?: Ref<RightWorkspaceHandle>;
   autoCameraEnabled: boolean;
+  docked?: boolean;
   onAutoCameraChange(enabled: boolean): void;
   onPreviewDraft?(project: Project): void;
   onCurveMotionDraft?(draft: CurveMotionStageDraft | null): void;
@@ -54,7 +55,7 @@ export interface RightWorkspaceProps {
 export function RightWorkspace({
   ref,
   autoCameraEnabled,
-  onAutoCameraChange,
+  docked = false,  onAutoCameraChange,
   onPreviewDraft,
   onCurveMotionDraft,
 }: RightWorkspaceProps): React.JSX.Element {
@@ -147,7 +148,7 @@ export function RightWorkspace({
           className="right-activity-rail"
           data-testid="right-activity-rail"
         >
-          {RIGHT_ACTIVITIES.map((activity) => {
+          {RIGHT_ACTIVITIES.filter(({ id }) => !docked || id !== 'properties').map((activity) => {
             const active = activity.id === activeActivity;
             return (
               <button

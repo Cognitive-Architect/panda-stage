@@ -70,12 +70,18 @@ type RichEasingDraftBinding = {
   presetId: RichEasingPresetId;
 };
 
+export function hasAnimationCurveTracks(shot: Shot, layer: Layer): boolean {
+  return Boolean(layer.animationClip?.tracks.length || shot.timelineEvents.some(
+    (event) => event.layerId === layer.id && event.type === 'opacity' && event.endMs > event.startMs,
+  ));
+}
+
 export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }: {
   snapshot: EditorProjectSnapshot;
   shot: Shot;
   layer: Layer;
   onDraft?: (draft: AnimationCurveDraft | null) => void;
-  onClose: () => void;
+  onClose?: () => void;
 }): React.JSX.Element {
   const tracks: CurveTrack[] = [...(layer.animationClip?.tracks ?? [])];
   for (const event of shot.timelineEvents) {
@@ -429,9 +435,9 @@ export function AnimationCurvePanel({ snapshot, shot, layer, onDraft, onClose }:
     event.stopPropagation();
     if (drag.current || richDraft !== null || hasStaleRichSelection || trackMissing) {
       cancelPropertyDraft();
-    } else onClose();
+    } else onClose?.();
   }}>
-    <header><strong>属性曲线</strong><Button variant="secondary" onClick={() => { cancel(); onClose(); }}>关闭</Button></header>
+    {onClose && <header><strong>属性曲线</strong><Button variant="secondary" onClick={() => { cancel(); onClose(); }}>关闭</Button></header>}
     {tracks.length || trackMissing ? <div className="animation-curve-fields">
         <label>属性<select value={trackMissing ? '' : currentTrackKey} onChange={(event) => {
           cancel(); setTrackId(event.target.value); setKeyTime(0); setRichSelection(null);

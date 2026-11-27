@@ -70,7 +70,7 @@ describe('Issue #470 Quick Action Drawer save-state presentation', () => {
     expect(saved).not.toContain('data-testid="project-save-state"');
     expect(saved).not.toContain('data-testid="project-save-state-rest"');
     expect(drawer).toContain(
-      'const showRestSaveState = shouldRenderRestSaveState(expanded, saveState);',
+      'const showRestSaveState = !docked && shouldRenderRestSaveState(expanded, saveState);',
     );
   });
 });

@@ -59,10 +59,8 @@ describe('Issue #340 Cloud Touch portrait chrome', () => {
     expect(canvasWorkspace).toContain('showToolbar={showToolbar}');
     expect(canvasWorkspace).not.toContain('flaGroupEditTarget');
     expect(canvasWorkspace).not.toContain('onClearFlaGroupEditTarget');
-    expect(shell).toContain(
-      "const canvasToolbarVisible =\n    !isPortrait || portraitWorkspace === 'canvas';",
-    );
-    expect(shell).toContain('showToolbar={canvasToolbarVisible}');
+    expect(shell).toContain('stage: <div className="workbench-stage');
+    expect(shell).not.toContain('showToolbar={canvasToolbarVisible}');
     expect(shell).toContain('<CanvasWorkspace');
     expect(shell).not.toContain('canvasViewportStore');
   });
@@ -84,8 +82,8 @@ describe('Issue #340 Cloud Touch portrait chrome', () => {
     expect(bottom).toContain(
       '{showHistoryControls ? <HistoryControls presentation="bottom" /> : null}',
     );
-    expect(shell).toContain('showHistoryControls={false}');
-    expect(shell).toContain('presentation={layoutMode}');
+    expect(shell).toContain('<CompactProjectBar');
+    expect(shell).not.toContain('<BottomWorkspace');
     expect(history).toContain('presentation?: HistoryControlsPresentation');
     expect(history).toContain('useHistoryShortcuts(undo, redo)');
     expect(history).toContain('data-history-presentation={presentation}');

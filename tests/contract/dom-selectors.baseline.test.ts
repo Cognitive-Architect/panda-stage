@@ -214,7 +214,8 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(rightInspector).toContain('data-testid="right-inspector"');
     expect(rightInspector.match(/<LayerTransformPanel/gu)).toHaveLength(1);
     expect(rightInspector.match(/<LayerOrderControls/gu)).toHaveLength(1);
-    expect(shell).toContain('<BottomWorkspace');
+    expect(shell).toContain('<TimelineDock');
+    expect(shell).not.toContain('<BottomWorkspace');
     expect(bottomWorkspace).toContain(
       'data-testid="bottom-workspace"',
     );
@@ -408,7 +409,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(dock.match(/<ShotManager/gu)).toHaveLength(1);
     expect(dock.match(/<AssetLibrary/gu)).toHaveLength(1);
     expect(dock.match(/<CharacterManager/gu)).toHaveLength(1);
-    expect(dock).toContain("useState<ResourceActivity>('shots')");
+    expect(dock).toContain("useState<ResourceActivity>(docked ? 'assets' : 'shots')");
     expect(styles).toMatch(
       /html,[\s\S]*?#root\s*\{[\s\S]*?overflow:\s*hidden;/u,
     );

@@ -20,7 +20,7 @@ describe('Issue #326 portrait Canvas cleanup', () => {
     }
   });
 
-  it('keeps one Canvas and one Shot owner while placing Shots below portrait Canvas', () => {
+  it('keeps one Canvas and one resource owner in the desktop workbench', () => {
     const shell = source('src/renderer/shell/EditorShell.tsx');
     const canvasWorkspace = source('src/renderer/shell/CanvasWorkspace.tsx');
     const resourceDock = source('src/renderer/shell/ResourceActivityDock.tsx');
@@ -28,7 +28,7 @@ describe('Issue #326 portrait Canvas cleanup', () => {
     expect(shell.match(/<CanvasWorkspace/gu)).toHaveLength(1);
     expect(shell.match(/<LeftWorkspace/gu)).toHaveLength(1);
     expect(shell).toContain(
-      "setPortraitCanvasSurface(workspace === 'canvas' ? 'shots' : 'none')",
+      'assets: (',
     );
     expect(shell).not.toContain('portrait-canvas-context-actions');
     expect(shell).not.toContain('portrait-open-properties');

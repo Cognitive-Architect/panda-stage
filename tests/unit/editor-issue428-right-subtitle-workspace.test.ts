@@ -16,10 +16,10 @@ describe('Issue #428 Right Subtitle Workspace R2', () => {
 
     expect(shell.match(/<PendingDialoguePlacementProvider>/gu)).toHaveLength(1);
     expect(shell.indexOf('<PendingDialoguePlacementProvider>')).toBeLessThan(
-      shell.indexOf('className="editor-body"'),
+      shell.indexOf('<EditorWorkbench'),
     );
     expect(shell.indexOf('</PendingDialoguePlacementProvider>')).toBeGreaterThan(
-      shell.indexOf('<BottomWorkspace'),
+      shell.indexOf('<TimelineDock'),
     );
     expect(placement).toContain('createContext<PendingDialoguePlacementContextValue');
     expect(placement).toContain('dialogueStore.previewArrange(');

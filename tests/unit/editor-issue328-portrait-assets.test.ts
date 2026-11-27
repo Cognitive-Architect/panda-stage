@@ -34,7 +34,7 @@ describe('Issue #328 portrait Assets cleanup', () => {
     expect(assets).toContain('searchQuery');
     expect(assets).toContain('filterAssetLibraryItems');
     expect(assets).toContain('ASSET_LIBRARY_FILTERS');
-    expect(assets).toContain('compact={hideHeading}');
+    expect(assets).toContain('compact={hideHeading || compactImport}');
     expect(assets).toContain('onImportFla={openFlaReview}');
     expect(assets).toContain('if (!hideHeading) onViewChange(\'details\');');
     expect(imports).toContain('onImportFla: () => void');
