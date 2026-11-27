@@ -1,3 +1,5 @@
+import { invertAffineMatrix } from '../../shared/affine-matrix';
+import { evaluatedLayerWorldMatrix } from '../layer-parent-space';
 import {
   compositeKeyTimesForTarget,
   deleteTargetKeyAtTime,
@@ -375,14 +377,19 @@ export class LayerMotionService {
     const evaluatedAtStart = evaluateShotAtTime(shot, startTimeMs, project).layers.find(
       (candidate) => candidate.id === layer.id,
     );
-    if (!evaluatedAtStart) {
+    if (!evaluatedAtStart || evaluatedAtStart.parentSpaceUnavailable) {
       throw new Error(`找不到图层：${layer.id}`);
     }
-    const p0: Point = { x: evaluatedAtStart.x, y: evaluatedAtStart.y };
+    const startAnchor = evaluatedLayerWorldMatrix(evaluatedAtStart);
+    const p0: Point = { x: startAnchor.tx, y: startAnchor.ty };
     const evaluatedAtEnd = replacing
       ? evaluateShotAtTime(shot, endTimeMs, project).layers.find((candidate) => candidate.id === layer.id)
       : undefined;
-    const p3 = evaluatedAtEnd ? { x: evaluatedAtEnd.x, y: evaluatedAtEnd.y } : input.p3;
+    if (replacing && (!evaluatedAtEnd || evaluatedAtEnd.parentSpaceUnavailable)) {
+      throw new Error('无法解析曲线终点的图层坐标。');
+    }
+    const endAnchor = evaluatedAtEnd && evaluatedLayerWorldMatrix(evaluatedAtEnd);
+    const p3 = endAnchor ? { x: endAnchor.tx, y: endAnchor.ty } : input.p3;
     if (!replacing) assertStagePointInBounds(p0, '起点 P0');
     assertStagePointInBounds(input.p1, '控制点 P1');
     assertStagePointInBounds(input.p2, '控制点 P2');
@@ -406,6 +413,7 @@ export class LayerMotionService {
     const sourceCanvas = basis.sourceCanvas;
     const localPivot = layerPivotLocalOffset(basis.pivot, sourceCanvas);
 
+    const samplesNeedParentSpace = Boolean(layer.parentLayerId || layer.parentKeys?.length || layer.parentSpaceOffset);
     const offsetXKeys: AnimationKey[] = [];
     const offsetYKeys: AnimationKey[] = [];
     if (!replacing && startTimeMs > 0) {
@@ -415,7 +423,18 @@ export class LayerMotionService {
 
     for (let step = 0; step <= stepCount; step += 1) {
       const timeMs = frameTimeMs(input.startFrame + step);
-      const samplePoint = sampled.points[step]!;
+      const worldPoint = sampled.points[step]!;
+      let samplePoint = worldPoint;
+      if (samplesNeedParentSpace) {
+        const evaluated = evaluateShotAtTime(shot, timeMs, project).layers.find((candidate) => candidate.id === layer.id);
+        if (!evaluated || evaluated.parentSpaceUnavailable) throw new Error('无法解析曲线区段的图层坐标。');
+        if (evaluated.parentSpace) {
+          const inverse = invertAffineMatrix(evaluated.parentSpace);
+          if (!inverse) throw new Error('当前父级的图层变换不可逆。');
+          const { a, b, c, d, tx, ty } = inverse;
+          samplePoint = { x: a * worldPoint.x + c * worldPoint.y + tx, y: b * worldPoint.x + d * worldPoint.y + ty };
+        }
+      }
       const preTrack = evaluateLayerPreTrackState(shot, layer, timeMs, project);
       const currentRel = evaluateLayerRelativeMotionValues(
         existingClip,

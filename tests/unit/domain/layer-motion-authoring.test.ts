@@ -20,6 +20,9 @@ import {
   evaluateCubicBezier2D,
   evaluateLayerMotionAtTime,
   evaluateShotAtTime,
+  resolveLayerCameraTransform,
+  prepareShotCamera,
+  evaluatedLayerWorldMatrix,
   frameTimeMs,
   isValidFrameTime,
   layerCompositeKeyEasing,
@@ -2137,6 +2140,54 @@ describe('Layer Clip v2 scale multiplier contract (#1142)', () => {
     }
     expect(easeSteps[11]!).toBeGreaterThan(easeSteps[0]! * 3);
     expect(easeSteps[12]!).toBeGreaterThan(easeSteps[23]! * 3);
+  });
+
+  it('bakes the selected path in scene coordinates with a moving parent and manual camera (#1386)', () => {
+    const { project, shotId, layerId } = zeroCharacterGraphicProject();
+    const layers = new LayerService();
+    const parent = layers.createControl(project, shotId);
+    const bound = layers.setParent(parent.project, shotId, layerId, parent.layer.id, 0);
+    const shot = bound.shots[0]!;
+    const ready = ProjectSchema.parse({ ...bound, shots: [{
+      ...shot,
+      camera: { mode: 'manual', keys: [
+        { timeMs: 0, centerX: 1050, centerY: 600, zoom: 1.5, rotationDeg: 12, interpolationToNext: 'linear' },
+      ] },
+      timelineEvents: [...shot.timelineEvents, {
+        id: randomUUID(), type: 'move', layerId: parent.layer.id, startMs: 0, endMs: 1000,
+        from: { x: 960, y: 540 }, to: { x: 1210, y: 340 }, easing: 'linear',
+      }],
+    }] });
+    const original = ready.shots[0]!;
+    const worldAt = (value: Project, timeMs: number) => {
+      const evaluated = evaluateShotAtTime(value.shots[0]!, timeMs, value).layers.find(({ id }) => id === layerId)!;
+      const world = evaluatedLayerWorldMatrix(evaluated);
+      return { evaluated, point: { x: world.tx, y: world.ty } };
+    };
+    const p0 = worldAt(ready, 0).point;
+    const p1 = { x: 700, y: 200 }, p2 = { x: 1020, y: 760 }, p3 = { x: 1450, y: 540 };
+    const baked = service.applyCurveMotion(ready, { shotId, layerId, startFrame: 0, endFrame: 24, p1, p2, p3, speedMode: 'constant' });
+    const expected = sampleCubicBezierBySteps({ p0, p1, p2, p3 }, 24, 'constant').points;
+    for (const frame of [0, 7, 12, 24]) {
+      const time = frameTimeMs(frame);
+      const { point, evaluated } = worldAt(baked, time);
+      expect(point.x).toBeCloseTo(expected[frame]!.x, 7);
+      expect(point.y).toBeCloseTo(expected[frame]!.y, 7);
+      const currentShot = baked.shots[0]!;
+      const camera = prepareShotCamera(baked, currentShot, 'speaker-focus')(time);
+      const projected = resolveLayerCameraTransform(evaluated, camera, 1920, 1080);
+      expect(projected).toMatchObject({ scaleX: 1.5, rotation: -12 });
+    }
+    const replaced = service.applyCurveMotion(baked, { shotId, layerId, startFrame: 6, endFrame: 18,
+      p1: { x: 520, y: 780 }, p2: { x: 1340, y: 260 }, p3, speedMode: 'constant', replacePosition: true });
+    for (const time of [0, 125, 249, 250, 750, 792, 1000]) {
+      const before = worldAt(baked, time).point;
+      const after = worldAt(replaced, time).point;
+      expect(after.x).toBeCloseTo(before.x, 7);
+      expect(after.y).toBeCloseTo(before.y, 7);
+    }
+    expect(replaced.shots[0]!.camera).toEqual(original.camera);
+    expect(replaced.shots[0]!.timelineEvents).toEqual(original.timelineEvents);
   });
 
   it('bakes single-segment cubic Bézier into native v2 offsetX/Y tracks with pivot/flipX/rotation/scale compensation, boundaries, conflicts, and editability (#1269 A02)', () => {

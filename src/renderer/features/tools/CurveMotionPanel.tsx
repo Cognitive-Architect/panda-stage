@@ -6,6 +6,7 @@ import {
   TIMELINE_FPS,
   buildCubicBezierArcLengthTable,
   evaluateShotAtTime,
+  evaluatedLayerWorldMatrix,
   frameTimeMs,
   getLayerCurveMotionConflict,
   isFlaGraphicDefinition,
@@ -150,7 +151,9 @@ function evaluateStageAnchorAtTime(target: CurveMotionTarget, timeMs: number): P
   const evaluated = evaluateShotAtTime(target.shot, timeMs, target.project).layers.find(
     (candidate) => candidate.id === target.layer.id,
   );
-  return evaluated ? { x: evaluated.x, y: evaluated.y } : null;
+  if (!evaluated || evaluated.parentSpaceUnavailable) return null;
+  const { tx, ty } = evaluatedLayerWorldMatrix(evaluated);
+  return { x: tx, y: ty };
 }
 
 /** Estimate the spatial cubic from four points on the authored trajectory. */

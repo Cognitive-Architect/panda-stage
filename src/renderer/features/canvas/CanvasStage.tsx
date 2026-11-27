@@ -1943,7 +1943,12 @@ export function CanvasStage({
                   name="transformer-overlay-layer"
                   ref={configureEditorLayer}
                 >
-                  {activeCurveMotion ? <CurveMotionStageOverlay draft={activeCurveMotion} scale={transform.scale} /> : null}
+                  {activeCurveMotion && !cameraTool && (!displayCamera || selectedLayerProjection) ? (
+                    <StageLayerSpace projection={displayCamera ? selectedLayerProjection ?? undefined : undefined}>
+                      <CurveMotionStageOverlay draft={activeCurveMotion} scale={transform.scale *
+                        (displayCamera && selectedLayerProjection ? Math.abs(selectedLayerProjection.scaleX) : 1)} />
+                    </StageLayerSpace>
+                  ) : null}
                   {!cameraTool && !pickingParent && transformerVisible && selectedStageLayer && selectedLayerProjection ? (
                     selectedStageLayer.evaluated.parentSpace && !structuredTransformerVisible ? (
                       <StageLayerSpace space={selectedStageLayer.evaluated.parentSpace} projection={displayCamera ? selectedLayerProjection : undefined}>
