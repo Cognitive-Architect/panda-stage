@@ -6,12 +6,13 @@ import {
 } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
+import { AutoScenePanel } from './AutoScenePanel';
 import { ShotCreateForm } from './ShotCreateForm';
 import { ShotEditor } from './ShotEditor';
 import { nextAvailableShotName, ShotList } from './ShotList';
 import { ShotQuickActions } from './ShotQuickActions';
 
-export type ShotWorkspaceView = 'list' | 'create';
+export type ShotWorkspaceView = 'list' | 'create' | 'auto-scene';
 export type ShotManagerPresentation = 'default' | 'landscape';
 export type ShotEditorPresentation = 'default' | 'portrait';
 
@@ -147,6 +148,11 @@ export function ShotManager({
           onCreate={createShot}
           presentation={presentation}
           suggestedName={nextAvailableShotName(project?.shots ?? [])}
+        />
+      ) : view === 'auto-scene' ? (
+        <AutoScenePanel
+          onBack={() => onViewChange('list')}
+          snapshot={snapshot}
         />
       ) : (
         <div className="shot-workspace">

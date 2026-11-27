@@ -446,16 +446,16 @@ export function ResourceActivityDock({
     landscapePresentation &&
     activeActivity === 'shots';
   const landscapeShotHeaderLayout = useDirectLandscapeShotWorkspaceLabel
-    ? shotView === 'create'
-      ? 'shot-create-landscape'
-      : 'shot-list-landscape'
+    ? shotView === 'list'
+      ? 'shot-list-landscape'
+      : 'shot-create-landscape'
     : undefined;
   const useDirectCharacterWorkspaceLabel =
     landscapePresentation &&
     activeActivity === 'characters' &&
     (characterView === 'list' || characterView === 'create');
   const showCreateIcon =
-    (activeActivity === 'shots' && shotView !== 'create') ||
+    (activeActivity === 'shots' && shotView === 'list') ||
     (activeActivity === 'characters' && characterView === 'list');
   const showLandscapeCharacterEntryActions =
     landscapePresentation &&
@@ -472,7 +472,7 @@ export function ResourceActivityDock({
 
   const primaryAction =
     activeActivity === 'shots'
-      ? shotView === 'create'
+      ? shotView !== 'list'
         ? {
             label: '返回镜头列表',
             onClick: () => setShotView('list'),
@@ -676,6 +676,18 @@ export function ResourceActivityDock({
                     <span>{primaryAction.label}</span>
                   </button>
                 )}
+              {activeActivity === 'shots' && shotView === 'list' ? (
+                <button
+                  aria-label="自动布景"
+                  className="resource-activity-fla-action"
+                  data-resource-action="shots-auto-scene"
+                  data-testid="resource-shot-auto-scene"
+                  onClick={() => setShotView('auto-scene')}
+                  type="button"
+                >
+                  <span>自动布景</span>
+                </button>
+              ) : null}
               {showLandscapeAssetActionGroup ? (
                 <button
                   aria-label="导入 FLA"
