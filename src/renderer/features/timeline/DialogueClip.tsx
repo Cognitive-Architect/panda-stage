@@ -196,6 +196,15 @@ export function DialogueClip({
     kind: DialogueGestureKind,
   ): void => {
     isolateDialoguePointerEvent(event);
+    if (kind === 'move' && (event.ctrlKey || event.metaKey || event.shiftKey)) {
+      if (event.shiftKey) {
+        dialogueSelectionStore.selectRange(dialogue.id);
+      } else {
+        dialogueSelectionStore.toggleInSelection(dialogue.id);
+      }
+      markPointerClickHandled();
+      return;
+    }
     const wasSelected = selected;
     dialogueSelectionStore.select(dialogue.id);
     if (!timed) {
@@ -350,7 +359,13 @@ export function DialogueClip({
           suppressClickRef.current = false;
           return;
         }
-        dialogueSelectionStore.toggle(dialogue.id);
+        if (event.shiftKey) {
+          dialogueSelectionStore.selectRange(dialogue.id);
+        } else if (event.ctrlKey || event.metaKey) {
+          dialogueSelectionStore.toggleInSelection(dialogue.id);
+        } else {
+          dialogueSelectionStore.toggle(dialogue.id);
+        }
       }}
       onPointerCancel={cancelDrag}
       onPointerDown={(event) => beginDrag(event, 'move')}

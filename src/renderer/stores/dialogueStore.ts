@@ -2,16 +2,20 @@ import {
   AutoSubtitleAudioService,
   DialogueService,
   type ApplyDialogueAudioScheduleResult,
+  type BatchBoundaryMode,
   type DialogueArrangementTiming,
   type DialogueAudioScheduleRowInput,
+  type DialogueBatchMovePlan,
   type ArrangeDialogueInput,
   type BindDialogueAudioInput,
   type DialogueTextMatch,
   type MoveDialogueInput,
+  type MoveManyDialoguesInput,
   type Project,
   type ResizeBoundAudioEndInput,
   type ResizeDialogueInput,
   type SetDialogueTimingInput,
+  type SharedAudioClipPolicy,
 } from '../../domain';
 import {
   EditorProjectStore,
@@ -261,6 +265,57 @@ export class DialogueStore {
     const input: MoveDialogueInput = { shotId, dialogueId, deltaMs };
     const next = this.service.move(project, input);
     if (next !== project) this.editorStore.updateProject(next, 'Move dialogue');
+  }
+
+  /** Read-only batch shift preview; never writes to Project or History. */
+  planMoveMany(
+    dialogueIds: readonly string[],
+    deltaMs: number,
+    options: {
+      sharedClipPolicy?: SharedAudioClipPolicy;
+      boundaryMode?: BatchBoundaryMode;
+    } = {},
+  ): DialogueBatchMovePlan {
+    const { project, shotId } = this.context();
+    const input: MoveManyDialoguesInput = {
+      shotId,
+      dialogueIds,
+      deltaMs,
+      ...(options.sharedClipPolicy !== undefined
+        ? { sharedClipPolicy: options.sharedClipPolicy }
+        : {}),
+      ...(options.boundaryMode !== undefined
+        ? { boundaryMode: options.boundaryMode }
+        : {}),
+    };
+    return this.service.planMoveMany(project, input);
+  }
+
+  /** Commits a batch dialogue shift as a single History command. */
+  moveMany(
+    dialogueIds: readonly string[],
+    deltaMs: number,
+    options: {
+      sharedClipPolicy?: SharedAudioClipPolicy;
+      boundaryMode?: BatchBoundaryMode;
+    } = {},
+  ): void {
+    const { project, shotId } = this.context();
+    const input: MoveManyDialoguesInput = {
+      shotId,
+      dialogueIds,
+      deltaMs,
+      ...(options.sharedClipPolicy !== undefined
+        ? { sharedClipPolicy: options.sharedClipPolicy }
+        : {}),
+      ...(options.boundaryMode !== undefined
+        ? { boundaryMode: options.boundaryMode }
+        : {}),
+    };
+    const next = this.service.moveMany(project, input);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Batch move dialogues');
+    }
   }
 
   resize(

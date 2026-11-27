@@ -18,6 +18,7 @@ import {
   Spline,
   Search,
   SkipBack,
+  SlidersHorizontal,
   Volume2,
   ZoomIn,
   ZoomOut,
@@ -49,6 +50,7 @@ import { TimelineAudioWaveform } from './TimelineAudioWaveform';
 import { useTimelineAudio } from './useTimelineAudio';
 import { AnimationCurveDraftDispatch } from './AnimationCurveDraft';
 import { AnimationCurvePanel } from './AnimationCurvePanel';
+import { BatchTimeEditPanel } from './BatchTimeEditPanel';
 
 const TIMELINE_LANE_LABEL_WIDTH = 82;
 const PORTRAIT_TIMELINE_LANE_LABEL_WIDTH = 58;
@@ -109,6 +111,10 @@ export function TimelineDock({
     dialogueSelectionStore.subscribe,
     dialogueSelectionStore.getSelectedDialogueId,
   );
+  const selectedDialogueIds = useSyncExternalStore(
+    dialogueSelectionStore.subscribe,
+    dialogueSelectionStore.getSelectedDialogueIds,
+  );
 
   const durationMs = currentShotId
     ? snapshot?.project.shots.find((shot) => shot.id === currentShotId)
@@ -159,7 +165,9 @@ export function TimelineDock({
   const [viewportWidth, setViewportWidth] = useState(0);
   const [motionToolbarHost, setMotionToolbarHost] = useState<HTMLDivElement | null>(null);
   const [findOpen, setFindOpen] = useState(false);
+  const [batchTimeOpen, setBatchTimeOpen] = useState(false);
   const findButton = useRef<HTMLButtonElement>(null);
+  const batchTimeButton = useRef<HTMLButtonElement>(null);
   const {
     drag: pendingDrag,
     registerDropTarget,
@@ -374,6 +382,24 @@ export function TimelineDock({
           disabled={!hasShot || productPreviewOpen} onClick={() => setFindOpen(!findOpen)}>
           <Search aria-hidden="true" focusable="false" size={16} />
         </button>
+        <button
+          type="button"
+          className="timeline-batch-time-toggle"
+          data-testid="timeline-batch-time-toggle"
+          ref={batchTimeButton}
+          aria-label="批量时间编辑"
+          title="批量时间编辑"
+          aria-expanded={batchTimeOpen && !productPreviewOpen}
+          disabled={!hasShot || productPreviewOpen}
+          onClick={() => setBatchTimeOpen((open) => !open)}
+        >
+          <SlidersHorizontal aria-hidden="true" focusable="false" size={16} />
+          {selectedDialogueIds.length > 1 ? (
+            <span className="timeline-batch-time-count">
+              {selectedDialogueIds.length}
+            </span>
+          ) : null}
+        </button>
         {hasCurveTracks && !productPreviewOpen ? (
           <button type="button" className="animation-curve-toggle" aria-label="属性曲线" title="属性曲线"
             aria-expanded={curveOpen && ui.expanded} onClick={() => {
@@ -443,6 +469,17 @@ export function TimelineDock({
             setFindOpen(false);
             findButton.current?.focus();
           }} />
+      ) : null}
+      {batchTimeOpen && !productPreviewOpen && snapshot && shot ? (
+        <BatchTimeEditPanel
+          key={`${editorProjectStore.getProjectInstanceId()}:${shot.id}`}
+          project={snapshot.project}
+          shot={shot}
+          onClose={() => {
+            setBatchTimeOpen(false);
+            batchTimeButton.current?.focus();
+          }}
+        />
       ) : null}
       {ui.expanded ? (
         hasShot ? (
@@ -617,7 +654,10 @@ export function TimelineDock({
                             key={dialogue.id}
                             pixelsPerMs={pixelsPerMs}
                             projectRoot={snapshot?.projectRoot ?? ''}
-                            selected={dialogue.id === selectedDialogueId}
+                            selected={
+                              dialogue.id === selectedDialogueId ||
+                              selectedDialogueIds.includes(dialogue.id)
+                            }
                             shotId={shot.id}
                           />
                           ))}
@@ -721,7 +761,11 @@ export function TimelineDock({
                             maximumEndMs={legalRange?.maximumEndMs ?? null}
                             pixelsPerMs={pixelsPerMs}
                             projectRoot={snapshot?.projectRoot ?? ''}
-                            selected={dialogue?.id === selectedDialogueId}
+                            selected={
+                              Boolean(dialogue) &&
+                              (dialogue!.id === selectedDialogueId ||
+                                selectedDialogueIds.includes(dialogue!.id))
+                            }
                             shotId={shot!.id}
                             waveform={clip.id === focusedAudio?.id ? selectedWaveform : null}
                           />
