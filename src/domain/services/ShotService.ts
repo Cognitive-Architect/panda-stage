@@ -40,6 +40,22 @@ export interface ShotServiceOptions {
   now?: () => Date;
 }
 
+export type ShotDuplicateMode = 'full' | 'structure-only';
+
+/**
+ * Options for `ShotService.duplicate`.
+ *
+ * WF-06 first vertical slice policy (Issue #1416):
+ * - No new persisted schema is introduced; named/persistent shot templates are
+ *   deferred to a later slice unless explicitly authorized.
+ * - In `'structure-only'` mode, non-dialogue audio (BGM/SFX) is excluded by
+ *   default (`includeNonDialogueAudio = false`) and can be explicitly retained.
+ */
+export interface DuplicateShotOptions {
+  mode?: ShotDuplicateMode;
+  includeNonDialogueAudio?: boolean;
+}
+
 function normalizedName(name: string): string {
   return name.trim().toLocaleLowerCase();
 }
@@ -92,84 +108,186 @@ export class ShotService {
     return this.replaceShots(project, [...project.shots, shot]);
   }
 
-  duplicate(project: Project, shotId: string): Project {
+  duplicate(
+    project: Project,
+    shotId: string,
+    options: DuplicateShotOptions = {},
+  ): Project {
+    const mode: ShotDuplicateMode = options.mode ?? 'full';
+    const includeNonDialogueAudio =
+      mode === 'structure-only' && Boolean(options.includeNonDialogueAudio);
     const sourceIndex = this.shotIndex(project, shotId);
     const source = project.shots[sourceIndex]!;
     const usedIds = this.projectIds(project);
+
+    const retainedLayers = source.layers;
+    const retainedDialogues = mode === 'full' ? source.dialogues : [];
+    const removedDialogueAudioClipIds =
+      mode === 'structure-only'
+        ? new Set(
+            source.dialogues
+              .map((dialogue) => dialogue.audioClipId)
+              .filter((id): id is string => id !== undefined),
+          )
+        : new Set<string>();
+    const retainedAudioClips =
+      mode === 'full'
+        ? source.audioClips
+        : includeNonDialogueAudio
+          ? source.audioClips.filter(
+              (clip) =>
+                clip.role !== 'dialogue' &&
+                !removedDialogueAudioClipIds.has(clip.id),
+            )
+          : [];
+    const retainedTimelineEvents =
+      mode === 'full'
+        ? source.timelineEvents
+        : source.timelineEvents.filter(
+            (event) =>
+              !(
+                event.type === 'mouth-pose' &&
+                (event.origin === 'generated' || event.dialogueId !== undefined)
+              ),
+          );
+
     const layerIds = new Map(
-      source.layers.map((layer) => [
-        layer.id,
-        this.nextUniqueId(usedIds),
-      ]),
+      retainedLayers.map((layer) => [layer.id, this.nextUniqueId(usedIds)]),
     );
     const audioClipIds = new Map(
-      source.audioClips.map((clip) => [
-        clip.id,
+      retainedAudioClips.map((clip) => [clip.id, this.nextUniqueId(usedIds)]),
+    );
+    const dialogueIds = new Map(
+      retainedDialogues.map((dialogue) => [
+        dialogue.id,
         this.nextUniqueId(usedIds),
       ]),
     );
-    const dialogueIds = new Map(source.dialogues.map((dialogue) => [dialogue.id, this.nextUniqueId(usedIds)]));
     const eventIds = new Map(
-      source.timelineEvents.map((event) => [
+      retainedTimelineEvents.map((event) => [
         event.id,
         this.nextUniqueId(usedIds),
       ]),
     );
+    const cameraOverrideIds = new Map(
+      (source.camera?.overrides ?? []).map((override) => [
+        override.id,
+        this.nextUniqueId(usedIds),
+      ]),
+    );
+
+    const retainedCharacterLayerIds = new Set(
+      retainedLayers
+        .filter((layer) => layer.source.kind === 'character')
+        .map((layer) => layer.id),
+    );
+    const retainedCharacterActionEventOwners = new Map<string, string>();
+    for (const event of retainedTimelineEvents) {
+      if (event.type === 'character-action') {
+        retainedCharacterActionEventOwners.set(event.id, event.layerId);
+      }
+    }
+
+    const camera = source.camera
+      ? (() => {
+          const clonedCamera = structuredClone(source.camera);
+          if (clonedCamera.overrides) {
+            clonedCamera.overrides = clonedCamera.overrides.map((override) => ({
+              ...override,
+              id: cameraOverrideIds.get(override.id)!,
+            }));
+          }
+          return clonedCamera;
+        })()
+      : undefined;
+
     const duplicate: Shot = {
-      ...source,
       id: this.nextUniqueId(usedIds),
-      name: this.copyName(project, source.name),
-      layers: source.layers.map((layer) => {
+      name: this.copyName(project, source.name, mode),
+      durationMs: source.durationMs,
+      defaultSubtitleStyleId: source.defaultSubtitleStyleId,
+      layers: retainedLayers.map((layer) => {
+        const cloned = structuredClone(layer);
         const layerId = layerIds.get(layer.id)!;
-        const remappedTimeLink = layer.animationTimeLink
-          ? {
-              ...layer.animationTimeLink,
-              sourceLayerId:
-                layerIds.get(layer.animationTimeLink.sourceLayerId) ??
-                layer.animationTimeLink.sourceLayerId,
-              eventId:
-                eventIds.get(layer.animationTimeLink.eventId) ??
-                layer.animationTimeLink.eventId,
+        if (cloned.parentLayerId !== undefined) {
+          const remappedParentId = layerIds.get(cloned.parentLayerId);
+          if (remappedParentId !== undefined) {
+            cloned.parentLayerId = remappedParentId;
+          } else {
+            delete cloned.parentLayerId;
+            delete cloned.parentAttachment;
+            delete cloned.parentSpaceOffset;
+          }
+        }
+        if (cloned.parentKeys) {
+          cloned.parentKeys = cloned.parentKeys.map((key) => {
+            const remappedParentId = key.parentLayerId
+              ? (layerIds.get(key.parentLayerId) ?? null)
+              : null;
+            const nextKey = {
+              ...key,
+              parentLayerId: remappedParentId,
+            };
+            if (remappedParentId === null) {
+              delete nextKey.parentAttachment;
             }
-          : undefined;
+            return nextKey;
+          });
+        }
+        if (cloned.animationTimeLink) {
+          const link = cloned.animationTimeLink;
+          const remappedSourceLayerId = layerIds.get(link.sourceLayerId);
+          const remappedEventId = eventIds.get(link.eventId);
+          const validTarget =
+            remappedSourceLayerId !== undefined &&
+            remappedEventId !== undefined &&
+            retainedCharacterLayerIds.has(link.sourceLayerId) &&
+            retainedCharacterActionEventOwners.get(link.eventId) ===
+              link.sourceLayerId;
+          if (validTarget) {
+            cloned.animationTimeLink = {
+              ...link,
+              sourceLayerId: remappedSourceLayerId,
+              eventId: remappedEventId,
+            };
+          } else {
+            delete cloned.animationTimeLink;
+          }
+        }
         return {
-          ...layer,
+          ...cloned,
           id: layerId,
-          ...(layer.parentLayerId ? { parentLayerId: layerIds.get(layer.parentLayerId) } : {}),
-          ...(layer.parentKeys
-            ? {
-                parentKeys: layer.parentKeys.map((key) => ({
-                  ...key,
-                  parentLayerId: key.parentLayerId ? (layerIds.get(key.parentLayerId) ?? null) : null,
-                })),
-              }
-            : {}),
-          ...(remappedTimeLink ? { animationTimeLink: remappedTimeLink } : {}),
-          ...remapLayerMotionOwner(layer, layerId),
+          ...remapLayerMotionOwner(cloned, layerId),
         };
       }),
       backgroundLayerId:
         source.backgroundLayerId === null
           ? null
-          : layerIds.get(source.backgroundLayerId)!,
-      audioClips: source.audioClips.map((clip) => ({
-        ...clip,
+          : (layerIds.get(source.backgroundLayerId) ?? null),
+      audioClips: retainedAudioClips.map((clip) => ({
+        ...structuredClone(clip),
         id: audioClipIds.get(clip.id)!,
       })),
-      dialogues: source.dialogues.map((dialogue) => ({
-        ...dialogue,
+      dialogues: retainedDialogues.map((dialogue) => ({
+        ...structuredClone(dialogue),
         id: dialogueIds.get(dialogue.id)!,
         audioClipId:
           dialogue.audioClipId === undefined
             ? undefined
             : audioClipIds.get(dialogue.audioClipId),
       })),
-      timelineEvents: source.timelineEvents.map((event) => ({
-        ...event,
-        id: eventIds.get(event.id)!,
-        layerId: layerIds.get(event.layerId)!,
-        ...(event.type === 'mouth-pose' && event.dialogueId ? { dialogueId: dialogueIds.get(event.dialogueId)! } : {}),
-      })),
+      timelineEvents: retainedTimelineEvents.map((event) => {
+        const cloned = structuredClone(event);
+        return {
+          ...cloned,
+          id: eventIds.get(event.id)!,
+          layerId: layerIds.get(event.layerId)!,
+          ...(cloned.type === 'mouth-pose' && cloned.dialogueId
+            ? { dialogueId: dialogueIds.get(cloned.dialogueId)! }
+            : {}),
+        };
+      }),
+      ...(camera !== undefined ? { camera } : {}),
     };
     const shots = [...project.shots];
     shots.splice(sourceIndex + 1, 0, duplicate);
@@ -300,9 +418,16 @@ export class ShotService {
     return index;
   }
 
-  private copyName(project: Project, sourceName: string): string {
+  private copyName(
+    project: Project,
+    sourceName: string,
+    mode: ShotDuplicateMode = 'full',
+  ): string {
     const names = new Set(project.shots.map((shot) => normalizedName(shot.name)));
-    const base = `${sourceName} 副本`;
+    const base =
+      mode === 'structure-only'
+        ? `${sourceName} 结构副本`
+        : `${sourceName} 副本`;
     if (!names.has(normalizedName(base))) return base;
     for (let suffix = 2; suffix < 10_000; suffix += 1) {
       const candidate = `${base} ${suffix}`;
@@ -336,6 +461,7 @@ export class ShotService {
       shot.audioClips.forEach((clip) => ids.add(clip.id));
       shot.dialogues.forEach((dialogue) => ids.add(dialogue.id));
       shot.timelineEvents.forEach((event) => ids.add(event.id));
+      shot.camera?.overrides?.forEach((override) => ids.add(override.id));
     }
     return ids;
   }

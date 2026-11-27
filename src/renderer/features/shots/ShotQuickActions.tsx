@@ -4,7 +4,9 @@ import {
   Check,
   Clock3,
   Copy,
+  Layers3,
   MoreHorizontal,
+  Music2,
   Pencil,
   Trash2,
   X,
@@ -22,6 +24,7 @@ export interface ShotQuickActionsProps {
   index: number;
   shot: Shot;
   onDuplicate: () => void;
+  onDuplicateStructure?: (includeNonDialogueAudio?: boolean) => void;
   onRemove: () => void;
   onRename: (name: string) => void;
   onSetDuration: (durationMs: number) => void;
@@ -36,6 +39,7 @@ export function ShotQuickActions({
   index,
   shot,
   onDuplicate,
+  onDuplicateStructure,
   onRemove,
   onRename,
   onSetDuration,
@@ -118,6 +122,32 @@ export function ShotQuickActions({
                 <Copy aria-hidden="true" className="ui-icon" focusable="false" size={16} />
                 <span>复制镜头</span>
               </button>
+              {onDuplicateStructure ? (
+                <>
+                  <button
+                    className="shot-quick-action"
+                    data-testid="shot-quick-duplicate-structure"
+                    disabled={disabled}
+                    onClick={() => onDuplicateStructure(false)}
+                    type="button"
+                  >
+                    <Layers3 aria-hidden="true" className="ui-icon" focusable="false" size={16} />
+                    <span>仅复制布景与动作</span>
+                  </button>
+                  {shot.audioClips.some((clip) => clip.role !== 'dialogue') ? (
+                    <button
+                      className="shot-quick-action"
+                      data-testid="shot-quick-duplicate-structure-with-audio"
+                      disabled={disabled}
+                      onClick={() => onDuplicateStructure(true)}
+                      type="button"
+                    >
+                      <Music2 aria-hidden="true" className="ui-icon" focusable="false" size={16} />
+                      <span>复制结构并保留 BGM/音效</span>
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
               <button
                 className="shot-quick-action shot-quick-delete"
                 data-testid="shot-quick-delete"
