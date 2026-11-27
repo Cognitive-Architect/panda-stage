@@ -1,5 +1,6 @@
 import { invertAffineMatrix } from '../../shared/affine-matrix';
 import { evaluatedLayerWorldMatrix } from '../layer-parent-space';
+import { projectShotDialogueVisual } from '../selectors/temporalRender';
 import {
   compositeKeyTimesForTarget,
   deleteTargetKeyAtTime,
@@ -374,16 +375,17 @@ export class LayerMotionService {
       throw new Error('请选择有效的曲线速度模式。');
     }
 
-    const evaluatedAtStart = evaluateShotAtTime(shot, startTimeMs, project).layers.find(
-      (candidate) => candidate.id === layer.id,
-    );
+    const evaluateCurveLayer = (timeMs: number) => projectShotDialogueVisual(
+      project, shot, evaluateShotAtTime(shot, timeMs, project),
+    ).layers.find((candidate) => candidate.id === layer.id);
+    const evaluatedAtStart = evaluateCurveLayer(startTimeMs);
     if (!evaluatedAtStart || evaluatedAtStart.parentSpaceUnavailable) {
       throw new Error(`找不到图层：${layer.id}`);
     }
     const startAnchor = evaluatedLayerWorldMatrix(evaluatedAtStart);
     const p0: Point = { x: startAnchor.tx, y: startAnchor.ty };
     const evaluatedAtEnd = replacing
-      ? evaluateShotAtTime(shot, endTimeMs, project).layers.find((candidate) => candidate.id === layer.id)
+      ? evaluateCurveLayer(endTimeMs)
       : undefined;
     if (replacing && (!evaluatedAtEnd || evaluatedAtEnd.parentSpaceUnavailable)) {
       throw new Error('无法解析曲线终点的图层坐标。');
@@ -426,7 +428,7 @@ export class LayerMotionService {
       const worldPoint = sampled.points[step]!;
       let samplePoint = worldPoint;
       if (samplesNeedParentSpace) {
-        const evaluated = evaluateShotAtTime(shot, timeMs, project).layers.find((candidate) => candidate.id === layer.id);
+        const evaluated = evaluateCurveLayer(timeMs);
         if (!evaluated || evaluated.parentSpaceUnavailable) throw new Error('无法解析曲线区段的图层坐标。');
         if (evaluated.parentSpace) {
           const inverse = invertAffineMatrix(evaluated.parentSpace);

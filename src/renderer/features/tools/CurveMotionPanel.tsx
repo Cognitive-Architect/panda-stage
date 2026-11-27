@@ -11,6 +11,7 @@ import {
   getLayerCurveMotionConflict,
   isFlaGraphicDefinition,
   lastValidFrameTime,
+  projectShotDialogueVisual,
   layerCurveMotionPositionTracks,
   sampleCubicBezierBySteps,
   resolveTimelineFrameTime,
@@ -148,9 +149,9 @@ function evaluateStageAnchorAtFrame(target: CurveMotionTarget, frame: number): P
 }
 
 function evaluateStageAnchorAtTime(target: CurveMotionTarget, timeMs: number): Point | null {
-  const evaluated = evaluateShotAtTime(target.shot, timeMs, target.project).layers.find(
-    (candidate) => candidate.id === target.layer.id,
-  );
+  const { project, shot, layer } = target;
+  const evaluated = projectShotDialogueVisual(project, shot, evaluateShotAtTime(shot, timeMs, project))
+    .layers.find((candidate) => candidate.id === layer.id);
   if (!evaluated || evaluated.parentSpaceUnavailable) return null;
   const { tx, ty } = evaluatedLayerWorldMatrix(evaluated);
   return { x: tx, y: ty };
