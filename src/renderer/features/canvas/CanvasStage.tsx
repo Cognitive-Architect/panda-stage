@@ -80,6 +80,10 @@ import { selectionStore } from '../../stores/selectionStore';
 import { shotStore } from '../../stores/shotStore';
 import { CanvasToolbar } from './CanvasToolbar';
 import { ShotCameraControls } from './ShotCameraControls';
+import {
+  resolveActiveShotCameraCurveDraft,
+  type ShotCameraCurveDraft,
+} from './ShotCameraCurveDraft';
 import { ShotCameraFrame } from './ShotCameraFrame';
 import { commitCameraFrame } from '../../stores/shotCameraEdits';
 import { CanvasViewport } from './CanvasViewport';
@@ -404,16 +408,33 @@ export function CanvasStage({
     ) ?? null;
   const [showCameraView, setShowCameraView] = useState(true);
   const [cameraToolShotId, setCameraToolShotId] = useState<string | null>(null);
+  const [cameraCurveDraft, setCameraCurveDraft] = useState<ShotCameraCurveDraft | null>(null);
+  const activeCameraCurveDraft = resolveActiveShotCameraCurveDraft(cameraCurveDraft, {
+    projectInstanceId,
+    revision: snapshot?.revision,
+    shotId: currentShotId,
+    blocked: Boolean(armAssembly),
+  });
+  useLayoutEffect(() => {
+    if (cameraCurveDraft && !activeCameraCurveDraft) {
+      setCameraCurveDraft((current) => (current === cameraCurveDraft ? null : current));
+    }
+  }, [activeCameraCurveDraft, cameraCurveDraft]);
+  const effectiveCameraProject = activeCameraCurveDraft?.project ?? snapshot?.project ?? null;
+  const effectiveCameraShot =
+    activeCameraCurveDraft?.project.shots.find(({ id }) => id === currentShotId) ?? shot;
+  const effectiveCameraTimeMs = activeCameraCurveDraft?.timeMs ?? timelineUi.currentTimeMs;
   const hasManualCameraTrack = shot?.camera?.mode === 'manual' || shot?.camera?.mode === 'hybrid';
   const cameraTool = !showCameraView && !armAssembly && hasManualCameraTrack && cameraToolShotId === shot.id;
   const shotCameraPlan = useMemo(
-    () => snapshot && shot && (shot.camera?.mode === 'manual' || shot.camera?.mode === 'hybrid')
-      ? prepareShotCamera(snapshot.project, shot, 'speaker-focus')
+    () => effectiveCameraProject && effectiveCameraShot &&
+      (effectiveCameraShot.camera?.mode === 'manual' || effectiveCameraShot.camera?.mode === 'hybrid')
+      ? prepareShotCamera(effectiveCameraProject, effectiveCameraShot, 'speaker-focus')
       : null,
-    [shot, snapshot],
+    [effectiveCameraProject, effectiveCameraShot],
   );
   const displayCamera = showCameraView && !armAssembly && shotCameraPlan
-    ? shotCameraPlan(timelineUi.currentTimeMs)
+    ? shotCameraPlan(effectiveCameraTimeMs)
     : undefined;
   const cameraViewActive = Boolean(displayCamera);
   const [parentPick, setParentPick] = useState<{ shotId: string; childId: string; instance: number | null } | null>(null);
@@ -818,7 +839,7 @@ export function CanvasStage({
     }
     return [...assets.values()];
   }, [previousTemporalVisuals, structuredEditAssets]);
-  const imageState = useCanvasImages(snapshot, shot, retainedAssets, activeCurveDraft?.timeMs ?? timelineUi.currentTimeMs);
+  const imageState = useCanvasImages(snapshot, shot, retainedAssets, activeCurveDraft?.timeMs ?? activeCameraCurveDraft?.timeMs ?? timelineUi.currentTimeMs);
   const handleMoveFlaShapeVertex = useCallback((
     nodePath: readonly string[],
     regionRef: string,
@@ -880,7 +901,7 @@ export function CanvasStage({
             activeDialogueId: activeCue?.id ?? null,
             cameraViewActive,
             dialogueSilence,
-            currentTimeMs: activeCurveDraft?.timeMs ?? timelineUi.currentTimeMs,
+            currentTimeMs: activeCurveDraft?.timeMs ?? activeCameraCurveDraft?.timeMs ?? timelineUi.currentTimeMs,
             previousVisuals: previousTemporalVisuals,
             project: activeCurveDraft?.project ?? snapshot.project,
             readyAssetIds: new Set(imageState.images.keys()),
@@ -898,6 +919,7 @@ export function CanvasStage({
         : null,
     [
       activeCue?.id,
+      activeCameraCurveDraft,
       activeCurveDraft,
       cameraViewActive,
       dialogueSilence,
@@ -1469,6 +1491,7 @@ export function CanvasStage({
                 timeMs={timelineUi.currentTimeMs}
                 throughCamera={showCameraView}
                 cameraTool={cameraTool}
+                onCurveDraft={setCameraCurveDraft}
                 onViewChange={(enabled) => { setCameraToolShotId(null); setShowCameraView(enabled); }}
                 onToolChange={(enabled) => {
                   setCameraToolShotId(enabled ? shot.id : null);
@@ -1980,7 +2003,7 @@ export function CanvasStage({
                   <KonvaLayer>
                     <ShotCameraFrame
                       key={`${projectInstanceId}:${shot.id}:${snapshot.revision}:${timelineUi.currentTimeMs}`}
-                      pose={evaluateManualCamera(shot, timelineUi.currentTimeMs)}
+                      pose={evaluateManualCamera(effectiveCameraShot ?? shot, effectiveCameraTimeMs)}
                       onCommit={(pose) => {
                         try {
                           commitCameraFrame(snapshot, shot.id, timelineUi.currentTimeMs, pose);

@@ -7,6 +7,10 @@ import {
 import { SHOT_MIN_DURATION_MS } from '../constants';
 import { remapLayerMotionOwner } from '../layer-animation';
 import { setShotCameraAutoFraming } from '../shot-camera';
+import {
+  applyCameraMotionPreset as applyCameraMotionPresetToProject,
+  type ApplyCameraMotionPresetInput,
+} from '../camera-motion-presets';
 
 export type ShotServiceErrorCode =
   | 'SHOT_NOT_FOUND'
@@ -236,6 +240,18 @@ export class ShotService {
     const [shot] = shots.splice(sourceIndex, 1);
     shots.splice(targetIndex, 0, shot!);
     return this.replaceShots(project, shots);
+  }
+
+  applyCameraMotionPreset(
+    project: Project,
+    shotId: string,
+    input: ApplyCameraMotionPresetInput,
+  ): Project {
+    this.shotIndex(project, shotId);
+    const updated = applyCameraMotionPresetToProject(project, shotId, input, {
+      createId: this.createId,
+    });
+    return this.replaceShots(updated, updated.shots);
   }
 
   private validName(

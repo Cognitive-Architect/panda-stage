@@ -20,6 +20,7 @@ export * from './fla-graphic-subtree';
 export * from './fla-shape-vector';
 export * from './resolve-speaker-focus-camera';
 export * from './shot-camera';
+export * from './camera-motion-presets';
 export * from './layer-depth';
 export * from './layer-attachment';
 export * from './layer-parent-space';

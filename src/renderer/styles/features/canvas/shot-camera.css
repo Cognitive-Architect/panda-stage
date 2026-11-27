@@ -21,7 +21,9 @@
   position: absolute;
   right: 0;
   bottom: calc(100% + 6px);
-  width: min(290px, 76vw);
+  width: min(300px, 78vw);
+  max-height: min(74vh, 560px);
+  overflow-y: auto;
   display: grid;
   gap: 8px;
   padding: 10px;
@@ -50,6 +52,50 @@
 
 .shot-camera-fields label {
   flex: 1;
+}
+
+.shot-camera-curve {
+  display: grid;
+  gap: 6px;
+}
+
+.shot-camera-presets {
+  border-top: 1px solid var(--ui-color-separator);
+  padding-top: 6px;
+}
+
+.shot-camera-presets > summary {
+  display: block;
+  width: auto;
+  height: auto;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 2px 0;
+  font-weight: 500;
+}
+
+.shot-camera-presets-body {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.shot-camera-panel label.shot-camera-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shot-camera-panel label.shot-camera-checkbox input {
+  width: auto;
+}
+
+.shot-camera-conflict {
+  display: grid;
+  gap: 4px;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
 }
 
 .product-preview-stage[data-manual-camera='true'] {
