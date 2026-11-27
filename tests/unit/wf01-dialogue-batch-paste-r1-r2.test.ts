@@ -11,6 +11,8 @@ import {
 } from '../../src/domain';
 import { DialogueAuthoringDraft } from '../../src/renderer/features/dialogue/dialogueAuthoringDraft';
 import { DialogueBatchPaste } from '../../src/renderer/features/dialogue/DialogueBatchPaste';
+import { timelineUiStore } from '../../src/renderer/features/timeline/timelineUiStore';
+import { dialogueStore } from '../../src/renderer/stores/dialogueStore';
 import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { shotStore } from '../../src/renderer/stores/shotStore';
 import { buildProject, IDS } from './domain/testProject';
@@ -97,6 +99,7 @@ afterEach(async () => {
   });
   container.remove();
   editorProjectStore.clear();
+  timelineUiStore.seek(0, 20_000);
 });
 
 function selectByTestId(testId: string): HTMLSelectElement {
@@ -124,6 +127,104 @@ async function changeSelect(testId: string, value: string): Promise<void> {
 }
 
 describe('WF-01 DialogueBatchPaste R1 & R2 UI regressions', () => {
+  it.each(['automatic', 'manual'])('F1: retains the second duplicate after a partial commit with %s audio', async (binding) => {
+    const first = makeAudio(1, binding === 'manual' ? 'manual_voice' : '1_熊猫');
+    const second = makeAudio(2, '2_熊猫');
+    const projectRoot = 'D:/wf01-f1.pandastage';
+    const project = makeProject([first, second]);
+    editorProjectStore.open(projectRoot, {
+      ...project,
+      assets: project.assets.filter((asset) => asset.id !== second.id),
+    });
+    shotStore.select(IDS.shot);
+    const draft = new DialogueAuthoringDraft();
+    draft.bindIdentity({ projectRoot, shotId: IDS.shot });
+    draft.setBatchRaw('熊猫：快跑！\n熊猫：快跑！');
+    const onSuccess = vi.fn();
+    await act(async () => {
+      root.render(createElement(DialogueBatchPaste, { draft, onSuccess }));
+    });
+    if (binding === 'manual') {
+      await changeSelect('dialogue-batch-audio-1', first.id);
+    }
+    expect(selectByTestId('dialogue-batch-audio-1').value).toBe(first.id);
+    const secondRow = selectByTestId('dialogue-batch-audio-2').closest('[data-testid="dialogue-batch-line"]');
+    expect(selectByTestId('dialogue-batch-audio-2').value).toBe('');
+
+    await act(async () => buttonByTestId('dialogue-batch-audio-commit').click());
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(draft.getSnapshot().batchRaw).toBe('熊猫：快跑！');
+    expect(selectByTestId('dialogue-batch-audio-1').value).toBe('');
+    expect(selectByTestId('dialogue-batch-audio-1').closest('[data-testid="dialogue-batch-line"]')).toBe(secondRow);
+
+    await act(async () => {
+      const current = editorProjectStore.getSnapshot()!.project;
+      editorProjectStore.updateProject({
+        ...current,
+        assets: [...current.assets, second],
+      });
+      timelineUiStore.seek(first.durationMs, 20_000);
+    });
+    expect(selectByTestId('dialogue-batch-audio-1').value).toBe(second.id);
+    await act(async () => buttonByTestId('dialogue-batch-audio-commit').click());
+    expect(onSuccess).toHaveBeenCalledOnce();
+    expect(editorProjectStore.getSnapshot()!.project.shots[0]!.audioClips.map((clip) => clip.assetId))
+      .toEqual([first.id, second.id]);
+  });
+
+  it('F1: withdrawing confirmation or a failed commit keeps both duplicates intact', async () => {
+    const first = makeAudio(1, '1_熊猫');
+    const second = makeAudio(2, '2_熊猫');
+    const projectRoot = 'D:/wf01-f1-mapped.pandastage';
+    const source = makeProject([first, second]);
+    const project = { ...source, shots: [{ ...source.shots[0]!, durationMs: 1_000 }] };
+    editorProjectStore.open(projectRoot, project);
+    shotStore.select(IDS.shot);
+    const draft = new DialogueAuthoringDraft();
+    draft.bindIdentity({ projectRoot, shotId: IDS.shot });
+    draft.setBatchRaw('别名：快跑！\n熊猫：快跑！');
+    draft.setBatchMapping(1, project.characters[0]!.id);
+    const onSuccess = vi.fn();
+    await act(async () => {
+      root.render(createElement(DialogueBatchPaste, { draft, onSuccess }));
+    });
+    expect(selectByTestId('dialogue-batch-audio-1').value).toBe(first.id);
+    await changeSelect('dialogue-batch-audio-1', '');
+    const remainingRow = selectByTestId('dialogue-batch-audio-1').closest('[data-testid="dialogue-batch-line"]');
+    const before = draft.getSnapshot();
+    const projectBefore = editorProjectStore.getSnapshot();
+    const extension = container.querySelector<HTMLInputElement>('[data-testid="dialogue-batch-extend-confirm"] input')!;
+    await act(async () => extension.click());
+    expect(buttonByTestId('dialogue-batch-audio-commit').disabled).toBe(false);
+    await act(async () => extension.click());
+    expect(buttonByTestId('dialogue-batch-audio-commit').disabled).toBe(true);
+    expect(draft.getSnapshot()).toBe(before);
+    expect(editorProjectStore.getSnapshot()).toBe(projectBefore);
+
+    await act(async () => extension.click());
+    const failure = vi.spyOn(dialogueStore, 'applyAudioBatch').mockImplementationOnce(() => {
+      throw new Error('Commit failed');
+    });
+    try {
+      await act(async () => buttonByTestId('dialogue-batch-audio-commit').click());
+      expect(failure).toHaveBeenCalledOnce();
+      expect(draft.getSnapshot()).toBe(before);
+      expect(selectByTestId('dialogue-batch-audio-1').value).toBe('');
+      expect(selectByTestId('dialogue-batch-audio-2').value).toBe(second.id);
+      expect(editorProjectStore.getSnapshot()).toBe(projectBefore);
+    } finally {
+      failure.mockRestore();
+    }
+
+    await act(async () => buttonByTestId('dialogue-batch-audio-commit').click());
+    expect(onSuccess).not.toHaveBeenCalled();
+    expect(draft.getSnapshot()).toMatchObject({ batchRaw: '别名：快跑！', batchMapping: before.batchMapping });
+    expect(selectByTestId('dialogue-batch-audio-1').value).toBe('');
+    expect(selectByTestId('dialogue-batch-audio-1').closest('[data-testid="dialogue-batch-line"]')).toBe(remainingRow);
+    expect(editorProjectStore.getSnapshot()!.project.shots[0]!.audioClips.map((clip) => clip.assetId))
+      .toEqual([second.id]);
+  });
+
   it('R1: deleting a manually bound 3rd line and adding a new same-character line does not inherit the old manual/confirmed binding; switching shot clears stale overrides', async () => {
     const audio1 = makeAudio(1, '1_熊猫', 1_200);
     const audio2 = makeAudio(2, '2_老虎', 1_400);

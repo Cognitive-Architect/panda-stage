@@ -355,20 +355,30 @@ function resolveFrameAlignedBatchDelta(params: {
   readonly requestedDeltaMs: number;
   readonly minDeltaMs: number;
   readonly maxDeltaMs: number;
-  readonly minSpanDeltaFrames: number;
-  readonly maxSpanDeltaFrames: number;
-  readonly anchorFrameIndex: number;
+  readonly shotDurationMs: number;
+  readonly spans: readonly { readonly keyTimesMs: readonly number[] }[];
   readonly boundaryMode: BatchBoundaryMode;
 }): FrameAlignedBatchDelta {
   const {
     requestedDeltaMs,
     minDeltaMs,
     maxDeltaMs,
-    minSpanDeltaFrames,
-    maxSpanDeltaFrames,
-    anchorFrameIndex,
+    shotDurationMs,
+    spans,
     boundaryMode,
   } = params;
+  const lastShotFrame = frameIndexForTimeMs(lastValidFrameTime(shotDurationMs));
+  let minSpanDeltaFrames = Number.NEGATIVE_INFINITY;
+  let maxSpanDeltaFrames = Number.POSITIVE_INFINITY;
+  let anchorFrameIndex = Number.POSITIVE_INFINITY;
+  for (const { keyTimesMs } of spans) {
+    const firstFrame = frameIndexForTimeMs(keyTimesMs[0]!);
+    const lastFrame = frameIndexForTimeMs(keyTimesMs[keyTimesMs.length - 1]!);
+    anchorFrameIndex = Math.min(anchorFrameIndex, firstFrame);
+    // Frame zero is protected. Millisecond bounds apply only to timed items.
+    minSpanDeltaFrames = Math.max(minSpanDeltaFrames, 1 - firstFrame);
+    maxSpanDeltaFrames = Math.min(maxSpanDeltaFrames, lastShotFrame - lastFrame);
+  }
   const anchorMs = frameTimeMs(anchorFrameIndex);
   const msForFrames = (df: number): number =>
     frameTimeMs(anchorFrameIndex + df) - anchorMs;
@@ -437,15 +447,14 @@ function resolveFrameAlignedBatchDelta(params: {
     };
   }
 
-  // Reject mode: if the requested delta itself exceeds [minDeltaMs, maxDeltaMs],
-  // reject cleanly (never silently round an out-of-range request back inside).
-  if (requestedDeltaMs < minDeltaMs || requestedDeltaMs > maxDeltaMs) {
-    if (requestedDeltaMs < minDeltaMs) {
-      throw new TimelineEventBatchError(
-        'TIMELINE_EVENT_BATCH_OUT_OF_RANGE',
-        '批量提前移动会超出镜头起点，请缩小提前量。',
-      );
-    }
+  // Reject requests outside the timed-item bounds or the permitted frame span.
+  if (requestedDeltaMs < minDeltaMs || rawFrames < minSpanDeltaFrames) {
+    throw new TimelineEventBatchError(
+      'TIMELINE_EVENT_BATCH_OUT_OF_RANGE',
+      '批量提前移动会超出镜头起点，请缩小提前量。',
+    );
+  }
+  if (requestedDeltaMs > maxDeltaMs || rawFrames > maxSpanDeltaFrames) {
     throw new TimelineEventBatchError(
       'TIMELINE_EVENT_BATCH_OUT_OF_RANGE',
       '批量延后移动会超出镜头时长，请缩短延后量或先延长镜头。',
@@ -676,35 +685,12 @@ export class TimelineEventBatchService {
       }
 
       if (selectedSpans.length > 0) {
-        const maxShotFrameTime = lastValidFrameTime(shot.durationMs);
-        const maxShotFrameIndex = frameIndexForTimeMs(maxShotFrameTime);
-        let minSpanDeltaFrames = Number.NEGATIVE_INFINITY;
-        let maxSpanDeltaFrames = Number.POSITIVE_INFINITY;
-        let anchorFrameIndex = Number.POSITIVE_INFINITY;
-
-        for (const { keyTimesMs } of selectedSpans) {
-          const firstKey = keyTimesMs[0]!;
-          const lastKey = keyTimesMs[keyTimesMs.length - 1]!;
-          const firstFrame = frameIndexForTimeMs(firstKey);
-          const lastFrame = frameIndexForTimeMs(lastKey);
-          if (firstFrame < anchorFrameIndex) anchorFrameIndex = firstFrame;
-          // Non-0ms keys must stay within [frame 1, lastValidFrameTime(shot.durationMs)].
-          minSpanDeltaFrames = Math.max(minSpanDeltaFrames, 1 - firstFrame);
-          maxSpanDeltaFrames = Math.min(
-            maxSpanDeltaFrames,
-            maxShotFrameIndex - lastFrame,
-          );
-          minDeltaMs = Math.max(minDeltaMs, frameTimeMs(1) - firstKey);
-          maxDeltaMs = Math.min(maxDeltaMs, maxShotFrameTime - lastKey);
-        }
-
         const aligned = resolveFrameAlignedBatchDelta({
           requestedDeltaMs: edit.deltaMs,
           minDeltaMs,
           maxDeltaMs,
-          minSpanDeltaFrames,
-          maxSpanDeltaFrames,
-          anchorFrameIndex,
+          spans: selectedSpans,
+          shotDurationMs: shot.durationMs,
           boundaryMode,
         });
         effectiveDeltaMs = aligned.effectiveDeltaMs;
@@ -966,6 +952,7 @@ export class TimelineEventBatchService {
 
     let actionProbe: BatchTimelineEditPlan | null = null;
     let skippedOnlyActionError: BatchTimelineSkippedEntry[] = [];
+    const shotDurationMs = this.shot(project, input.shotId).durationMs;
     if (eventIds.length > 0 || layerMotionSpans.length > 0) {
       try {
         actionProbe = this.plan(project, {
@@ -975,9 +962,14 @@ export class TimelineEventBatchService {
           edit: { action: 'shift', deltaMs: 0 },
           boundaryMode: 'reject',
         });
-        if (actionProbe.allowedDeltaRange) {
-          minDeltaMs = Math.max(minDeltaMs, actionProbe.allowedDeltaRange.minDeltaMs);
-          maxDeltaMs = Math.min(maxDeltaMs, actionProbe.allowedDeltaRange.maxDeltaMs);
+        for (const entry of actionProbe.entries) {
+          // With a zero shift, nextPlaybackStartMs is the current playback start.
+          minDeltaMs = Math.max(
+            minDeltaMs,
+            -entry.startMs,
+            -(entry.nextPlaybackStartMs ?? entry.startMs),
+          );
+          maxDeltaMs = Math.min(maxDeltaMs, shotDurationMs - entry.endMs);
         }
       } catch (error) {
         if (
@@ -1006,33 +998,12 @@ export class TimelineEventBatchService {
     let resolvedAllowedRange = { minDeltaMs, maxDeltaMs };
 
     if (actionProbe && actionProbe.motionSpanEntries.length > 0) {
-      const shot = this.shot(project, input.shotId);
-      const maxShotFrameTime = lastValidFrameTime(shot.durationMs);
-      const maxShotFrameIndex = frameIndexForTimeMs(maxShotFrameTime);
-      let minSpanDeltaFrames = Number.NEGATIVE_INFINITY;
-      let maxSpanDeltaFrames = Number.POSITIVE_INFINITY;
-      let anchorFrameIndex = Number.POSITIVE_INFINITY;
-
-      for (const spanEntry of actionProbe.motionSpanEntries) {
-        const firstFrame = frameIndexForTimeMs(spanEntry.keyTimesMs[0]!);
-        const lastFrame = frameIndexForTimeMs(
-          spanEntry.keyTimesMs[spanEntry.keyTimesMs.length - 1]!,
-        );
-        if (firstFrame < anchorFrameIndex) anchorFrameIndex = firstFrame;
-        minSpanDeltaFrames = Math.max(minSpanDeltaFrames, 1 - firstFrame);
-        maxSpanDeltaFrames = Math.min(
-          maxSpanDeltaFrames,
-          maxShotFrameIndex - lastFrame,
-        );
-      }
-
       const aligned = resolveFrameAlignedBatchDelta({
         requestedDeltaMs: input.deltaMs,
         minDeltaMs,
         maxDeltaMs,
-        minSpanDeltaFrames,
-        maxSpanDeltaFrames,
-        anchorFrameIndex,
+        spans: actionProbe.motionSpanEntries,
+        shotDurationMs,
         boundaryMode,
       });
       effectiveDeltaMs = aligned.effectiveDeltaMs;

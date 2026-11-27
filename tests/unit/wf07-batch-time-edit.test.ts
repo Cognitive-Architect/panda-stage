@@ -584,6 +584,44 @@ describe('WF-07 batch timed-dialogue shift & multi-dialogue mouth-pose reconcile
 });
 
 describe('WF-07 TimelineEventBatchService: action batch shift, unified duration, keyframe spans & cross-type shift', () => {
+  it.each([
+    { start: 500, end: 542, duration: 583, delta: 42, next: [542, 583] },
+    { start: 83, end: 125, duration: 583, delta: -42, next: [42, 83] },
+    { start: 542, end: 583, duration: 625, delta: 41, next: [583, 625] },
+  ])('F2: shifts a keyframe span by $delta ms at the frame boundary', ({ start, end, duration, delta, next }) => {
+    const source = buildActionProject();
+    let project = ProjectSchema.parse({
+      ...source,
+      shots: [{ ...source.shots[0]!, durationMs: duration, timelineEvents: [] }],
+    });
+    const motion = new LayerMotionService();
+    for (const timeMs of [start, end]) {
+      project = motion.applyTransform(
+        project,
+        { shotId: IDS.shot, layerId: IDS.animationLayer, timeMs, autoKey: true },
+        { x: 900 + timeMs },
+      );
+    }
+    const service = new TimelineEventBatchService();
+    const selection = {
+      shotId: IDS.shot,
+      layerMotionSpans: [{ id: 'span', layerId: IDS.animationLayer, startMs: start, endMs: end }],
+    };
+    const edit = { action: 'shift', deltaMs: delta } as const;
+    const plan = service.plan(project, { ...selection, edit });
+    const cross = service.planCrossTypeShift(project, { ...selection, deltaMs: delta });
+    expect(plan.motionSpanEntries[0]).toMatchObject({ nextStartMs: next[0], nextEndMs: next[1] });
+    expect(cross.actionPlan?.motionSpanEntries).toEqual(plan.motionSpanEntries);
+    const effectiveDelta = next[0]! - start;
+    expect(cross.deltaMs).toBe(effectiveDelta);
+    expect(cross.clamped).toBe(false);
+
+    const tooFar = { ...selection, deltaMs: Math.sign(delta) * 83 };
+    expect(() => service.planCrossTypeShift(project, tooFar)).toThrow();
+    expect(service.planCrossTypeShift(project, { ...tooFar, boundaryMode: 'clamp' }))
+      .toMatchObject({ deltaMs: effectiveDelta, clamped: true });
+  });
+
   it('shifts move/scale/opacity/shake/character-action/graphic-playback preserving params, animationTimeLink, and skipping unsupported items locally', () => {
     const service = new TimelineEventBatchService();
     const project = buildActionProject();
@@ -1114,5 +1152,67 @@ describe('WF-07 TimelineEventBatchService: action batch shift, unified duration,
     expect(pureMsPlan.deltaMs).toBe(100);
     expect(pureMsPlan.dialoguePlan?.entries[0]!.startMs).toBe(300);
     expect(pureMsPlan.actionPlan?.entries[0]!.nextStartMs).toBe(600);
+
+    // The anchor needs +42 ms even though the final key only needs +41 ms.
+    const edgeStart = frameTimeMs(189);
+    const edgeEnd = frameTimeMs(190);
+    const durationMs = frameTimeMs(191);
+    let atEdge = ProjectSchema.parse({
+      ...combined,
+      shots: [{ ...combined.shots[0]!, durationMs }],
+    });
+    for (const timeMs of [edgeStart, edgeEnd]) {
+      atEdge = motionService.applyTransform(
+        atEdge,
+        { shotId: IDS.shot, layerId: IDS.animationLayer, timeMs, autoKey: true },
+        { x: timeMs },
+      );
+    }
+    const edgeSelection = {
+      dialogueIds: [DLG_1, DLG_2, DLG_3],
+      eventIds: [EV_MOVE],
+      layerMotionSpans: [{ ...spanRef, startMs: edgeStart, endMs: edgeEnd }],
+      deltaMs: 42,
+    };
+    const edgePlan = batchService.planCrossTypeShift(atEdge, { ...edgeSelection, shotId: IDS.shot });
+    expect(edgePlan).toMatchObject({ deltaMs: 42, deltaFrames: 1, clamped: false });
+    expect(edgePlan.actionPlan?.motionSpanEntries[0]).toMatchObject({
+      nextStartMs: edgeEnd,
+      nextEndMs: durationMs,
+    });
+    editorStore.open('C:\\temp\\wf07-f2', atEdge);
+    localBatchStore.applyCrossTypeShift(edgeSelection);
+    const edgeShifted = editorStore.getSnapshot()!.project;
+    const edgeShot = edgeShifted.shots[0]!;
+    expect(edgeShot.dialogues.find((d) => d.id === DLG_1)?.startMs).toBe(edgePlan.dialoguePlan?.entries[0]!.startMs);
+    expect(edgeShot.audioClips.find((clip) => clip.id === CLIP_1)?.startMs).toBe(242);
+    expect(edgeShot.timelineEvents.find((event) => event.id === POSE_GEN_1)?.startMs).toBe(342);
+    expect(edgeShot.timelineEvents.find((event) => event.id === EV_MOVE)?.startMs).toBe(542);
+    expect(edgeShot.dialogues.find((d) => d.id === DLG_5)).toEqual(atEdge.shots[0]!.dialogues.find((d) => d.id === DLG_5));
+    expect(layerCompositeKeyTimes(edgeShot.layers.find((layer) => layer.id === IDS.animationLayer)!))
+      .toEqual([0, k1, k2, edgeEnd, durationMs]);
+    expect(editorStore.history.getSnapshot().undoCount).toBe(1);
+    editorStore.history.undo();
+    expect(editorStore.getSnapshot()!.project.shots).toEqual(atEdge.shots);
+    editorStore.history.redo();
+    expect(editorStore.getSnapshot()!.project.shots).toEqual(edgeShifted.shots);
+
+    const edgeSourceShot = atEdge.shots[0]!;
+    const eventLimited = ProjectSchema.parse({
+      ...atEdge,
+      shots: [{
+        ...edgeSourceShot,
+        timelineEvents: edgeSourceShot.timelineEvents.map((event) =>
+          event.id === EV_MOVE ? { ...event, endMs: durationMs - 41 } : event,
+        ),
+      }],
+    });
+    const eventLimitedInput = { ...edgeSelection, shotId: IDS.shot };
+    expect(() => batchService.planCrossTypeShift(eventLimited, eventLimitedInput))
+      .toThrow(TimelineEventBatchError);
+    expect(batchService.planCrossTypeShift(eventLimited, { ...eventLimitedInput, boundaryMode: 'clamp' }))
+      .toMatchObject({ deltaMs: 0, deltaFrames: 0, clamped: true });
+    expect(batchService.planCrossTypeShift(eventLimited, { ...eventLimitedInput, deltaMs: 41 }))
+      .toMatchObject({ deltaMs: 0, deltaFrames: 0, frameSnapped: true, clamped: false });
   });
 });

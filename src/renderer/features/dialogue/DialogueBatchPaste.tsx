@@ -426,7 +426,7 @@ export function DialogueBatchPaste({
       return;
     }
     try {
-      dialogueStore.applyAudioBatch({
+      const { plan: committedPlan } = dialogueStore.applyAudioBatch({
         startMs: schedulePlan.startMs,
         rows: readyScheduleRows,
         ...(schedulePlan.needsShotExtension &&
@@ -437,8 +437,28 @@ export function DialogueBatchPaste({
       setCommitError(null);
       setConfirmedExtensionToMs(null);
 
+      // Retire committed identities before reconciling the compacted text.
+      // Identical remaining lines must match their own previous identities.
+      const committedRowIds = new Set(
+        committedPlan.rows.map((row) => row.draftRowId),
+      );
+      previousStableRowsRef.current = previousStableRowsRef.current.filter(
+        (row) => !committedRowIds.has(row.draftRowId),
+      );
+      for (const rowId of committedRowIds) {
+        delete confirmedAudioByRowIdRef.current[rowId];
+      }
+      setManualAudioState((prev) => {
+        if (prev.sessionKey !== sessionKey) return prev;
+        const entries = { ...prev.entries };
+        for (const rowId of committedRowIds) {
+          delete entries[rowId];
+        }
+        return { sessionKey, entries };
+      });
+
       const committedLineNumbers = new Set(
-        schedulePlan.rows.map((row) => row.sourceLineNumber),
+        committedPlan.rows.map((row) => row.sourceLineNumber),
       );
       const remainingLines = parsed.lines.filter(
         (line) => !committedLineNumbers.has(line.lineNumber),
@@ -453,7 +473,7 @@ export function DialogueBatchPaste({
         // numbered audio files.
         const committedMax = Math.max(
           committedMaxOrdinalRef.current,
-          ...schedulePlan.rows.map(
+          ...committedPlan.rows.map(
             (row) => logicalOrdinalsByLineNumber.get(row.sourceLineNumber) ?? 0,
           ),
         );
@@ -465,17 +485,17 @@ export function DialogueBatchPaste({
         }));
 
         // Re-index existing manual speaker mappings to match the compacted line numbers.
-        const previousMappings = { ...draftState.batchMapping };
-        draft.setBatchRaw(remainingLines.map((line) => line.raw).join('\n'));
-        for (const oldKey of Object.keys(previousMappings)) {
-          draft.setBatchMapping(Number(oldKey), '');
-        }
+        const remainingMappings: Record<number, string> = {};
         remainingLines.forEach((line, idx) => {
-          const mappedCharId = previousMappings[line.lineNumber];
+          const mappedCharId = draftState.batchMapping[line.lineNumber];
           if (mappedCharId) {
-            draft.setBatchMapping(idx + 1, mappedCharId);
+            remainingMappings[idx + 1] = mappedCharId;
           }
         });
+        draft.setBatchRaw(
+          remainingLines.map((line) => line.raw).join('\n'),
+          remainingMappings,
+        );
       }
     } catch (nextError) {
       setCommitError(
