@@ -20,6 +20,7 @@ export function Stage({ theme, onOverlay, dropAssets = true }: { theme: StageThe
   const layerId = useStore((s) => s.layerId);
   const viewZoom = useStore((s) => s.viewZoom);
   const gesture = useRef('');
+  const [dragging, setDragging] = useState(false);
 
   useLayoutEffect(() => {
     const el = host.current!;
@@ -32,7 +33,7 @@ export function Stage({ theme, onOverlay, dropAssets = true }: { theme: StageThe
     imgs.forEach((img) => { if (!img.complete) img.addEventListener('load', () => force((n) => n + 1), { once: true }); });
   }, [shot]);
 
-  const fit = Math.min((size.w - 48) / STAGE_W, (size.h - 48) / STAGE_H) * viewZoom;
+  const fit = Math.max(0.01, Math.min((size.w - 48) / STAGE_W, (size.h - 48) / STAGE_H)) * viewZoom;
   const ox = (size.w - STAGE_W * fit) / 2 + pan.x;
   const oy = (size.h - STAGE_H * fit) / 2 + pan.y;
   const cam = sampleCamera(shot, time);
@@ -77,10 +78,11 @@ export function Stage({ theme, onOverlay, dropAssets = true }: { theme: StageThe
 
   const onOverlayRef = useRef(onOverlay);
   onOverlayRef.current = onOverlay;
-  const ax = playing || !selBox ? null : selBox.aabb.x;
-  const ay = playing || !selBox ? null : selBox.aabb.y;
-  const aw = playing || !selBox ? null : selBox.aabb.w;
-  const ah = playing || !selBox ? null : selBox.aabb.h;
+  const hideOverlay = playing || dragging;
+  const ax = hideOverlay || !selBox ? null : selBox.aabb.x;
+  const ay = hideOverlay || !selBox ? null : selBox.aabb.y;
+  const aw = hideOverlay || !selBox ? null : selBox.aabb.w;
+  const ah = hideOverlay || !selBox ? null : selBox.aabb.h;
   useEffect(() => {
     if (!onOverlayRef.current) return;
     if (ax === null || ay === null || aw === null || ah === null) onOverlayRef.current(null);
@@ -131,7 +133,8 @@ export function Stage({ theme, onOverlay, dropAssets = true }: { theme: StageThe
                       x={v.x} y={v.y} scaleX={v.scale} scaleY={v.scale} rotation={v.rotation} opacity={v.opacity}
                       draggable={!l.locked}
                       onMouseDown={(e) => { e.cancelBubble = true; actions.selectLayer(l.id); }}
-                      onDragStart={() => { gesture.current = uid('drag'); actions.play(false); actions.selectLayer(l.id); }}
+                      onDragEnd={() => setDragging(false)}
+                      onDragStart={() => { if (onOverlay) setDragging(true); gesture.current = uid('drag'); actions.play(false); actions.selectLayer(l.id); }}
                       onDragMove={(e) => {
                         const b = world(l); const base = sampleTransform({ ...l, clips: [] }, time);
                         actions.setProps(l.id, { x: Math.round(base.x + e.target.x() - b.x), y: Math.round(base.y + e.target.y() - b.y) }, gesture.current);

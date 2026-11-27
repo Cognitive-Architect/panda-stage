@@ -64,7 +64,7 @@ export const actions = {
   seek(t: number) { setState({ time: Math.max(0, Math.min(currentShot().duration, t)) }); },
   step(d: number) { actions.play(false); actions.seek(Math.round(state.time) + d); },
   setShot(id: string) { actions.play(false); const sh = state.project.shots.find((s) => s.id === id)!; setState({ shotId: id, time: 0, layerId: sh.layers[0]?.id ?? null, sel: null }); },
-  selectLayer(id: string | null) { setState({ layerId: id, sel: state.sel && 'layerId' in state.sel && state.sel.layerId !== id ? null : state.sel }); },
+  selectLayer(id: string | null) { setState({ layerId: id, sel: state.sel && 'layerId' in state.sel && state.sel.layerId === id ? state.sel : null }); },
   select(sel: Sel) { setState({ sel, ...(sel && 'layerId' in sel ? { layerId: sel.layerId } : {}) }); },
   setTimelineZoom(px: number) { setState({ pxPerFrame: Math.max(1.5, Math.min(30, px)) }); },
   setViewZoom(z: number) { setState({ viewZoom: Math.max(0.2, Math.min(4, z)) }); },
@@ -171,14 +171,15 @@ let bound = false;
 export function bindHotkeys() {
   if (bound) return; bound = true;
   window.addEventListener('keydown', (e) => {
-    const tag = (e.target as HTMLElement).tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    const target = e.target instanceof HTMLElement ? e.target : null;
+    if (e.defaultPrevented || target?.closest('input, textarea, select, [contenteditable="true"], [role="menu"], [role="dialog"], [role="slider"]')) return;
+    if (e.key === ' ' && target?.closest('button')) return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) actions.redo(); else actions.undo(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); actions.redo(); }
     else if (e.key === ' ') { e.preventDefault(); actions.play(); }
     else if (e.key === 'ArrowLeft') actions.step(-1);
     else if (e.key === 'ArrowRight') actions.step(1);
     else if (e.key === 'Delete' || e.key === 'Backspace') actions.deleteSelection();
-    else if (e.key.toLowerCase() === 'k' && state.layerId) actions.addKey(state.layerId);
+    else if (e.key.toLowerCase() === 'k' && state.layerId && (document.documentElement.dataset.variant !== 'D' || !currentLayer()?.locked)) actions.addKey(state.layerId);
   });
 }

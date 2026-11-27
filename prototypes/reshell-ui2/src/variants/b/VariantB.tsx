@@ -3,7 +3,6 @@
 // parent pick-whip + depth slider interaction referenced from AniCraft parenting.rs / layer_depth.rs. No Rust code ported.
 import { useCallback, useRef, useState } from 'react';
 import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type IDockviewPanelProps } from 'dockview-react';
-import 'dockview-react/dist/styles/dockview.css';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Button, ButtonGroup, Classes, Dialog, DialogBody, DialogFooter, HTMLSelect, ProgressBar, SegmentedControl, Slider, Tag, Tab, Tabs, Checkbox } from '@blueprintjs/core';
 import '@blueprintjs/core/lib/css/blueprint.css';

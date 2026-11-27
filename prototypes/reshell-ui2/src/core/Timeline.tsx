@@ -1,5 +1,5 @@
 // Shared timeline mechanics (ruler, playhead scrub, item drag, zoom). Each variant supplies its own rows & look.
-import { useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type HTMLAttributes, type ReactElement, type ReactNode } from 'react';
 import { waveform } from './assets';
 import { FPS, uid } from './model';
 import { actions, currentShot, getState, useStore, type Sel } from './store';
@@ -9,7 +9,7 @@ export interface TRow { id: string; header: ReactNode; items: TItem[]; height: n
 
 const same = (a: Sel, b: Sel) => !!a && !!b && a.kind === b.kind && a.id === b.id;
 
-export function TimelineBody({ rows, headerWidth, rulerHeight = 24, className = '' }: { rows: TRow[]; headerWidth: number; rulerHeight?: number; className?: string }) {
+export function TimelineBody({ rows, headerWidth, rulerHeight = 24, className = '', renderItem = (_, target) => target }: { renderItem?: (item: TItem, target: ReactElement<HTMLAttributes<HTMLDivElement>>) => ReactElement; rows: TRow[]; headerWidth: number; rulerHeight?: number; className?: string }) {
   const shot = useStore(currentShot);
   const time = useStore((s) => s.time);
   const ppf = useStore((s) => s.pxPerFrame);
@@ -43,13 +43,22 @@ export function TimelineBody({ rows, headerWidth, rulerHeight = 24, className = 
     const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); if (!moved && it.shape !== 'bar' && it.shape !== 'audio') actions.seek(it.start); };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
-  const onWheel = (e: React.WheelEvent) => { if (e.ctrlKey || e.altKey) { e.preventDefault(); actions.setTimelineZoom(getState().pxPerFrame * (e.deltaY < 0 ? 1.15 : 1 / 1.15)); } };
+  useEffect(() => {
+    const target = scroller.current;
+    const zoom = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.altKey) return;
+      event.preventDefault();
+      actions.setTimelineZoom(getState().pxPerFrame * (event.deltaY < 0 ? 1.15 : 1 / 1.15));
+    };
+    target?.addEventListener('wheel', zoom, { passive: false });
+    return () => target?.removeEventListener('wheel', zoom);
+  }, []);
 
   const step = ppf >= 12 ? 6 : ppf >= 5 ? 12 : ppf >= 2.5 ? 24 : 48;
   const ticks: number[] = []; for (let f = 0; f <= shot.duration; f += step) ticks.push(f);
 
   return (
-    <div ref={scroller} className={`tl ${className}`} onWheel={onWheel}>
+    <div ref={scroller} className={`tl ${className}`}>
       <div className="tl-inner" style={{ width: headerWidth + width }}>
         <div className="tl-ruler" style={{ height: rulerHeight }}>
           <div className="tl-corner" style={{ width: headerWidth }} />
@@ -67,9 +76,9 @@ export function TimelineBody({ rows, headerWidth, rulerHeight = 24, className = 
               {r.items.map((it) => {
                 const on = same(it.sel, sel);
                 if (it.shape === 'key' || it.shape === 'cam')
-                  return <div key={it.sel!.id} className={`tl-key ${it.shape} ${on ? 'on' : ''}`} style={{ left: it.start * ppf, ['--c' as string]: it.color }} onPointerDown={dragItem(it, 'move')} title={`第 ${it.start} 帧`} />;
+                  return renderItem(it, <div key={it.sel!.id} className={`tl-key ${it.shape} ${on ? 'on' : ''}`} style={{ left: it.start * ppf, ['--c' as string]: it.color }} onPointerDown={dragItem(it, 'move')} title={`第 ${it.start} 帧`} />);
                 const w = (it.len ?? 1) * ppf;
-                return (
+                return renderItem(it,
                   <div key={it.sel!.id} className={`tl-bar ${it.shape} ${on ? 'on' : ''}`} style={{ left: it.start * ppf, width: w, ['--c' as string]: it.color }} onPointerDown={dragItem(it, 'move')}>
                     {it.shape === 'audio' && (
                       <svg className="tl-wave" viewBox={`0 0 ${Math.max(1, Math.round(w / 3))} 20`} preserveAspectRatio="none">

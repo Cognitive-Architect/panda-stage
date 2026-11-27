@@ -71,16 +71,16 @@ function HeaderC() {
   );
 }
 
-function ExportDialogC() {
+export function ExportDialogC({ open, onOpenChange }: { open?: boolean; onOpenChange?: (open: boolean) => void } = {}) {
   const [o, setO] = useState<ExportOpts>(defaultExport);
   const sim = useExportSim();
   const project = useStore((s) => s.project);
   return (
-    <Dialog.Root onOpenChange={(v) => !v && sim.cancel()}>
+    <Dialog.Root open={open} onOpenChange={(v) => { if (!v) sim.cancel(); onOpenChange?.(v); }}>
       <Dialog.Trigger className="vc-export-btn"><Download size={14} />导出</Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="vc-overlay" />
-        <Dialog.Content className="vc-dialog">
+        <Dialog.Content className="vc-dialog" aria-describedby={undefined}>
           <div className="vc-dialog-top">
             <Dialog.Title>快速导出</Dialog.Title>
             <span className="vc-badge">模拟输出</span>
@@ -108,7 +108,7 @@ function ExportDialogC() {
             <label>码率质量</label>
             <Slider.Root className="vc-slider" min={10} max={100} value={[o.quality]} onValueChange={([q]) => setO({ ...o, quality: q })}>
               <Slider.Track className="vc-slider-track"><Slider.Range className="vc-slider-range" /></Slider.Track>
-              <Slider.Thumb className="vc-slider-thumb" />
+              <Slider.Thumb className="vc-slider-thumb" aria-label="码率质量" />
             </Slider.Root>
             <span className="vc-q">{o.quality}%</span>
           </div>

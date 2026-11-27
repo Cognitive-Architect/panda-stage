@@ -178,24 +178,27 @@ function LeftPanel() {
   );
 }
 
-function ContextToolbar({ r }: { r: OverlayRect }) {
+export function ContextToolbar({ r, fusion = false }: { r: OverlayRect; fusion?: boolean }) {
   const l = useStore(currentLayer);
   if (!l) return null;
   return (
-    <div className="va-ctx" style={{ left: r.x + r.w / 2, top: Math.max(8, r.y - 46) }} onPointerDown={(e) => e.stopPropagation()}>
-      <span className="va-ctx-name">{l.name}</span>
-      <Tip label="添加关键帧 K"><button onClick={() => actions.addKey(l.id)}><Diamond size={14} /></button></Tip>
-      <DropdownMenu.Root>
-        <Tip label="添加动作"><DropdownMenu.Trigger asChild><button><Sparkles size={14} /></button></DropdownMenu.Trigger></Tip>
+    <div className={fusion ? 'va-ctx vd-object-tools' : 'va-ctx'} style={fusion ? {
+      left: `clamp(100px, ${r.x + r.w / 2}px, 100cqw - 100px)`,
+      top: `clamp(6px, ${r.y > 48 ? r.y - 44 : r.y + r.h + 6}px, 100cqh - 44px)`,
+    } : { left: r.x + r.w / 2, top: Math.max(8, r.y - 46) }} onPointerDown={(e) => e.stopPropagation()}>
+      {!fusion && <span className="va-ctx-name">{l.name}</span>}
+      <Tip label="添加关键帧 K"><button aria-label="对象添加关键帧" disabled={fusion && l.locked} onClick={() => actions.addKey(l.id)}><Diamond size={14} /></button></Tip>
+      {(!fusion || (l.kind !== 'background' && !l.locked)) && <DropdownMenu.Root>
+        <Tip label="添加动作"><DropdownMenu.Trigger asChild><button aria-label="对象添加动作"><Sparkles size={14} /></button></DropdownMenu.Trigger></Tip>
         <DropdownMenu.Portal><DropdownMenu.Content className="va-menu" sideOffset={6}>
           {([['walk', '走路'], ['wave', '挥手'], ['bounce', '弹跳'], ['sway', '摇摆']] as const).map(([m, n]) => <DropdownMenu.Item key={m} className="va-menu-item" onSelect={() => actions.addAction(l.id, m)}>{n}</DropdownMenu.Item>)}
         </DropdownMenu.Content></DropdownMenu.Portal>
-      </DropdownMenu.Root>
+      </DropdownMenu.Root>}
       <i />
-      <Tip label="上移一层"><button onClick={() => actions.reorder(l.id, -1)}><ArrowUp size={14} /></button></Tip>
-      <Tip label="下移一层"><button onClick={() => actions.reorder(l.id, 1)}><ArrowDown size={14} /></button></Tip>
-      <Tip label={l.locked ? '解锁' : '锁定'}><button onClick={() => actions.toggleLocked(l.id)}>{l.locked ? <Lock size={14} /> : <Unlock size={14} />}</button></Tip>
-      <Tip label="隐藏"><button onClick={() => actions.toggleVisible(l.id)}><EyeOff size={14} /></button></Tip>
+      <Tip label="上移一层"><button aria-label="对象上移一层" onClick={() => actions.reorder(l.id, -1)}><ArrowUp size={14} /></button></Tip>
+      <Tip label="下移一层"><button aria-label="对象下移一层" onClick={() => actions.reorder(l.id, 1)}><ArrowDown size={14} /></button></Tip>
+      <Tip label={l.locked ? '解锁' : '锁定'}><button aria-label={l.locked ? '解锁对象' : '锁定对象'} onClick={() => actions.toggleLocked(l.id)}>{l.locked ? <Lock size={14} /> : <Unlock size={14} />}</button></Tip>
+      <Tip label="隐藏"><button aria-label="隐藏对象" onClick={() => actions.toggleVisible(l.id)}><EyeOff size={14} /></button></Tip>
     </div>
   );
 }

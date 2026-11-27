@@ -1,14 +1,18 @@
-import { StrictMode, useEffect, useState } from 'react';
+import { lazy, StrictMode, Suspense, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { actions, bindHotkeys } from './core/store';
 import './core/shared.css';
 import VariantA from './variants/a/VariantA';
-import VariantB from './variants/b/VariantB';
+import 'dockview-react/dist/styles/dockview.css';
 import VariantC from './variants/c/VariantC';
 
-type V = 'A' | 'B' | 'C';
-const read = (): V => { const v = new URLSearchParams(location.search).get('variant')?.toUpperCase(); return v === 'B' || v === 'C' ? v : 'A'; };
-const NAMES: Record<V, string> = { A: '现代创作', B: '工业专业', C: '现代效率' };
+import VariantD from './variants/d/VariantD';
+
+const VariantB = lazy(() => import('./variants/b/VariantB'));
+
+type V = 'A' | 'B' | 'C' | 'D';
+const read = (): V => { const v = new URLSearchParams(location.search).get('variant')?.toUpperCase(); return v === 'B' || v === 'C' || v === 'D' ? v : 'A'; };
+const NAMES: Record<V, string> = { A: '现代创作', B: '工业专业', C: '现代效率', D: '融合工作台' };
 
 function Switcher({ v, set }: { v: V; set: (v: V) => void }) {
   const [min, setMin] = useState(false);
@@ -16,7 +20,7 @@ function Switcher({ v, set }: { v: V; set: (v: V) => void }) {
     <div className={`proto-switcher ${min ? 'min' : ''}`}>
       <button className="ps-grip" onClick={() => setMin(!min)} title="原型切换器（非产品界面）">{min ? '◧' : '原型'}</button>
       {!min && (<>
-        {(['A', 'B', 'C'] as V[]).map((k) => (
+        {(['A', 'B', 'C', 'D'] as V[]).map((k) => (
           <button key={k} className={v === k ? 'on' : ''} onClick={() => set(k)} title={NAMES[k]}><b>{k}</b><span>{NAMES[k]}</span></button>
         ))}
         <button className="ps-reset" onClick={() => { if (confirm('将共用示例恢复到初始状态？')) actions.reset(); }}>重置示例</button>
@@ -33,8 +37,9 @@ function App() {
   return (
     <>
       {v === 'A' && <VariantA />}
-      {v === 'B' && <VariantB />}
+      {v === 'B' && <Suspense><VariantB /></Suspense>}
       {v === 'C' && <VariantC />}
+      {v === 'D' && <VariantD />}
       <Switcher v={v} set={set} />
     </>
   );

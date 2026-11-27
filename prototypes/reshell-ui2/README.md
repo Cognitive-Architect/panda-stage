@@ -1,6 +1,6 @@
-# Project ReShell · Stage 2 竞争原型（A / B / C）
+# Project ReShell · 竞争原型 A / B / C 与融合工作台 D
 
-对应 GitHub Issue #1388（独立实验分支 `prototype/reshell-ui2`）。本目录为独立的 React + TypeScript + Vite + Konva 桌面编辑器原型，不修改生产 UI、项目数据模型、IPC/Preload 或现行 `DESIGN.md` / `AGENTS.md`。
+对应 GitHub Issue #1388（A / B / C）和 #1390（D）（独立实验分支 `prototype/reshell-ui2`）。本目录为独立的 React + TypeScript + Vite + Konva 桌面编辑器原型，不修改生产 UI、项目数据模型、IPC/Preload 或现行 `DESIGN.md` / `AGENTS.md`。
 
 ## 快速体验（单一启动入口）
 
@@ -10,11 +10,20 @@ pnpm --dir prototypes/reshell-ui2 dev
 ```
 
 启动后自动打开 `http://localhost:5199/?variant=A`：
-- URL 参数切换：`?variant=A` / `?variant=B` / `?variant=C`
-- 页面底部居中浮动黄色虚线切换条（刻意独立于产品视觉）：一键在 **A 现代创作 / B 工业专业 / C 现代效率** 间切换并**保留同一份模拟工程状态**，右侧提供「重置示例」按钮。
-- 常用快捷键：`Space` 播放/暂停、`←/→` 逐帧、`K` 在播放头添加关键帧、`Delete` 删除选中时间轴项、`Ctrl+Z` / `Ctrl+Shift+Z` 撤销重做、画布滚轮缩放、`Alt+左键` 或中键拖动画布平移、时间轴 `Ctrl/Alt+滚轮` 缩放。
+- URL 参数切换：`?variant=A` / `?variant=B` / `?variant=C` / [`?variant=D`](http://localhost:5199/?variant=D)
+- 页面右下角浮动黄色虚线切换条（刻意独立于产品视觉）：一键在 **A 现代创作 / B 工业专业 / C 现代效率 / D 融合工作台** 间切换并**保留同一份模拟工程状态**，右侧提供「重置示例」按钮。
+- 常用快捷键：`Space` 播放/暂停、`←/→` 逐帧、`K` 在播放头添加关键帧、D 中的 `Ctrl+M` 打开导出、`Delete` 删除选中时间轴项、`Ctrl+Z` / `Ctrl+Shift+Z` 撤销重做、画布滚轮缩放、`Alt+左键` 或中键拖动画布平移、时间轴 `Ctrl/Alt+滚轮` 缩放。
 
-## 三套方案概览与供体记录
+## D · 融合工作台（#1390）
+
+- 沿用 B 的 Dockview 工作台。左上资源库、左下图层、中央画布、右侧属性检查器与独立缓动曲线标签、底部全宽时间轴。拖标签可重新停靠，拖分隔线可调整尺寸。面板右上角折叠内容，窗口菜单可开关面板或恢复默认布局。D 的布局单独保存在当前浏览器中，编辑状态由四套原型共享。
+- 沿用 C 的中性深色、青蓝强调、素材缩略图、语义片段颜色和 Radix 导出对话框。动作、音频默认列表，角色、道具、背景默认网格。图层轨展开后显示动作、变换和景深，重叠动作可在各自的子轨中操作。
+- 复用 A 的对象悬浮工具栏、共享 Konva 舞台和时间轴、Animora 适配的 NumberField 与 EasingEditor，以及 OpenCut 适配的缩放数值控件。数值标签可拖动，Shift 粗调、Alt 微调，一次拖动对应一次撤销。D 的菜单、滑条、右键菜单和提示复用 Radix，图标使用 Lucide。
+- 继续使用 MIT 版 Dockview 8.10.0。D 的按钮、选择框、分组和导出进度采用现有轻量控件或原生 HTML。Blueprint 6.23.3 及其 CSS 随 B 按需加载，D 直接打开时无需加载 B；比较过 B 后，其样式会留在当前页面。原版权声明及 [Animora MIT 许可](LICENSES/animora-LICENSE)和 [OpenCut MIT 许可](LICENSES/opencut-LICENSE) 随原型保留。
+- 原型使用同一份模拟项目和示例资源。音频以示例波形呈现，口型轨与真实声音、视频导出缺少示例数据或实现，本轮沿用现有模拟边界。Dockview 体验限单个浏览器窗口。
+- 在 Windows 上用 Playwright 驱动有界面的 Chrome，走查了 1440×900 和 1280×768 工作台，覆盖素材、图层、画布、数值、曲线、时间轴、播放、镜头、模拟导出、四套方案切换与布局恢复。使用 `pnpm --dir prototypes/reshell-ui2 build` 构建。截图与交互来自浏览器原型，Windows Electron 实机验收待产品阶段。
+
+## A / B / C 对照与供体记录
 
 ### A · 现代创作派（Rive / Figma）
 - **布局与交互层级**：左侧通高「图层 / 资源」切换面板 + 中间画布优先（选中对象上方悬浮上下文工具栏）与底部紧凑时间轴 + 右侧通高检查器（缓动曲线以 Popover 按需弹出）。
@@ -63,3 +72,4 @@ pnpm --dir prototypes/reshell-ui2 dev
 | **A · 现代创作派**（Rive / Figma） | ![Variant A](screenshots/variant-a.png) |
 | **B · 工业专业派**（Animate / AE / Resolve） | ![Variant B](screenshots/variant-b.png) |
 | **C · 现代效率派**（CapCut / OpenCut） | ![Variant C](screenshots/variant-c.png) |
+| **D · 融合工作台**（Windows Chrome） | ![Variant D](screenshots/variant-d.png) |

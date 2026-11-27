@@ -34,11 +34,11 @@ let g = 0;
 export function NumberField({ label, value, onChange, step = 1, min, max, unit, title, suffix, disabled, className = '', defaultValue, pxPerStep = 2 }: NumProps) {
   const [text, setText] = useState<string | null>(null);
   const keyRef = useRef('');
-  const shown = text ?? String(round(value, step));
+  const shown = text ?? String(Number(value.toFixed(4)));
 
   const commit = (s: string) => {
-    const v = parseFloat(s);
-    if (Number.isFinite(v)) onChange(clamp(v, min, max), 'field:' + label + ':' + g++);
+    const v = Number(s);
+    if (s.trim() && Number.isFinite(v) && clamp(v, min, max) !== value) onChange(clamp(v, min, max), 'field:' + label + ':' + g++);
     setText(null);
   };
 
@@ -57,10 +57,10 @@ export function NumberField({ label, value, onChange, step = 1, min, max, unit, 
     };
     const up = () => {
       el.removeEventListener('pointermove', move);
-      el.removeEventListener('pointerup', up);
+      el.removeEventListener('lostpointercapture', up);
     };
     el.addEventListener('pointermove', move);
-    el.addEventListener('pointerup', up);
+    el.addEventListener('lostpointercapture', up);
   };
 
   const labelEl = <span className="num-label" onPointerDown={disabled ? undefined : startScrub}>{label}</span>;
@@ -69,13 +69,14 @@ export function NumberField({ label, value, onChange, step = 1, min, max, unit, 
       {!suffix && labelEl}
       <input
         disabled={disabled}
+        aria-label={title ?? (label || undefined)}
         value={shown}
         onChange={(e) => setText(e.target.value)}
         onFocus={(e) => e.target.select()}
-        onBlur={(e) => commit(e.target.value)}
+        onBlur={(e) => { if (text !== null) commit(e.target.value); }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          if (e.key === 'Escape') { setText(null); (e.target as HTMLInputElement).blur(); }
+          if (e.key === 'Escape') { setText(null); }
           if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             e.preventDefault();
             const k = (e.shiftKey ? 10 : 1) * (e.key === 'ArrowUp' ? 1 : -1);

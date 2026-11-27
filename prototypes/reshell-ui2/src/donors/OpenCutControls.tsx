@@ -44,21 +44,21 @@ function scrubAcrossRanges(startValue: number, pixelDelta: number, ranges: reado
 let gestureSeq = 0;
 
 export function OpenCutNumberField({
-  icon, suffix, value, step = 1, min, max, defaultValue, disabled, scrubRanges, dragSensitivity = 1, onChange,
+  icon, label, suffix, value, step = 1, min, max, defaultValue, disabled, scrubRanges, dragSensitivity = 1, onChange,
 }: {
-  icon?: ReactNode; suffix?: string; value: number; step?: number; min?: number; max?: number;
+  icon?: ReactNode; label?: string; suffix?: string; value: number; step?: number; min?: number; max?: number;
   defaultValue?: number; disabled?: boolean; scrubRanges?: readonly ScrubRange[]; dragSensitivity?: number;
   onChange: (value: number, gestureKey: string) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const dec = Math.max(0, Math.ceil(-Math.log10(step)));
   const fmt = (n: number) => Number(n.toFixed(Math.min(3, dec)));
-  const shown = draft ?? String(fmt(value));
+  const shown = draft ?? String(Number(value.toFixed(4)));
   const isDefault = defaultValue !== undefined && Math.abs(value - defaultValue) <= 1e-4;
 
   const commit = (raw: string) => {
-    const parsed = parseFloat(raw);
-    if (Number.isFinite(parsed)) onChange(fmt(clampVal(parsed, min, max)), `oc-edit:${gestureSeq++}`);
+    const parsed = Number(raw);
+    if (raw.trim() && Number.isFinite(parsed) && clampVal(parsed, min, max) !== value) onChange(clampVal(parsed, min, max), `oc-edit:${gestureSeq++}`);
     setDraft(null);
   };
 
@@ -76,15 +76,15 @@ export function OpenCutNumberField({
       const mult = moveEvent.shiftKey ? 5 : moveEvent.altKey ? 0.2 : 1;
       const next = scrubRanges
         ? scrubAcrossRanges(startValue, dx * mult, scrubRanges, min, max)
-        : clampVal(startValue + Math.round((dx / 2) * dragSensitivity * mult) * step, min, max);
-      onChange(fmt(next), gKey);
+        : clampVal(startValue + Math.round((dx / 2) * dragSensitivity) * step * mult, min, max);
+      onChange(Number(next.toFixed(Math.min(4, dec + 2))), gKey);
     };
     const onUp = () => {
       el.removeEventListener('pointermove', onMove);
-      el.removeEventListener('pointerup', onUp);
+      el.removeEventListener('lostpointercapture', onUp);
     };
     el.addEventListener('pointermove', onMove);
-    el.addEventListener('pointerup', onUp);
+    el.addEventListener('lostpointercapture', onUp);
   };
 
   return (
@@ -96,16 +96,17 @@ export function OpenCutNumberField({
       )}
       <input
         type="text"
+        aria-label={label}
         inputMode="decimal"
         disabled={disabled}
         value={shown}
         onChange={(e) => setDraft(e.target.value)}
         onFocus={(e) => e.currentTarget.select()}
-        onBlur={(e) => commit(e.target.value)}
+        onBlur={(e) => { if (draft !== null) commit(e.target.value); }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === 'Escape') {
             if (e.key === 'Escape') setDraft(null);
-            e.currentTarget.blur();
+            else e.currentTarget.blur();
           } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             e.preventDefault();
             const mult = (e.shiftKey ? 10 : 1) * (e.key === 'ArrowUp' ? 1 : -1);
