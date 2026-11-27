@@ -1,18 +1,28 @@
 import {
   LayerMotionService,
   LayerService,
+  type AfterimageInput,
+  type BackgroundTileInput,
+  type ConvergingFlightInput,
+  type DiffusionGhostInput,
   type CreateLayerInput,
   type AnimationPlaybackInput,
   type FlaEditableShapeRegion,
   type FlaGraphicTransformEasing,
   type FlaShapeVertexTarget,
+  type GridArrayInput,
   type Layer,
+  type LayerCurveMotionInput,
   type LayerAttachmentTarget,
   type LayerDisplayTransformPatch,
   type LayerOrderAction,
   type LayerTransformInput,
+  type OrbitFlightInput,
+  type PathArrayInput,
   type Point,
   type Project,
+  type RadialArrayInput,
+  type RadialBurstInput,
   type SetParentKeyOptions,
 } from '../../domain';
 import type { AffineMatrix2D } from '../../shared/affine-matrix';
@@ -194,6 +204,140 @@ export class LayerStore {
       },
     );
     return result.layer;
+  }
+
+  duplicateAnimationLayerGrid(
+    layerId: string,
+    input: GridArrayInput,
+  ): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.duplicateAnimationLayerGrid(
+      project,
+      shotId,
+      layerId,
+      input,
+    );
+    if (result.project !== project) {
+      this.editorStore.updateProject(result.project, '排兵布阵');
+    }
+    return result.layers;
+  }
+
+  duplicateAnimationLayerRadial(
+    layerId: string,
+    input: RadialArrayInput,
+  ): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.duplicateAnimationLayerRadial(
+      project,
+      shotId,
+      layerId,
+      input,
+    );
+    if (result.project !== project) {
+      this.editorStore.updateProject(result.project, '径向阵列');
+    }
+    return result.layers;
+  }
+
+  duplicateAnimationLayerAlongPath(
+    layerId: string,
+    input: PathArrayInput,
+  ): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.duplicateAnimationLayerAlongPath(
+      project,
+      shotId,
+      layerId,
+      input,
+    );
+    if (result.project !== project) {
+      this.editorStore.updateProject(result.project, '沿路径阵列');
+    }
+    return result.layers;
+  }
+
+  planBackgroundTiles(layerId: string, input: BackgroundTileInput) {
+    const { project, shotId } = this.context();
+    return this.service.planBackgroundTiles(project, shotId, layerId, input);
+  }
+
+  generateBackgroundTiles(layerId: string, input: BackgroundTileInput): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.generateBackgroundTiles(project, shotId, layerId, input);
+    this.editorStore.updateProject(result.project, '背景铺排 / 循环');
+    return result.layers;
+  }
+
+  generateOrbitFlight(layerId: string, input: OrbitFlightInput): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.generateOrbitFlight(project, shotId, layerId, input);
+    this.editorStore.updateProject(result.project, '环绕飞行');
+    return result.layers;
+  }
+
+  generateConvergingFlight(layerId: string, input: ConvergingFlightInput): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.generateConvergingFlight(project, shotId, layerId, input);
+    this.editorStore.updateProject(result.project, '万剑归宗');
+    return result.layers;
+  }
+
+  generateDiffusionGhosts(layerId: string, input: DiffusionGhostInput): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.generateDiffusionGhosts(project, shotId, layerId, input);
+    this.editorStore.updateProject(result.project, '扩散虚影');
+    return result.layers;
+  }
+
+  generateAfterimages(
+    layerId: string,
+    input: AfterimageInput,
+  ): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.generateAfterimages(
+      project,
+      shotId,
+      layerId,
+      input,
+    );
+    if (result.project !== project) {
+      this.editorStore.updateProject(result.project, '生成位置残影');
+    }
+    return result.layers;
+  }
+
+  generateRadialBurst(
+    layerId: string,
+    input: RadialBurstInput,
+  ): readonly Layer[] {
+    const { project, shotId } = this.context();
+    const result = this.service.generateRadialBurst(
+      project,
+      shotId,
+      layerId,
+      input,
+    );
+    if (result.project !== project) {
+      this.editorStore.updateProject(result.project, '生成径向爆炸');
+    }
+    return result.layers;
+  }
+
+  applyCurveMotion(
+    layerId: string,
+    input: Omit<LayerCurveMotionInput, 'shotId' | 'layerId'>,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.motionService.applyCurveMotion(project, {
+      ...input,
+      shotId,
+      layerId,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '生成曲线运动');
+    }
+    return next;
   }
 
   copyLayer(layerId: string, timeMs: number): void {

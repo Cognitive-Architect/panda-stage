@@ -87,3 +87,28 @@
   gap: var(--ui-space-1);
   align-items: center;
 }
+
+.animation-rich-easing-meta {
+  margin: 0 0 var(--ui-space-2);
+  color: var(--ui-color-text-secondary);
+  font-size: var(--ui-font-size-xs, 0.75rem);
+}
+
+.animation-rich-easing-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ui-space-2);
+  margin-block: var(--ui-space-2);
+}
+
+.animation-rich-easing-fields select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.animation-rich-easing-actions {
+  display: flex;
+  gap: var(--ui-space-2);
+  align-items: center;
+}

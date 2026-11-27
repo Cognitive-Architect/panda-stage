@@ -34,3 +34,111 @@
   gap: 6px;
 }
 
+.project-tools-grid-array-view {
+  padding: 12px;
+}
+
+.grid-array-panel {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+}
+
+.grid-array-fields {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.grid-array-field {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ui-color-text-secondary);
+}
+
+.grid-array-field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid rgb(127 199 148 / 28%);
+  border-radius: 8px;
+  background: rgb(0 0 0 / 24%);
+  color: var(--ui-color-text-primary);
+  font-size: 14px;
+}
+
+.grid-array-field input:disabled {
+  opacity: 0.45;
+}
+
+.grid-array-status {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ui-color-danger, #f28b82);
+}
+
+.grid-array-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.grid-array-actions button {
+  min-height: 44px;
+}
+
+.curve-motion-origin {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--ui-color-text-secondary);
+}
+
+.curve-motion-origin strong {
+  color: var(--ui-color-text-primary);
+  font-weight: 600;
+}
+
+.curve-motion-preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid rgb(127 199 148 / 24%);
+  border-radius: 8px;
+  background: rgb(0 0 0 / 28%);
+}
+
+.curve-motion-handle-line {
+  stroke: rgb(255 255 255 / 32%);
+  stroke-width: 8;
+  stroke-dasharray: 24 18;
+}
+
+.curve-motion-path {
+  fill: none;
+  stroke: var(--ui-color-accent, #7fc794);
+  stroke-width: 16;
+  stroke-linecap: round;
+}
+
+.curve-motion-endpoint {
+  fill: var(--ui-color-accent, #7fc794);
+}
+
+.curve-motion-control {
+  fill: #f6c967;
+}
+
+.curve-motion-speed {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ui-color-text-secondary);
+}
+

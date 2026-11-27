@@ -1,5 +1,6 @@
-import type { LayerVisualHeadGroup, VisualLocalRect } from '../../domain';
-import type { StageRenderPart } from '../../shared/stage/render-model';
+import type { EvaluatedFlaGraphicVisual, LayerVisualHeadGroup, VisualLocalRect } from '../../domain';
+import type { LayerVisualEffects } from '../../domain/models/layerVisualEffects';
+import type { StageRenderPart, StageRenderResource } from '../../shared/stage/render-model';
 
 export interface StageCompositeCacheSignatureInput {
   ownerLayerId: string;
@@ -9,6 +10,27 @@ export interface StageCompositeCacheSignatureInput {
   headGroup: LayerVisualHeadGroup | null;
   orderedParts: readonly StageRenderPart[];
   images: ReadonlyMap<string, unknown>;
+  layerEffects?: {
+    effects: LayerVisualEffects;
+    structuredVisual?: EvaluatedFlaGraphicVisual;
+    resources: readonly StageRenderResource[];
+  };
+}
+
+function graphicCacheInput(graphic: EvaluatedFlaGraphicVisual | undefined) {
+  if (!graphic) return null;
+  return {
+    mode: graphic.mode,
+    frameOrdinal: graphic.frameOrdinal,
+    frameAssetId: graphic.frameAssetId,
+    frameOffset: graphic.frameOffset,
+    frameViewport: graphic.frameViewport,
+    canvas: graphic.canvas,
+    anchor: graphic.anchor,
+    hasStructure: graphic.structureFrame !== null,
+    layers: graphic.layers,
+    resourceAssetIds: graphic.resourceAssetIds,
+  };
 }
 
 export function createStageCompositeCacheSignature({
@@ -19,12 +41,17 @@ export function createStageCompositeCacheSignature({
   headGroup,
   orderedParts,
   images,
+  layerEffects,
 }: StageCompositeCacheSignatureInput): string {
   return JSON.stringify({
     ownerLayerId,
     composite,
     complete,
     visualBounds,
+    effects: layerEffects?.effects,
+    graphic: layerEffects && graphicCacheInput(layerEffects.structuredVisual),
+    resources: layerEffects?.resources.map(({ id, sourceUrl, asset }) =>
+      [id, sourceUrl, asset.sha256, asset.width, asset.height, images.has(id)]),
     headGroup: headGroup
       ? {
           id: headGroup.id,
@@ -41,14 +68,7 @@ export function createStageCompositeCacheSignature({
       assetWidth: part.asset.width,
       assetHeight: part.asset.height,
       sourceUrl: part.sourceUrl,
-      flaGraphic: part.flaGraphic
-        ? {
-            mode: part.flaGraphic.mode,
-            frameOrdinal: part.flaGraphic.frameOrdinal,
-            layers: part.flaGraphic.layers,
-            resourceAssetIds: part.flaGraphic.resourceAssetIds,
-          }
-        : null,
+      flaGraphic: graphicCacheInput(part.flaGraphic),
       render: part.render,
       imageReady: images.has(part.id),
     })),

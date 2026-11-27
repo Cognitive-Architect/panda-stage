@@ -43,40 +43,32 @@ export function updateImageAssetAuthorMetadata(
   rawMetadata: ImageAssetAuthorMetadata,
   now: () => Date = () => new Date(),
 ): Project {
-  const project = ProjectSchema.parse(rawProject);
-  const assetIndex = project.assets.findIndex(
-    (asset) => asset.id === assetId,
-  );
-  if (assetIndex < 0) {
-    throw new Error('The selected image is no longer in this project.');
-  }
-  const asset = project.assets[assetIndex]!;
-  if (asset.kind !== 'image') {
-    throw new Error('Only image assets have an author-defined usage.');
-  }
+  return updateImageAssetsAuthorMetadata(rawProject, new Map([[assetId, rawMetadata]]), now);
+}
 
-  const metadata = ImageAssetAuthorMetadataSchema.parse({
-    ...rawMetadata,
-    keywords: normalizeKeywords(rawMetadata.keywords),
-  });
-  if (
-    asset.name === metadata.name &&
-    asset.usage === metadata.usage &&
-    asset.keywords.length === metadata.keywords.length &&
-    asset.keywords.every(
-      (keyword, index) => keyword === metadata.keywords[index],
-    )
-  ) {
-    return project;
+export function updateImageAssetsAuthorMetadata(
+  rawProject: Project,
+  updates: ReadonlyMap<string, ImageAssetAuthorMetadata>,
+  now: () => Date = () => new Date(),
+): Project {
+  if (!updates.size) return rawProject;
+  const project = ProjectSchema.parse(rawProject);
+  const assetsById = new Map(project.assets.map((asset) => [asset.id, asset]));
+  const changed = new Map<string, z.output<typeof ImageAssetSchema>>();
+  for (const [assetId, input] of updates) {
+    const asset = assetsById.get(assetId);
+    if (!asset) throw new Error('The selected image is no longer in this project.');
+    if (asset.kind !== 'image') throw new Error('Only image assets have an author-defined usage.');
+    const metadata = ImageAssetAuthorMetadataSchema.parse({ ...input, keywords: normalizeKeywords(input.keywords) });
+    if (asset.name === metadata.name && asset.usage === metadata.usage &&
+      asset.keywords.length === metadata.keywords.length &&
+      asset.keywords.every((keyword, index) => keyword === metadata.keywords[index])) continue;
+    changed.set(assetId, ImageAssetSchema.parse({ ...asset, ...metadata }));
   }
-  const assets = [...project.assets];
-  assets[assetIndex] = ImageAssetSchema.parse({
-    ...asset,
-    ...metadata,
-  });
+  if (!changed.size) return rawProject;
   return ProjectSchema.parse({
     ...project,
-    assets,
+    assets: project.assets.map((asset) => changed.get(asset.id) ?? asset),
     updatedAt: now().toISOString(),
   });
 }

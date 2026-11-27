@@ -33,6 +33,7 @@ import {
 } from '../../domain';
 import type { DialogueSilence } from '../../shared/dialogue-silence';
 import { evaluateSubtitleAtTime } from '../../shared/preview/subtitle-engine';
+import type { LayerEffectPreview } from '../stage/LayerEffectPreview';
 import { CanvasStage } from '../stage/CanvasStage';
 import {
   previewDiagnosticNow,
@@ -84,6 +85,7 @@ export interface ProductPreviewOverlayProps {
   project: Project;
   /** Computed edit preview, discarded when the overlay closes. */
   draftProject?: Project | null;
+  layerEffectPreview?: LayerEffectPreview;
   /** Shot selected in the editor, or `null` when nothing is selected. */
   shotId: string | null;
   /** Starts the existing preview transport immediately when the overlay mounts. */
@@ -106,6 +108,7 @@ export function ProductPreviewOverlay({
   projectRoot,
   project: formalProject,
   draftProject,
+  layerEffectPreview,
   shotId,
   autoPlay = false,
   autoCameraEnabled,
@@ -984,6 +987,7 @@ export function ProductPreviewOverlay({
                 ) : assets.status === 'ready' && renderedShot && !previewDegraded ? (
                   <>
                     <CanvasStage
+                      layerEffectPreview={layerEffectPreview}
                       assetUrls={assets.urls}
                       camera={camera}
                       caption={caption}
@@ -1016,6 +1020,7 @@ export function ProductPreviewOverlay({
                 ) : previewDegraded && displayedShot ? (
                   <>
                     <CanvasStage
+                      layerEffectPreview={layerEffectPreview}
                       assetUrls={displayAssetUrls}
                       camera={camera}
                       caption={caption}
@@ -1058,6 +1063,7 @@ export function ProductPreviewOverlay({
                   </>
                 ) : heldVisual ? (
                   <CanvasStage
+                    layerEffectPreview={layerEffectPreview}
                     assetUrls={heldVisual.assetUrls}
                     camera={heldVisual.camera}
                     caption={heldVisual.caption}
@@ -1076,6 +1082,7 @@ export function ProductPreviewOverlay({
                   </div>
                 ) : displayedShot ? (
                   <CanvasStage
+                    layerEffectPreview={layerEffectPreview}
                     assetUrls={displayAssetUrls}
                     camera={camera}
                     caption={caption}

@@ -29,6 +29,7 @@ import { applyAssetMetadataResponse } from './applyAssetMetadataResponse';
 import { ASSET_DRAG_MIME } from './AssetDropPayload';
 import { AssetDetails } from './AssetDetails';
 import { AssetGrid } from './AssetGrid';
+import { BatchImageControls } from './BatchImageControls';
 import { IMAGE_ASSET_USAGE_OPTIONS } from './assetUsage';
 import {
   thumbnailStateFromResponse,
@@ -1125,6 +1126,10 @@ export function AssetLibrary({
               ))}
             </nav>
             <div className="asset-library-content">
+              {snapshot ? <BatchImageControls key={JSON.stringify([projectIdentity, category, usageFilter, searchQuery])}
+                snapshot={snapshot} images={visibleItems.flatMap((item) =>
+                  item.kind === 'asset' && item.entry.asset.kind === 'image' ? [item.entry.asset] : [],
+                )} /> : null}
               {snapshot ? (
   <AssetGrid
                 project={snapshot.project}

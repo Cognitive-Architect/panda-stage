@@ -38,6 +38,8 @@ export class LayerSelectionStore {
   private flaShapeVertexEditActive = false;
   private selectedFlaShapeVertex: FlaShapeVertexTarget | null = null;
   private selectedLayerId: string | null = null;
+  private batchLayerIds: readonly string[] = [];
+  private batchContext: SelectionContext | null = null;
   private selectedContext: SelectionContext | null = null;
   private readonly listeners = new Set<Listener>();
   private readonly unsubscribeEditor: () => void;
@@ -60,6 +62,26 @@ export class LayerSelectionStore {
 
   readonly getSelectedLayerId = (): string | null =>
     this.selectedLayerId;
+
+  readonly getBatchLayerIds = (): readonly string[] => this.batchLayerIds;
+
+  readonly toggleBatchLayer = (layerId: string): void => {
+    const context = this.currentContext();
+    if (!context || context.shot.backgroundLayerId === layerId ||
+      !context.shot.layers.some(({ id }) => id === layerId)) return;
+    this.batchContext = context;
+    this.batchLayerIds = this.batchLayerIds.includes(layerId)
+      ? this.batchLayerIds.filter((id) => id !== layerId)
+      : [...this.batchLayerIds, layerId];
+    for (const listener of this.listeners) listener();
+  };
+
+  readonly clearBatchLayers = (): void => {
+    if (!this.batchLayerIds.length) return;
+    this.batchContext = null;
+    this.batchLayerIds = [];
+    for (const listener of this.listeners) listener();
+  };
 
   readonly getStructuredEditScope = (): FlaGraphicEditScopeState | null => this.structuredEditScope;
   readonly getSelectedStructuredNodePath = (): readonly string[] | null => this.selectedStructuredNodePath;
@@ -194,8 +216,21 @@ export class LayerSelectionStore {
   }
 
   private reconcileSelection(): void {
-    if (!this.selectedLayerId || !this.selectedContext) return;
     const context = this.currentContext();
+    if (this.batchLayerIds.length) {
+      if (!context || context.projectInstanceId !== this.batchContext?.projectInstanceId ||
+        context.shotId !== this.batchContext?.shotId) {
+        this.clearBatchLayers();
+      } else {
+        const remaining = this.batchLayerIds.filter((id) =>
+          id !== context.shot.backgroundLayerId && context.shot.layers.some((layer) => layer.id === id));
+        if (remaining.length !== this.batchLayerIds.length) {
+          this.batchLayerIds = remaining;
+          for (const listener of this.listeners) listener();
+        }
+      }
+    }
+    if (!this.selectedLayerId || !this.selectedContext) return;
     if (
       !context ||
       context.projectId !== this.selectedContext.projectId ||

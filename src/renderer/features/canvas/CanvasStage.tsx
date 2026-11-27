@@ -1,6 +1,9 @@
+import { LayerEffectPreviewContext } from '../../stage/LayerEffectPreview';
+import { CurveMotionStageOverlay, type CurveMotionStageDraft } from './CurveMotionStageOverlay';
 import {
   createRef,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -284,6 +287,7 @@ function isCurrentCanvasAssetReady(
 
 export interface CanvasStageProps {
   curveDraft?: AnimationCurveDraft | null;
+  curveMotionDraft?: CurveMotionStageDraft | null;
   dialogueSilence?: DialogueSilence;
   showHeading?: boolean;
   showToolbar?: boolean;
@@ -292,6 +296,7 @@ export interface CanvasStageProps {
 
 export function CanvasStage({
   curveDraft,
+  curveMotionDraft,
   dialogueSilence,
   showHeading = true,
   showToolbar = true,
@@ -381,6 +386,13 @@ export function CanvasStage({
     return () => window.removeEventListener('keydown', onKey, true);
   }, [assemblingArm, setAssembly]);
 
+  const effectsPreview = useContext(LayerEffectPreviewContext);
+  const activeEffects = !armAssembly && effectsPreview?.projectInstanceId === projectInstanceId &&
+    effectsPreview?.revision === snapshot?.revision && effectsPreview?.shotId === currentShotId &&
+    effectsPreview?.layerId === selectedLayerId ? effectsPreview : null;
+  const activeCurveMotion = !armAssembly && curveMotionDraft?.projectInstanceId === projectInstanceId &&
+    curveMotionDraft?.revision === snapshot?.revision && curveMotionDraft?.shotId === currentShotId &&
+    curveMotionDraft?.layerId === selectedLayerId ? curveMotionDraft : null;
   const selectedCharacterNodeId = useSyncExternalStore(selectionStore.subscribe, selectionStore.getSelectedCharacterNodeId);
   const selectedMotionPartId = adaptivePartIdForNodeId(selectedCharacterNodeId);
   const characterNodeSelected = selectedCharacterNodeId !== null && selectedCharacterNodeId !== 'root';
@@ -1376,7 +1388,7 @@ export function CanvasStage({
       ? isStageLayerVisualReady(selectedStageLayer)
       : false,
   });
-  const transformerVisible = !armAssembly && (structuredTransformerVisible || layerTransformerVisible);
+  const transformerVisible = !armAssembly && !activeCurveMotion && (structuredTransformerVisible || layerTransformerVisible);
   const backgroundSelected =
     Boolean(backgroundLayer && selectedLayerId === backgroundLayer.render.id);
   const backgroundListening =
@@ -1907,6 +1919,7 @@ export function CanvasStage({
                                  ? temporalCanvasModel?.positionAuthoringShakeOffset
                                  : null
                              }
+                            effects={activeEffects?.layerId === layer.id ? activeEffects.effects : layer.visualEffects}
                             selected={selectedLayerId === layer.id}
                             visualSourceKeys={
                               temporalCanvasModel?.visualSourceKeysByLayer.get(
@@ -1930,6 +1943,12 @@ export function CanvasStage({
                   name="transformer-overlay-layer"
                   ref={configureEditorLayer}
                 >
+                  {activeCurveMotion && !cameraTool && (!displayCamera || selectedLayerProjection) ? (
+                    <StageLayerSpace projection={displayCamera ? selectedLayerProjection ?? undefined : undefined}>
+                      <CurveMotionStageOverlay draft={activeCurveMotion} scale={transform.scale *
+                        (displayCamera && selectedLayerProjection ? Math.abs(selectedLayerProjection.scaleX) : 1)} />
+                    </StageLayerSpace>
+                  ) : null}
                   {!cameraTool && !pickingParent && transformerVisible && selectedStageLayer && selectedLayerProjection ? (
                     selectedStageLayer.evaluated.parentSpace && !structuredTransformerVisible ? (
                       <StageLayerSpace space={selectedStageLayer.evaluated.parentSpace} projection={displayCamera ? selectedLayerProjection : undefined}>
