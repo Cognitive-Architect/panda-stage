@@ -1,0 +1,138 @@
+/* Variant A · 现代创作派 — soft dark, violet accent, floating context, generous radius */
+.va { --bg: #0e0f12; --panel: #17181c; --panel2: #1e1f24; --line: #2a2b31; --text: #e8e8ec; --muted: #8d8e98; --accent: #7c6cff; --accent-fg: #fff;
+  --nf-bg: #222329; --nf-h: 28px; --nf-r: 7px; --key: #f5c451; --clip: #5b4fd6; --playhead: #ff5d73;
+  --tl-ruler-bg: #17181c; --tl-head-bg: #17181c; --tl-head-active: #23223a; --tl-lane-bg: #131417; --tl-lane-active: #1a1930; --tl-row-line: #1d1e23;
+  display: flex; flex-direction: column; height: 100%; background: var(--bg); color: var(--text); font-size: 12.5px; }
+.va-top { height: 48px; flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 0 10px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.va-top-l, .va-top-r, .va-top-c { display: flex; align-items: center; gap: 6px; }
+.va-top-r { justify-content: flex-end; }
+.va-logo { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: linear-gradient(135deg, #7c6cff, #ff6fae); font-size: 16px; }
+.va-proj { font-weight: 600; margin-left: 4px; }
+.va-sep { color: var(--muted); }
+.va-shot-trigger { display: flex; align-items: center; gap: 4px; border: 0; background: transparent; padding: 5px 8px; border-radius: 6px; color: var(--muted); }
+.va-shot-trigger:hover, .va-shot-trigger[data-state=open] { background: var(--panel2); color: var(--text); }
+.va-icon { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: var(--muted); }
+.va-icon:hover:not(:disabled) { background: var(--panel2); color: var(--text); }
+.va-icon:disabled { opacity: .35; cursor: default; }
+.va-zoom { display: flex; align-items: center; background: var(--panel2); border-radius: 7px; height: 30px; }
+.va-zoom button { border: 0; background: transparent; width: 26px; color: var(--muted); }
+.va-zoom span { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
+.va-primary { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 14px; border: 0; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; }
+.va-primary:hover { filter: brightness(1.1); }
+.va-primary:disabled { opacity: .5; }
+.va-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; padding: 0 14px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--text); }
+.va-ghost.wide { width: 100%; }
+.va-body { flex: 1; min-height: 0; }
+.va-sep-v { width: 1px; background: var(--line); outline: none; }
+.va-sep-v:hover, .va-sep-v[data-separator=active] { background: var(--accent); }
+.va-sep-h { height: 1px; background: var(--line); outline: none; }
+.va-sep-h:hover, .va-sep-h[data-separator=active] { background: var(--accent); }
+
+.va-left { height: 100%; display: flex; flex-direction: column; background: var(--panel); }
+.va-tabs { display: flex; gap: 2px; padding: 8px 8px 0; }
+.va-tabs button { flex: 1; border: 0; background: transparent; padding: 6px; border-radius: 7px; color: var(--muted); font-weight: 600; }
+.va-tabs button[data-state=active] { background: var(--panel2); color: var(--text); }
+.va-tab-body { flex: 1; min-height: 0; overflow: auto; padding: 8px; outline: none; }
+.va-tab-body[hidden], .va-tab-body[data-state=inactive] { display: none; }
+.va-layer { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 6px 0 8px; border-radius: 7px; cursor: default; }
+.va-layer:hover { background: var(--panel2); }
+.va-layer.on { background: #2b2850; }
+.va-layer.hidden .va-layer-name { opacity: .45; }
+.va-layer-kind { color: var(--muted); display: grid; place-items: center; }
+.va-layer.on .va-layer-kind { color: var(--accent); }
+.va-layer-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.va-layer input { flex: 1; min-width: 0; background: var(--nf-bg); border: 1px solid var(--accent); border-radius: 4px; padding: 2px 4px; outline: none; }
+.va-layer-hasKey { color: var(--key); }
+.va-mini { width: 22px; height: 22px; display: grid; place-items: center; border: 0; background: transparent; border-radius: 5px; color: var(--muted); opacity: 0; }
+.va-layer:hover .va-mini, .va-mini.stay, .va-tl-head .va-mini { opacity: 1; }
+.va-mini:hover { background: #33343c; color: var(--text); }
+.va-audio-list { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.va-audio-item { display: flex; gap: 8px; align-items: center; padding: 6px 8px; color: var(--muted); border-radius: 7px; }
+.va-audio-item:hover { background: var(--panel2); color: var(--text); }
+
+.va-search { display: flex; align-items: center; gap: 6px; background: var(--nf-bg); border-radius: 7px; padding: 0 8px; height: 30px; color: var(--muted); }
+.va-search input { border: 0; background: transparent; outline: none; flex: 1; min-width: 0; }
+.va-chips { display: flex; gap: 4px; margin: 8px 0; flex-wrap: wrap; }
+.va-chips button { border: 0; padding: 3px 10px; border-radius: 99px; background: var(--panel2); color: var(--muted); font-size: 12px; }
+.va-chips button.on { background: var(--accent); color: #fff; }
+.va-asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.va-asset { position: relative; border-radius: 10px; padding: 6px; background: var(--panel2); cursor: grab; border: 1px solid transparent; }
+.va-asset.on { border-color: var(--accent); }
+.va-asset-thumb { aspect-ratio: 1; border-radius: 7px; background: #2a2b32; display: grid; place-items: center; overflow: hidden; color: var(--muted); }
+.va-asset-thumb img { max-width: 82%; max-height: 82%; pointer-events: none; }
+.va-asset span { display: block; font-size: 11.5px; margin-top: 5px; text-align: center; color: var(--muted); }
+.va-asset-add { position: absolute; top: 10px; right: 10px; width: 22px; height: 22px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; display: grid; place-items: center; opacity: 0; }
+.va-asset:hover .va-asset-add { opacity: 1; }
+
+.va-canvas { position: relative; width: 100%; height: 100%; }
+.va-ctx { position: absolute; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px; background: #24252b; border: 1px solid #34353d; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.45); z-index: 5; }
+.va-ctx button { width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: var(--text); display: grid; place-items: center; }
+.va-ctx button:hover { background: #34353d; }
+.va-ctx i { width: 1px; height: 18px; background: #3a3b44; margin: 0 2px; }
+.va-ctx-name { padding: 0 8px 0 6px; font-weight: 600; font-size: 12px; color: var(--accent); }
+
+.va-insp { height: 100%; overflow: auto; background: var(--panel); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.va-insp.empty { display: grid; place-items: center; }
+.va-empty { color: var(--muted); }
+.va-insp h4 { margin: 0; display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.va-insp h5 { margin: 8px 0 0; font-size: 11px; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; }
+.va-auto { color: var(--key); font-weight: 500; }
+.va-insp-head { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.va-insp-head b { flex: 1; }
+.va-keynav { display: flex; background: var(--panel2); border-radius: 7px; }
+.va-keynav button { border: 0; background: transparent; width: 24px; height: 24px; display: grid; place-items: center; color: var(--muted); }
+.va-keynav button.on { color: var(--key); }
+.va-keynav button:disabled { opacity: .3; }
+.va-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.va-ease-trigger { display: flex; align-items: center; gap: 8px; width: 100%; height: 36px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--nf-bg); }
+.va-ease-trigger svg { width: 34px; height: 22px; fill: none; stroke: var(--accent); stroke-width: 2; }
+.va-ease-trigger span { flex: 1; text-align: left; }
+.va-pop { width: 260px; padding: 12px; background: #202127; border: 1px solid #34353d; border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.5); z-index: 50; color: var(--text); --line: #34353d; --muted: #8d8e98; --accent: #7c6cff; --nf-bg: #17181c; }
+.va-clips { display: flex; flex-wrap: wrap; gap: 4px; }
+.va-clips button { border: 0; background: var(--panel2); border-radius: 6px; padding: 4px 8px; display: flex; gap: 6px; }
+.va-clips button span { color: var(--muted); font-size: 11px; }
+.va-clips button.on { background: var(--clip); }
+.va-select { height: 28px; border-radius: 7px; border: 0; background: var(--nf-bg); padding: 0 6px; }
+
+.va-timeline { height: 100%; display: flex; flex-direction: column; background: var(--panel); }
+.va-tl-bar { height: 38px; flex: none; display: flex; align-items: center; gap: 4px; padding: 0 10px; border-bottom: 1px solid var(--line); }
+.va-play { width: 32px; height: 32px; border-radius: 50%; border: 0; background: var(--text); color: #111; display: grid; place-items: center; }
+.va-tc { font-variant-numeric: tabular-nums; margin-left: 8px; font-weight: 600; }
+.va-tc em { color: var(--muted); font-style: normal; font-weight: 400; margin-left: 4px; }
+.va-flex { flex: 1; }
+.va-tl { flex: 1; min-height: 0; }
+.va-tl-head { display: flex; align-items: center; gap: 6px; padding: 0 10px; width: 100%; color: var(--text); }
+.va-tl-head span:not(.va-layer-kind) { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.va-tl .tl-row.dim { opacity: .45; }
+.va-tl .tl-bar { top: 7px; bottom: 7px; --bar-r: 99px; opacity: .85; }
+.va-tl .tl-row.audio .tl-bar { --c: #2f6f6a; top: 4px; bottom: 4px; --bar-r: 6px; }
+.va-tl .tl-row.cam .tl-key { --c: #59c3ff; }
+
+.va-slider { position: relative; display: flex; align-items: center; height: 18px; flex: 1; touch-action: none; }
+.va-slider.small { flex: none; width: 110px; }
+.va-slider-track { position: relative; flex: 1; height: 4px; background: #33343c; border-radius: 99px; }
+.va-slider-range { position: absolute; height: 100%; background: var(--accent); border-radius: 99px; }
+.va-slider-thumb { display: block; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); outline: none; }
+
+.va-menu { min-width: 180px; padding: 4px; background: #24252b; border: 1px solid #34353d; border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.5); color: #e8e8ec; font-size: 12.5px; z-index: 60; }
+.va-menu-item { display: flex; justify-content: space-between; padding: 7px 10px; border-radius: 6px; outline: none; cursor: default; }
+.va-menu-item[data-highlighted] { background: #7c6cff; color: #fff; }
+.va-menu-item.on { color: #a99fff; }
+.va-menu-item.danger { color: #ff7a8a; }
+.va-menu-hint { color: #8d8e98; font-size: 11px; }
+.va-menu-sep { height: 1px; background: #34353d; margin: 4px; }
+.va-tip { background: #000; color: #fff; padding: 5px 8px; border-radius: 6px; font-size: 11.5px; z-index: 70; }
+.va-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 80; }
+.va-dialog { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 440px; background: #1c1d22; color: #e8e8ec; border: 1px solid #34353d; border-radius: 16px; padding: 20px; z-index: 81; display: flex; flex-direction: column; gap: 14px; font-size: 12.5px; --accent: #7c6cff; }
+.va-dialog h2 { margin: 0 0 4px; font-size: 16px; }
+.va-seg-row { display: flex; align-items: center; gap: 12px; }
+.va-seg-row > label { width: 48px; color: #8d8e98; }
+.va-seg { display: flex; background: #26272d; border-radius: 8px; padding: 2px; flex: 1; }
+.va-seg button { flex: 1; border: 0; background: transparent; padding: 6px; border-radius: 6px; color: #b5b6bf; }
+.va-seg button.on { background: #3a3b45; color: #fff; }
+.va-num { width: 28px; text-align: right; font-variant-numeric: tabular-nums; }
+.va-progress { position: relative; height: 28px; border-radius: 8px; background: #26272d; overflow: hidden; }
+.va-progress i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #7c6cff, #ff6fae); transition: width .08s linear; }
+.va-progress span { position: relative; display: block; text-align: center; line-height: 28px; font-weight: 600; }
+.va-dialog-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.va-toast { background: #2b2850; color: #fff; border: 1px solid #4a43a0; }

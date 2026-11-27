@@ -1,0 +1,69 @@
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { margin: 0; height: 100%; overflow: hidden; }
+body { font-family: "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif; -webkit-font-smoothing: antialiased; user-select: none; }
+button { font: inherit; color: inherit; cursor: pointer; }
+input, select { font: inherit; color: inherit; }
+
+/* ---------- prototype switcher: deliberately neutral, NOT part of any design ---------- */
+.proto-switcher { position: fixed; right: 14px; bottom: 8px; z-index: 99999; display: flex; gap: 2px; padding: 3px; background: #fffbe6; border: 2px dashed #b08900; border-radius: 6px; font: 12px/1.2 Consolas, "Microsoft YaHei", monospace; color: #3d3200; box-shadow: 0 4px 16px rgba(0,0,0,.35); }
+.proto-switcher button { border: 0; background: transparent; padding: 3px 7px; border-radius: 3px; display: flex; gap: 4px; align-items: baseline; white-space: nowrap; }
+.proto-switcher button:hover { background: #f5e7a8; }
+.proto-switcher button.on { background: #3d3200; color: #fffbe6; }
+.proto-switcher .ps-grip { font-weight: 700; color: #8a6d00; }
+.proto-switcher .ps-reset { border-left: 1px dashed #b08900; border-radius: 0; }
+.proto-switcher.min { right: 14px; bottom: 8px; }
+
+/* ---------- stage ---------- */
+.stage-host { position: relative; width: 100%; height: 100%; overflow: hidden; }
+
+/* ---------- number field (Animora-derived) ---------- */
+.num-field { display: flex; align-items: center; height: var(--nf-h, 26px); background: var(--nf-bg, #1c1d22); border: 1px solid var(--nf-border, transparent); border-radius: var(--nf-r, 6px); min-width: 0; position: relative; }
+.num-field:focus-within { border-color: var(--accent); }
+.num-field .num-label { cursor: ew-resize; padding: 0 6px 0 8px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.num-field .num-label:hover { color: var(--accent); }
+.num-field input { flex: 1; min-width: 0; width: 100%; border: 0; background: transparent; outline: none; font-size: var(--nf-fs, 12px); font-variant-numeric: tabular-nums; padding: 0 4px; }
+.num-field .num-unit { color: var(--muted); font-size: 11px; padding-right: 6px; }
+.num-field .num-reset { border: 0; background: transparent; color: var(--muted); padding: 0 6px; font-size: 11px; }
+.num-field.disabled { opacity: .45; }
+
+/* ---------- easing editor (Animora + OpenCut-derived) ---------- */
+.easing-editor { display: flex; flex-direction: column; gap: 6px; }
+.ease-presets { display: flex; flex-wrap: wrap; gap: 3px; }
+.ease-presets button { border: 1px solid var(--line); background: transparent; border-radius: 4px; padding: 2px 6px; font-size: 11px; color: var(--muted); }
+.ease-presets button.on { color: var(--accent-fg, #fff); background: var(--accent); border-color: var(--accent); }
+.easing-curve { width: 100%; background: var(--nf-bg, #15161a); border-radius: 6px; overflow: visible; touch-action: none; }
+.easing-box { fill: none; stroke: var(--line); stroke-dasharray: 2 3; }
+.easing-diag { stroke: var(--line); stroke-dasharray: 3 3; }
+.easing-path { fill: none; stroke: var(--accent); stroke-width: 2.2; }
+.easing-arm { stroke: var(--muted); stroke-width: 1; }
+.easing-handle { fill: #fff; stroke: var(--accent); stroke-width: 2; cursor: grab; }
+.easing-code { display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--muted); }
+.easing-code input { flex: 1; min-width: 0; background: var(--nf-bg); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; font-family: Consolas, monospace; font-size: 11px; }
+
+/* ---------- timeline engine ---------- */
+.tl { position: relative; overflow: auto; height: 100%; }
+.tl-inner { position: relative; min-height: 100%; padding-bottom: 36px; }
+.tl-ruler { position: sticky; top: 0; z-index: 3; display: flex; background: var(--tl-ruler-bg); border-bottom: 1px solid var(--line); }
+.tl-corner { position: sticky; left: 0; z-index: 4; background: var(--tl-ruler-bg); flex: none; }
+.tl-ruler-track { position: relative; cursor: col-resize; }
+.tl-tick { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--line); }
+.tl-tick span { position: absolute; left: 3px; bottom: 2px; font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tl-end { position: absolute; top: 0; bottom: 0; border-left: 2px solid var(--muted); opacity: .5; }
+.tl-row { display: flex; border-bottom: 1px solid var(--tl-row-line, var(--line)); }
+.tl-head { position: sticky; left: 0; z-index: 2; flex: none; background: var(--tl-head-bg); border-right: 1px solid var(--line); display: flex; align-items: center; overflow: hidden; }
+.tl-row.active .tl-head { background: var(--tl-head-active); }
+.tl-lane { position: relative; background: var(--tl-lane-bg); }
+.tl-row.active .tl-lane { background: var(--tl-lane-active, var(--tl-lane-bg)); }
+.tl-key { position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; transform: rotate(45deg); background: var(--c, var(--key)); border: 1px solid rgba(0,0,0,.5); cursor: grab; z-index: 1; }
+.tl-key.cam { border-radius: 50%; transform: none; }
+.tl-key.on { outline: 2px solid #fff; outline-offset: 1px; z-index: 2; }
+.tl-bar { position: absolute; top: 3px; bottom: 3px; background: var(--c, var(--clip)); border-radius: var(--bar-r, 4px); cursor: grab; overflow: hidden; display: flex; align-items: center; }
+.tl-bar.on { box-shadow: inset 0 0 0 2px #fff; }
+.tl-bar-label { position: relative; padding: 0 6px; font-size: 11px; color: rgba(255,255,255,.95); white-space: nowrap; text-shadow: 0 1px 1px rgba(0,0,0,.4); }
+.tl-grip { position: absolute; right: 0; top: 0; bottom: 0; width: 7px; cursor: ew-resize; background: rgba(255,255,255,.15); }
+.tl-wave { position: absolute; inset: 2px 0; width: 100%; height: calc(100% - 4px); fill: rgba(255,255,255,.55); }
+.tl-playhead { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1.5px solid var(--playhead); z-index: 5; pointer-events: none; }
+.tl-playhead i { position: absolute; top: 0; left: -6px; width: 11px; height: 12px; background: var(--playhead); clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%); }
+
+/* ---------- toast ---------- */
+.proto-toast { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 9999; padding: 6px 14px; border-radius: 8px; font-size: 12px; pointer-events: none; }
