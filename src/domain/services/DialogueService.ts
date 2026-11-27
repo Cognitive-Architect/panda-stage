@@ -66,6 +66,30 @@ export interface CreateManyDialogueInput {
   }>;
 }
 
+export interface CreateTimedAudioDialogueLine {
+  /** Optional existing formal Dialogue.id in this shot to update in place. */
+  existingDialogueId?: string;
+  characterId?: string;
+  speakerType?: DialogueSpeakerType;
+  text: string;
+  startMs: number;
+  endMs: number;
+  audioAssetId: string;
+  /** Explicit source start offset in milliseconds (defaults to 0). */
+  offsetMs?: number;
+}
+
+export interface CreateManyTimedWithAudioInput {
+  shotId: string;
+  lines: ReadonlyArray<CreateTimedAudioDialogueLine>;
+}
+
+export interface CreateManyTimedWithAudioResult {
+  project: Project;
+  dialogueIds: string[];
+  audioClipIds: string[];
+}
+
 export interface UpdateDialogueInput {
   shotId: string;
   dialogueId: string;
@@ -247,6 +271,168 @@ export class DialogueService {
       ...shot,
       dialogues: [...shot.dialogues, ...added],
     });
+  }
+
+  /**
+   * Thin official batch path for WF-01 / WF-04 timed dialogue + real audio
+   * scheduling. Preserves exact integer timing and source offset without
+   * triggering one-frame placeholder extension or silent tail clamping, while
+   * reusing official ID generation, speaker/audio validation, clip ownership,
+   * mouth-pose reconciliation, and ProjectSchema validation.
+   */
+  createManyTimedWithAudio(
+    project: Project,
+    input: CreateManyTimedWithAudioInput,
+  ): CreateManyTimedWithAudioResult {
+    if (input.lines.length === 0) {
+      return { project, dialogueIds: [], audioClipIds: [] };
+    }
+    const shot = this.shot(project, input.shotId);
+    const usedIds = this.collectIds(project);
+    const nextDialogues = [...shot.dialogues];
+    let nextAudioClips = [...shot.audioClips];
+    const dialogueIds: string[] = [];
+    const audioClipIds: string[] = [];
+    const updatedExistingIds = new Set<string>();
+
+    for (const line of input.lines) {
+      const text = this.validText(line.text);
+      const asset = this.audioAsset(project, line.audioAssetId);
+      const startMs = this.validInteger(line.startMs, '对白开始时间');
+      const endMs = this.validInteger(line.endMs, '对白结束时间');
+      if (startMs < 0 || endMs > shot.durationMs) {
+        throw new DialogueServiceError(
+          'INVALID_DIALOGUE_TIME',
+          `对白时间区间 ${startMs}–${endMs}ms 超出镜头范围（0–${shot.durationMs}ms）。`,
+        );
+      }
+      const durationMs = endMs - startMs;
+      if (durationMs < MIN_TIMED_DIALOGUE_DURATION_MS) {
+        throw new DialogueServiceError(
+          'INVALID_DIALOGUE_DURATION',
+          '对白结束时间必须晚于开始时间。',
+        );
+      }
+      const offsetMs = line.offsetMs ?? 0;
+      this.validInteger(offsetMs, '音频源起点');
+      if (offsetMs < 0) {
+        throw new DialogueServiceError(
+          'INVALID_DIALOGUE_TIME',
+          `音频源起点不能为负数：${offsetMs}`,
+        );
+      }
+      this.assertAudioRange(asset, offsetMs, durationMs);
+
+      if (line.existingDialogueId !== undefined) {
+        if (updatedExistingIds.has(line.existingDialogueId)) {
+          throw new DialogueServiceError(
+            'DIALOGUE_OVERLAP',
+            `批次中重复指定了已有对白：${line.existingDialogueId}`,
+          );
+        }
+        const existingIndex = nextDialogues.findIndex(
+          (candidate) => candidate.id === line.existingDialogueId,
+        );
+        if (existingIndex < 0) {
+          throw new DialogueServiceError(
+            'DIALOGUE_NOT_FOUND',
+            `找不到对白：${line.existingDialogueId}`,
+          );
+        }
+        updatedExistingIds.add(line.existingDialogueId);
+        const existing = nextDialogues[existingIndex]!;
+        this.assertNoOverlap(
+          nextDialogues.filter((candidate) => candidate.id !== existing.id),
+          { startMs, endMs },
+        );
+
+        let updatedDialogue: Dialogue = { ...existing, text, startMs, endMs };
+        if (line.speakerType === DIALOGUE_SPEAKER_NARRATOR) {
+          updatedDialogue = this.asNarrator(updatedDialogue);
+        } else {
+          updatedDialogue = this.asCharacter(
+            project,
+            updatedDialogue,
+            line.characterId,
+          );
+        }
+
+        const existingClip = existing.audioClipId
+          ? nextAudioClips.find((clip) => clip.id === existing.audioClipId) ?? null
+          : null;
+        const existingReferences = existingClip
+          ? nextDialogues.filter(
+              (candidate) => candidate.audioClipId === existingClip.id,
+            ).length
+          : 0;
+        const clipId =
+          existingClip && existingReferences === 1
+            ? existingClip.id
+            : this.nextId(usedIds);
+        const sameAsset = existingClip?.assetId === asset.id;
+        const nextClip: AudioClip = {
+          id: clipId,
+          role: 'dialogue',
+          name: sameAsset ? existingClip.name : asset.name,
+          assetId: asset.id,
+          startMs,
+          endMs,
+          offsetMs,
+          volume: sameAsset ? existingClip.volume : 1,
+        };
+        nextAudioClips =
+          existingClip && existingReferences === 1
+            ? nextAudioClips.map((clip) =>
+                clip.id === existingClip.id ? nextClip : clip,
+              )
+            : [...nextAudioClips, nextClip];
+        nextDialogues[existingIndex] = {
+          ...updatedDialogue,
+          audioClipId: clipId,
+        };
+        dialogueIds.push(existing.id);
+        audioClipIds.push(clipId);
+      } else {
+        this.assertNoOverlap(nextDialogues, { startMs, endMs });
+        const speaker = this.resolveNewSpeaker(project, line);
+        const dialogueId = this.nextId(usedIds);
+        const clipId = this.nextId(usedIds);
+        const nextClip: AudioClip = {
+          id: clipId,
+          role: 'dialogue',
+          name: asset.name,
+          assetId: asset.id,
+          startMs,
+          endMs,
+          offsetMs,
+          volume: 1,
+        };
+        const nextDialogue: Dialogue = {
+          id: dialogueId,
+          ...speaker,
+          subtitleStyleId: shot.defaultSubtitleStyleId,
+          startMs,
+          endMs,
+          text,
+          audioClipId: clipId,
+        };
+        nextDialogues.push(nextDialogue);
+        nextAudioClips = [...nextAudioClips, nextClip];
+        dialogueIds.push(dialogueId);
+        audioClipIds.push(clipId);
+      }
+    }
+
+    const nextProject = this.replaceShot(project, shot.id, {
+      ...shot,
+      dialogues: nextDialogues,
+      audioClips: nextAudioClips,
+    });
+    return {
+      project: nextProject,
+      dialogueIds,
+      audioClipIds,
+    };
   }
 
   update(project: Project, input: UpdateDialogueInput): Project {

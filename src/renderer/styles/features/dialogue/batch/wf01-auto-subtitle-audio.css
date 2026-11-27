@@ -1,0 +1,95 @@
+/* WF-01: Compact audio-matching & real-duration schedule controls inside DialogueBatchPaste */
+.dialogue-batch-recognition-audio {
+  color: var(--accent, #22c55e);
+  font-weight: 600;
+}
+
+.dialogue-batch-audio-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding-left: 26px;
+}
+
+.dialogue-batch-audio-icon {
+  flex: 0 0 auto;
+  color: var(--text-muted, #9aa6a0);
+}
+
+.dialogue-batch-audio-select {
+  min-width: 160px;
+  max-width: 100%;
+  flex: 1 1 180px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.14));
+  border-radius: var(--radius-sm, 6px);
+  background: var(--surface-work, rgba(255, 255, 255, 0.04));
+  color: var(--text-primary, #eef3ef);
+  font-size: 12px;
+}
+
+.dialogue-batch-audio-timing {
+  font-size: 12px;
+  color: var(--text-secondary, #c2cdc6);
+  white-space: nowrap;
+}
+
+.dialogue-batch-audio-issue {
+  font-size: 12px;
+  color: var(--warning, #f59e0b);
+}
+
+.dialogue-batch-audio-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--danger, #ef4444);
+  border-radius: var(--radius-sm, 6px);
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--danger, #f87171);
+  font-size: 12px;
+}
+
+.dialogue-batch-audio-alerts p {
+  margin: 0;
+}
+
+.dialogue-batch-extend-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--warning, #f59e0b);
+  border-radius: var(--radius-sm, 6px);
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--text-primary, #eef3ef);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dialogue-batch-extend-confirm input {
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+.dialogue-batch-subset-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary, #c2cdc6);
+}
+
+.dialogue-batch-footer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dialogue-batch-plain-submit {
+  background: transparent;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.16));
+  color: var(--text-primary, #eef3ef);
+}
