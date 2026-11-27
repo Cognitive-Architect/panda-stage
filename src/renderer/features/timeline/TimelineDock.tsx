@@ -1,6 +1,7 @@
 import { MouthPoseLane } from './MouthPoseLane';
 import { CharacterMotionLane } from './CharacterMotionLane';
 import { LayerMotionLane } from './LayerMotionLane';
+import { LayerParentLane } from './LayerParentLane';
 import { ShotCameraLane } from './ShotCameraLane';
 import {
   useLayoutEffect,
@@ -506,6 +507,18 @@ export function TimelineDock({
                     <ShotCameraLane key={shot.id + ":" + motionLayer.id + ":depth"} shot={shot} snapshot={snapshot}
                       depthLayer={motionLayer} currentTimeMs={ui.currentTimeMs} pixelsPerMs={pixelsPerMs}
                       trackWidth={trackWidth} disabled={Boolean(productPreviewOpen)} />
+                  ) : null}
+                  {shot && snapshot && motionLayer && shot.backgroundLayerId !== motionLayer.id && motionLayer.parentKeys?.length ? (
+                    <LayerParentLane
+                      key={shot.id + ":" + motionLayer.id + ":parent"}
+                      shot={shot}
+                      snapshot={snapshot}
+                      layer={motionLayer}
+                      currentTimeMs={ui.currentTimeMs}
+                      pixelsPerMs={pixelsPerMs}
+                      trackWidth={trackWidth}
+                      disabled={Boolean(productPreviewOpen)}
+                    />
                   ) : null}
                   {ui.flaGraphicInternalContext && snapshot?.project ? (
                     <FlaGraphicInternalTimelineBar

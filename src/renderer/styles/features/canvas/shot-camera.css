@@ -66,14 +66,41 @@
   border: 1px solid var(--ui-color-selected-border);
   border-radius: var(--ui-radius-small);
   background: color-mix(in srgb, var(--ui-color-selected-border) 22%, transparent);
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
 }
 
 .shot-camera-override-bar[data-active='true'] {
   background: color-mix(in srgb, var(--ui-color-selected-border) 38%, transparent);
 }
 
+.shot-camera-override-bar[data-selected='true'] {
+  box-shadow: 0 0 0 1px var(--ui-color-selected-border);
+  background: color-mix(in srgb, var(--ui-color-selected-border) 44%, transparent);
+}
+
+.shot-camera-override-bar[data-dragging='true'] {
+  cursor: grabbing;
+}
+
 .shot-camera-override-bar:focus-visible {
   outline: 2px solid var(--ui-color-focus-ring);
   outline-offset: 1px;
+}
+
+.shot-camera-override-handle {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 6px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.shot-camera-override-handle-start {
+  left: -3px;
+}
+
+.shot-camera-override-handle-end {
+  right: -3px;
 }

@@ -2,6 +2,8 @@ import {
   ShotService,
   type CreateShotInput,
   type Project,
+  type Shot,
+  type ShotCameraOverride,
 } from '../../domain';
 import {
   EditorProjectStore,
@@ -10,9 +12,24 @@ import {
 
 type Listener = () => void;
 
+export function resolveSelectedCameraOverride(
+  shot: Shot | null | undefined,
+  selectedOverrideId: string | null,
+  timeMs: number,
+): ShotCameraOverride | undefined {
+  if (!shot || shot.camera?.mode !== 'hybrid') return undefined;
+  const overrides = shot.camera.overrides ?? [];
+  if (selectedOverrideId) {
+    const explicit = overrides.find((override) => override.id === selectedOverrideId);
+    if (explicit) return explicit;
+  }
+  return overrides.find((override) => timeMs >= override.startMs && timeMs < override.endMs);
+}
+
 export class ShotStore {
   private currentProjectRoot: string | null = null;
   private currentShotId: string | null = null;
+  private selectedCameraOverrideId: string | null = null;
   private readonly listeners = new Set<Listener>();
   private readonly unsubscribeEditor: () => void;
 
@@ -27,6 +44,20 @@ export class ShotStore {
   }
 
   readonly getCurrentShotId = (): string | null => this.currentShotId;
+
+  readonly getSelectedCameraOverrideId = (): string | null => this.selectedCameraOverrideId;
+
+  selectCameraOverride(overrideId: string | null): void {
+    if (overrideId === null) {
+      this.setSelectedCameraOverrideId(null);
+      return;
+    }
+    const shot = this.currentShot();
+    const valid =
+      shot?.camera?.mode === 'hybrid' &&
+      Boolean(shot.camera.overrides?.some((override) => override.id === overrideId));
+    this.setSelectedCameraOverrideId(valid ? overrideId : null);
+  }
 
   readonly subscribe = (listener: Listener): (() => void) => {
     this.listeners.add(listener);
@@ -121,6 +152,12 @@ export class ShotStore {
     return snapshot.project;
   }
 
+  private currentShot(): Shot | undefined {
+    const project = this.editorStore.getSnapshot()?.project;
+    if (!project || !this.currentShotId) return undefined;
+    return project.shots.find((shot) => shot.id === this.currentShotId);
+  }
+
   private reconcileSelection(): void {
     const editorSnapshot = this.editorStore.getSnapshot();
     const project = editorSnapshot?.project;
@@ -132,12 +169,33 @@ export class ShotStore {
       project?.shots.some((shot) => shot.id === this.currentShotId)
         ? this.currentShotId
         : project?.shots[0]?.id ?? null;
-    this.setCurrentShotId(nextId);
+    const shotChanged = nextId !== this.currentShotId;
+    const nextShot = nextId ? project?.shots.find((shot) => shot.id === nextId) : undefined;
+    const nextOverrideId =
+      !projectChanged &&
+      !shotChanged &&
+      this.selectedCameraOverrideId !== null &&
+      nextShot?.camera?.mode === 'hybrid' &&
+      Boolean(nextShot.camera.overrides?.some((override) => override.id === this.selectedCameraOverrideId))
+        ? this.selectedCameraOverrideId
+        : null;
+    const overrideChanged = nextOverrideId !== this.selectedCameraOverrideId;
+    if (!shotChanged && !overrideChanged) return;
+    this.currentShotId = nextId;
+    this.selectedCameraOverrideId = nextOverrideId;
+    for (const listener of this.listeners) listener();
   }
 
   private setCurrentShotId(shotId: string | null): void {
     if (shotId === this.currentShotId) return;
     this.currentShotId = shotId;
+    this.selectedCameraOverrideId = null;
+    for (const listener of this.listeners) listener();
+  }
+
+  private setSelectedCameraOverrideId(overrideId: string | null): void {
+    if (overrideId === this.selectedCameraOverrideId) return;
+    this.selectedCameraOverrideId = overrideId;
     for (const listener of this.listeners) listener();
   }
 }
