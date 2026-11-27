@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type PointerEvent } from 'react';
 import { Camera } from 'lucide-react';
 import {
   addShotCameraOverride,
@@ -119,6 +119,8 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
     shotStore.getSelectedCameraOverrideId,
     shotStore.getSelectedCameraOverrideId,
   );
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [presetsOpen, setPresetsOpen] = useState(false);
   const [dragHandles, setDragHandles] = useState<AnimationBezier | undefined>(undefined);
   const [presetId, setPresetId] = useState<CameraMotionPresetId>('push-in');
   const [presetDurationMs, setPresetDurationMs] = useState<number>(DEFAULT_CAMERA_PRESET_DURATION_MS);
@@ -127,11 +129,12 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
   const [presetStartLayerId, setPresetStartLayerId] = useState<string>('');
   const [presetTargetLayerId, setPresetTargetLayerId] = useState<string>('');
   const [presetReturnToStart, setPresetReturnToStart] = useState<boolean>(false);
-  const [presetOverwrite, setPresetOverwrite] = useState<boolean>(false);
+  const [confirmedOverwriteKey, setConfirmedOverwriteKey] = useState<string | null>(null);
   const [presetHybridAction, setPresetHybridAction] = useState<CameraPresetHybridAction>('use-selected-override');
 
   const curveSvgRef = useRef<SVGSVGElement>(null);
   const curveDragRef = useRef<CurveDragState | null>(null);
+  const canceledCurveFieldRef = useRef<('x1' | 'y1' | 'x2' | 'y2') | null>(null);
 
   const time = resolveTimelineFrameTime(timeMs, shot.durationMs);
   const mode = shot.camera?.mode;
@@ -293,7 +296,13 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
     }
   }
 
-  const presetInput: ApplyCameraMotionPresetInput = {
+  const presetsVisible = hasManualTrack && panelOpen && presetsOpen;
+  const selectedOverrideKey = selectedOverride?.id ?? null;
+  const liveSnapshot = editorProjectStore.getSnapshot();
+  const liveProject = liveSnapshot?.project ?? null;
+  const liveProjectInstanceId = editorProjectStore.getProjectInstanceId();
+
+  const presetBaseInput = useMemo<ApplyCameraMotionPresetInput>(() => ({
     preset: presetId,
     startTimeMs: time,
     durationMs: presetDurationMs,
@@ -306,35 +315,80 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
       ? { targetLayerId: presetTargetLayerId }
       : {}),
     returnToStart: presetReturnToStart,
-    overwriteExisting: presetOverwrite,
     ...(mode === 'hybrid'
       ? {
           hybridAction: presetHybridAction,
-          selectedOverrideId: selectedOverride?.id ?? null,
+          selectedOverrideId: selectedOverrideKey,
         }
       : {}),
-  };
+  }), [
+    mode,
+    presetAmplitude,
+    presetDurationMs,
+    presetEasing,
+    presetHybridAction,
+    presetId,
+    presetReturnToStart,
+    presetStartLayerId,
+    presetTargetLayerId,
+    selectedOverrideKey,
+    time,
+  ]);
 
-  let presetPlan: ReturnType<typeof planCameraMotionPreset> | null = null;
-  let presetPlanError = '';
-  const liveSnapshot = editorProjectStore.getSnapshot();
-  if (hasManualTrack && liveSnapshot && liveSnapshot.project.shots.some((entry) => entry.id === shot.id)) {
-    try {
-      presetPlan = planCameraMotionPreset(liveSnapshot.project, shot.id, presetInput);
-    } catch (caught) {
-      presetPlanError = caught instanceof Error ? caught.message : '无法规划运镜预设。';
+  const { presetPlan, presetPlanError } = useMemo<{
+    presetPlan: ReturnType<typeof planCameraMotionPreset> | null;
+    presetPlanError: string;
+  }>(() => {
+    if (!presetsVisible || !liveProject || !liveProject.shots.some((entry) => entry.id === shot.id)) {
+      return { presetPlan: null, presetPlanError: '' };
     }
-  }
+    try {
+      return {
+        presetPlan: planCameraMotionPreset(liveProject, shot.id, presetBaseInput),
+        presetPlanError: '',
+      };
+    } catch (caught) {
+      return {
+        presetPlan: null,
+        presetPlanError: caught instanceof Error ? caught.message : '无法规划运镜预设。',
+      };
+    }
+  }, [liveProject, presetBaseInput, presetsVisible, shot.id]);
 
   const hasPresetConflict = Boolean(presetPlan && presetPlan.conflictingKeyTimes.length > 0);
-  const canApplyPreset = Boolean(presetPlan && (!hasPresetConflict || presetOverwrite));
+  const presetConflictKey = useMemo(() => {
+    if (!presetPlan || presetPlan.conflictingKeyTimes.length === 0) return null;
+    const conflictingSet = new Set(presetPlan.conflictingKeyTimes);
+    return JSON.stringify({
+      instance: liveProjectInstanceId,
+      projectId: liveProject?.id ?? null,
+      shotId: shot.id,
+      startTimeMs: presetPlan.startTimeMs,
+      endTimeMs: presetPlan.endTimeMs,
+      returnTimeMs: presetPlan.returnTimeMs,
+      rangeEndMs: presetPlan.rangeEndMs,
+      reusedOverrideId: presetPlan.reusedOverrideId,
+      selectedOverrideRange: selectedOverride
+        ? [selectedOverride.startMs, selectedOverride.endMs]
+        : null,
+      createOverrideRange: presetPlan.createOverrideRange,
+      conflictingKeys: keys.filter((entry) => conflictingSet.has(entry.timeMs)),
+    });
+  }, [keys, liveProject?.id, liveProjectInstanceId, presetPlan, selectedOverride, shot.id]);
+  const presetOverwriteAuthorized = Boolean(presetConflictKey && confirmedOverwriteKey === presetConflictKey);
+  const canApplyPreset = Boolean(presetPlan && (!hasPresetConflict || presetOverwriteAuthorized));
 
-  return <details className="shot-camera-control" data-canvas-interactive-chrome="true" onKeyDown={(event) => {
-    if (event.key === 'Escape' && curveDragRef.current) {
-      event.stopPropagation();
-      cancelCurveDrag();
-    }
-  }}>
+  return <details
+    className="shot-camera-control"
+    data-canvas-interactive-chrome="true"
+    onToggle={(event) => setPanelOpen(event.currentTarget.open)}
+    onKeyDown={(event) => {
+      if (event.key === 'Escape' && curveDragRef.current) {
+        event.stopPropagation();
+        cancelCurveDrag();
+      }
+    }}
+  >
     <summary title="镜头相机" aria-label="镜头相机"><Camera aria-hidden="true" size={17} /></summary>
     <div className="shot-camera-panel">
       <label>相机<select aria-label="相机模式" value={mode ?? 'default'} onChange={(event) => {
@@ -491,37 +545,70 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
             </div>
           )}
           {key.curveToNext && inspectedCurve.equivalentBezier && <div className="shot-camera-fields">
-            {(['x1', 'y1', 'x2', 'y2'] as const).map((field) => <label key={field}>{field.toUpperCase()}
-              <input
-                defaultValue={Number(handlePoints[field].toFixed(4))}
-                key={`${time}-${field}-${handlePoints[field]}`}
-                type="number"
-                min={0}
-                max={1}
-                step="any"
-                onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }}
-                onBlur={(event) => {
-                  const value = event.currentTarget.valueAsNumber;
-                  const next = { ...handlePoints, [field]: value };
-                  if (!Number.isFinite(value) || value < 0 || value > 1 || next.x1 > next.x2) {
-                    event.currentTarget.value = String(Number(handlePoints[field].toFixed(4)));
-                    setError('缓动控制点须在 0–1 内，且 X1 不能大于 X2。');
-                  } else if (Math.abs(value - handlePoints[field]) > 1e-6) {
+            {(['x1', 'y1', 'x2', 'y2'] as const).map((field) => {
+              const exactValue = handlePoints[field];
+              const formattedValue = String(Number(exactValue.toFixed(4)));
+              return <label key={field}>{field.toUpperCase()}
+                <input
+                  defaultValue={formattedValue}
+                  key={`${time}-${field}-${exactValue}`}
+                  type="number"
+                  min={0}
+                  max={1}
+                  step="any"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      canceledCurveFieldRef.current = null;
+                      event.currentTarget.blur();
+                    } else if (event.key === 'Escape') {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      canceledCurveFieldRef.current = field;
+                      event.currentTarget.value = formattedValue;
+                      event.currentTarget.blur();
+                    }
+                  }}
+                  onBlur={(event) => {
+                    const input = event.currentTarget;
+                    if (canceledCurveFieldRef.current === field) {
+                      canceledCurveFieldRef.current = null;
+                      input.value = formattedValue;
+                      return;
+                    }
+                    const rawText = input.value.trim();
+                    if (rawText === formattedValue) {
+                      input.value = formattedValue;
+                      return;
+                    }
+                    const value = rawText === '' ? Number.NaN : input.valueAsNumber;
+                    const next = { ...handlePoints, [field]: value };
+                    if (!Number.isFinite(value) || value < 0 || value > 1 || next.x1 > next.x2) {
+                      input.value = formattedValue;
+                      setError('缓动控制点须在 0–1 内，且 X1 不能大于 X2。');
+                      return;
+                    }
+                    if (Math.abs(value - exactValue) <= 1e-6 || Math.abs(value - Number(formattedValue)) < 1e-9) {
+                      input.value = formattedValue;
+                      return;
+                    }
                     setKey({ curveToNext: { bezier: next } });
-                  }
-                }}
-              />
-            </label>)}
+                  }}
+                />
+              </label>;
+            })}
           </div>}
         </div>}
-        <details className="shot-camera-presets">
+        <details
+          className="shot-camera-presets"
+          onToggle={(event) => setPresetsOpen(event.currentTarget.open)}
+        >
           <summary>运镜预设</summary>
           <div className="shot-camera-presets-body">
             <label>类型<select aria-label="运镜预设" value={presetId} onChange={(event) => {
               const nextPreset = event.currentTarget.value as CameraMotionPresetId;
               setPresetId(nextPreset);
               setPresetAmplitude(defaultAmplitudeForPreset(nextPreset));
-              setPresetOverwrite(false);
+              setConfirmedOverwriteKey(null);
             }}>
               {(Object.entries(CAMERA_MOTION_PRESET_LABELS) as [CameraMotionPresetId, string][]).map(([id, label]) => (
                 <option key={id} value={id}>{label}</option>
@@ -596,14 +683,16 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
               <label className="shot-camera-checkbox">
                 <input
                   type="checkbox"
-                  checked={presetOverwrite}
-                  onChange={(event) => setPresetOverwrite(event.currentTarget.checked)}
+                  checked={presetOverwriteAuthorized}
+                  onChange={(event) =>
+                    setConfirmedOverwriteKey(event.currentTarget.checked ? presetConflictKey : null)
+                  }
                 />
                 <span>覆盖已有关键帧</span>
               </label>
               {presetPlan.suggestedFreeStartMs !== null && presetPlan.suggestedFreeStartMs !== time && (
                 <Button variant="secondary" onClick={() => {
-                  setPresetOverwrite(false);
+                  setConfirmedOverwriteKey(null);
                   timelineUiStore.seek(presetPlan.suggestedFreeStartMs!, shot.durationMs);
                 }}>
                   移到空闲段 ({formatTimecode(presetPlan.suggestedFreeStartMs)})
@@ -617,13 +706,14 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
                 : undefined;
               const ok = edit(
                 (project) => shotService.applyCameraMotionPreset(project, shot.id, {
-                  ...presetInput,
+                  ...presetBaseInput,
+                  overwriteExisting: presetOverwriteAuthorized,
                   ...(newOverrideId ? { overrideId: newOverrideId } : {}),
                 }),
                 `应用运镜预设：${CAMERA_MOTION_PRESET_LABELS[presetId]}`,
               );
               if (ok) {
-                setPresetOverwrite(false);
+                setConfirmedOverwriteKey(null);
                 if (newOverrideId) shotStore.selectCameraOverride(newOverrideId);
               }
             }}>应用运镜</Button>

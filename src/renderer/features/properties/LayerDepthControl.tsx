@@ -93,9 +93,7 @@ export function LayerDepthControl({ layer, shot, snapshot }: {
       ? formattedEffectiveDepth
       : isInheriting
         ? ''
-        : layer.depth !== undefined
-          ? formatDepthNumber(layer.depth)
-          : '';
+        : layer.depth ?? '';
 
   useEffect(() => {
     return () => {

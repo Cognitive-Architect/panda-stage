@@ -229,9 +229,14 @@ function validatePose(pose: ManualCameraPose, label: string): ManualCameraPose {
   return pose;
 }
 
-function resolveBaseStartPose(project: Project, shot: Shot, startTimeMs: number): ManualCameraPose {
+function resolveBaseStartPose(
+  project: Project,
+  shot: Shot,
+  startTimeMs: number,
+  sampleEffectiveHybridCamera: boolean,
+): ManualCameraPose {
   const keys = shot.camera?.keys ?? [];
-  if (keys.length === 0 && shot.camera?.mode === 'hybrid') {
+  if (shot.camera?.mode === 'hybrid' && (keys.length === 0 || sampleEffectiveHybridCamera)) {
     const view = prepareShotCamera(project, shot, 'speaker-focus')(startTimeMs)
       ?? fullStageCamera(project.width, project.height);
     return {
@@ -285,7 +290,36 @@ export function planCameraMotionPreset(
   }
   const { startTimeMs, endTimeMs, returnTimeMs, rangeEndMs } = span;
 
-  const baseStart = resolveBaseStartPose(project, shot, startTimeMs);
+  const hybridMode = mode === 'hybrid';
+  const overrides = shot.camera?.overrides ?? [];
+  let reusedOverrideId: string | null = null;
+  let createOverrideRange: { startMs: number; endMs: number } | null = null;
+  let freeSearchBounds: { startMs: number; endMs: number } | undefined;
+
+  if (hybridMode) {
+    const hybridAction = input.hybridAction ?? 'use-selected-override';
+    if (hybridAction === 'create-override') {
+      const overlaps = overrides.some((override) => startTimeMs < override.endMs && override.startMs < rangeEndMs);
+      if (overlaps) {
+        throw new Error('新建接管区间与已有接管区间重叠，请调整开始时间或复用已有接管段。');
+      }
+      createOverrideRange = { startMs: startTimeMs, endMs: rangeEndMs };
+    } else {
+      const selected = input.selectedOverrideId
+        ? overrides.find((override) => override.id === input.selectedOverrideId)
+        : overrides.find((override) => startTimeMs >= override.startMs && startTimeMs < override.endMs);
+      if (!selected) {
+        throw new Error('自动+手工接管模式下请先选中已有接管段，或选择新建接管段后再应用运镜预设。');
+      }
+      if (startTimeMs < selected.startMs || rangeEndMs > selected.endMs) {
+        throw new Error('运镜预设时段超出当前选中的接管区间，请缩短时长、调整位置或新建接管段。');
+      }
+      reusedOverrideId = selected.id;
+      freeSearchBounds = { startMs: selected.startMs, endMs: selected.endMs };
+    }
+  }
+
+  const baseStart = resolveBaseStartPose(project, shot, startTimeMs, createOverrideRange !== null);
   const startZoom = input.startPose?.zoom ?? baseStart.zoom;
   if (!Number.isFinite(startZoom) || startZoom <= 0) {
     throw new Error('起始构图倍率必须大于 0。');
@@ -401,35 +435,6 @@ export function planCameraMotionPreset(
       timeMs: returnTimeMs,
       interpolationToNext: 'linear',
     });
-  }
-
-  const hybridMode = mode === 'hybrid';
-  const overrides = shot.camera?.overrides ?? [];
-  let reusedOverrideId: string | null = null;
-  let createOverrideRange: { startMs: number; endMs: number } | null = null;
-  let freeSearchBounds: { startMs: number; endMs: number } | undefined;
-
-  if (hybridMode) {
-    const hybridAction = input.hybridAction ?? 'use-selected-override';
-    if (hybridAction === 'create-override') {
-      const overlaps = overrides.some((override) => startTimeMs < override.endMs && override.startMs < rangeEndMs);
-      if (overlaps) {
-        throw new Error('新建接管区间与已有接管区间重叠，请调整开始时间或复用已有接管段。');
-      }
-      createOverrideRange = { startMs: startTimeMs, endMs: rangeEndMs };
-    } else {
-      const selected = input.selectedOverrideId
-        ? overrides.find((override) => override.id === input.selectedOverrideId)
-        : overrides.find((override) => startTimeMs >= override.startMs && startTimeMs < override.endMs);
-      if (!selected) {
-        throw new Error('自动+手工接管模式下请先选中已有接管段，或选择新建接管段后再应用运镜预设。');
-      }
-      if (startTimeMs < selected.startMs || rangeEndMs > selected.endMs) {
-        throw new Error('运镜预设时段超出当前选中的接管区间，请缩短时长、调整位置或新建接管段。');
-      }
-      reusedOverrideId = selected.id;
-      freeSearchBounds = { startMs: selected.startMs, endMs: selected.endMs };
-    }
   }
 
   const existingKeys = shot.camera?.keys ?? [];
