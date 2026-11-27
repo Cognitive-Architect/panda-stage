@@ -1,4 +1,4 @@
-import { applyLayerParenting } from '../layer-parent-space';
+import { applyLayerParenting, resolveLayerParentBindingAtTime } from '../layer-parent-space';
 import type {
   EvaluatedHeadGroupTransform,
   EvaluatedLayer,
@@ -573,7 +573,11 @@ export function projectShotDialogueVisual(
     dialogueSilence,
   );
   const withHead = projectShotHeadMotion(project, shot, withMouth, activeDialogueId);
-  return shot.layers.some(({ parentAttachment }) => parentAttachment) &&
+  const hasActiveAttachment = shot.layers.some((layer) => {
+    const binding = resolveLayerParentBindingAtTime(layer, withHead.timeMs);
+    return Boolean(binding.parentLayerId && binding.parentAttachment);
+  });
+  return hasActiveAttachment &&
       withHead.layers.some(({ headGroupTransform }) => headGroupTransform)
     ? { ...withHead, layers: applyLayerParenting(project, shot, withHead.layers, withHead.timeMs) }
     : withHead;

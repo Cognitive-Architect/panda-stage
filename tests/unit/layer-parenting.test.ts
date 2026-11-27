@@ -2,13 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import demo from '../../demo-project/project-v1.example.json';
 import {
-  cameraLayerTransform, evaluateShotAtTime, evaluatedLayerWorldMatrix, isFlaGraphicDefinition, layerPoseMatrix, LayerMotionService, LayerService,
-  migrateProject, prepareShotCamera, PROJECT_SCHEMA_VERSION, ProjectSchema, ProjectV44Schema,
-  resolveLayerAttachmentTargets, resolveLayerCameraTransform, setLayerDepth, setLayerDepthKey, setShotCameraKey, setShotCameraMode, ShotService, type Layer, type TimelineEvent,
+  cameraLayerTransform, evaluateShotAtTime, evaluatedLayerWorldMatrix, isFlaGraphicDefinition, layerAttachmentWorldMatrix, layerPoseMatrix, LayerMotionService, LayerService,
+  migrateProject, prepareShotCamera, PROJECT_SCHEMA_VERSION, projectShotDialogueVisual, ProjectSchema, ProjectV44Schema,
+  resolveLayerAttachmentLocalMatrix, resolveLayerAttachmentTargets, resolveLayerCameraTransform, setLayerDepth, setLayerDepthKey, setShotCameraKey, setShotCameraMode, ShotService, type Layer, type TimelineEvent,
 } from '../../src/domain';
 import { multiplyAffineMatrices, type AffineMatrix2D } from '../../src/shared/affine-matrix';
 import { buildStageRenderModel } from '../../src/shared/stage/render-model';
 import { evaluateEditorCanvasShot } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
+import { projectProductPreviewDialogue } from '../../src/renderer/shell/productPreviewModel';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
 import { evaluateExportShotAtTime, selectExportDrawingLayers } from '../../src/export-renderer/evaluateExportShotAtTime';
 import { collectExportPreparationMedia } from '../../src/domain/export-preparation';
@@ -1141,6 +1142,134 @@ describe('native Layer parenting', () => {
       });
       const refilled = service.fillBackground(staleBg, shot.id);
       expect(refilled.shots[0]!.layers.find(({ id }) => id === tip.id)?.parentKeys).toBeUndefined();
+    });
+
+    it('follows talking headGroupTransform for dynamic head attachments across dialogue projection, editor stage, product preview, and formal export (#1387)', () => {
+      const data = characterPartAnimationFixture();
+      const service = new LayerService();
+      const dialogueId = randomUUID();
+      const positioned = service.updatePosition(data.project, IDS.shot, IDS.layerAsset, { x: 500, y: 600 });
+      const grandchild = service.duplicateLayer(positioned, IDS.shot, IDS.layerAsset);
+      const positionedGrandchild = service.updatePosition(grandchild.project, IDS.shot, grandchild.layer.id, { x: 520, y: 610 });
+      const withChain = service.setParent(positionedGrandchild, IDS.shot, grandchild.layer.id, IDS.layerAsset, 0);
+      const characterVoiceId = withChain.characters.find(({ id }) => id === data.characterId)!.defaultVoiceProfileId;
+      const baseProject = ProjectSchema.parse({
+        ...withChain,
+        characters: withChain.characters.map((character) =>
+          character.id === data.characterId && character.mode === 'adaptive-parts'
+            ? {
+                ...character,
+                headMotionBinding: { partIds: [data.imagePartId] },
+                talkingHeadMotionIntensityPercent: 100,
+              }
+            : character,
+        ),
+        shots: withChain.shots.map((shot) =>
+          shot.id === IDS.shot
+            ? {
+                ...shot,
+                durationMs: 1_500,
+                dialogues: [{
+                  id: dialogueId,
+                  characterId: data.characterId,
+                  voiceProfileId: characterVoiceId,
+                  text: '说话测试',
+                  startMs: 0,
+                  endMs: 1_000,
+                  subtitleStyleId: shot.defaultSubtitleStyleId,
+                }],
+              }
+            : shot,
+        ),
+      });
+
+      const headTarget = { kind: 'character-part' as const, partId: data.imagePartId };
+      // Dynamic head attachment at 250ms; NO layer in the shot has any static parentAttachment.
+      const dynamicOnly = service.setParentKey(baseProject, IDS.shot, IDS.layerAsset, 250, data.layerId, { target: headTarget });
+      expect(dynamicOnly.shots[0]!.layers.every((layer) => layer.parentAttachment === undefined)).toBe(true);
+
+      // Equivalent static attachment created at the same 250ms boundary for reference.
+      const staticRef = service.setParent(baseProject, IDS.shot, IDS.layerAsset, data.layerId, 250, headTarget);
+
+      const projectedAt = (project: typeof baseProject, timeMs: number, activeId?: string | null) => {
+        const shot = project.shots[0]!;
+        return projectShotDialogueVisual(project, shot, evaluateShotAtTime(shot, timeMs, project), activeId);
+      };
+      const layerOf = (shot: ReturnType<typeof projectedAt>, id: string) => shot.layers.find((entry) => entry.id === id)!;
+
+      // At 625ms: headGroupTransform is (-4, -4); dynamic attachment must move prop to (496, 596) matching static attachment & part matrix once.
+      const dynamic625 = projectedAt(dynamicOnly, 625);
+      const static625 = projectedAt(staticRef, 625);
+      const char625 = layerOf(dynamic625, data.layerId);
+      expect(char625.headGroupTransform?.translateX).toBeCloseTo(-4, 6);
+      expect(char625.headGroupTransform?.translateY).toBeCloseTo(-4, 6);
+
+      const dynamicPropWorld625 = evaluatedLayerWorldMatrix(layerOf(dynamic625, IDS.layerAsset));
+      const staticPropWorld625 = evaluatedLayerWorldMatrix(layerOf(static625, IDS.layerAsset));
+      expect(dynamicPropWorld625.tx).toBeCloseTo(496, 6);
+      expect(dynamicPropWorld625.ty).toBeCloseTo(596, 6);
+      expectMatrix(dynamicPropWorld625, staticPropWorld625);
+
+      // Verify exact agreement with final part local matrix (proving head offset is applied exactly once, never doubled).
+      const ownerLayer = dynamicOnly.shots[0]!.layers.find(({ id }) => id === data.layerId)!;
+      const childLayer = dynamicOnly.shots[0]!.layers.find(({ id }) => id === IDS.layerAsset)!;
+      const targetLocal625 = resolveLayerAttachmentLocalMatrix(dynamicOnly, ownerLayer, char625, headTarget)!;
+      const expectedSpace625 = multiplyAffineMatrices(
+        layerAttachmentWorldMatrix(char625, targetLocal625, char625.parentSpace),
+        childLayer.parentKeys![0]!.parentSpaceOffset!,
+      );
+      expectMatrix(layerOf(dynamic625, IDS.layerAsset).parentSpace!, expectedSpace625);
+
+      // Multi-level child chain (head -> prop -> grandchild) consumes the final head-shifted pose too.
+      const dynamicGrandchildWorld625 = evaluatedLayerWorldMatrix(layerOf(dynamic625, grandchild.layer.id));
+      expect(dynamicGrandchildWorld625.tx).toBeCloseTo(516, 6);
+      expect(dynamicGrandchildWorld625.ty).toBeCloseTo(606, 6);
+      expectMatrix(dynamicGrandchildWorld625, evaluatedLayerWorldMatrix(layerOf(static625, grandchild.layer.id)));
+
+      // Editor stage, Product Preview, and formal export all produce the identical head-shifted pose at 625ms.
+      const dynamicShot = dynamicOnly.shots[0]!;
+      const editor625 = evaluateEditorCanvasShot(dynamicOnly, dynamicShot, 625, dialogueId);
+      const preview625 = projectProductPreviewDialogue(dynamicOnly, dynamicShot, evaluateShotAtTime(dynamicShot, 625, dynamicOnly), dialogueId);
+      const export625 = evaluateExportShotAtTime(dynamicOnly, dynamicShot, 625, dialogueId);
+      for (const surface of [editor625, preview625, export625]) {
+        expectMatrix(evaluatedLayerWorldMatrix(layerOf(surface, IDS.layerAsset)), dynamicPropWorld625);
+        expectMatrix(evaluatedLayerWorldMatrix(layerOf(surface, grandchild.layer.id)), dynamicGrandchildWorld625);
+      }
+
+      // Before dynamic attachment (125ms, head is bobbing -4,-4): prop stays at (500, 600).
+      const beforeAttach125 = projectedAt(dynamicOnly, 125);
+      expect(layerOf(beforeAttach125, data.layerId).headGroupTransform?.translateX).toBeCloseTo(-4, 6);
+      expect(evaluatedLayerWorldMatrix(layerOf(beforeAttach125, IDS.layerAsset)).tx).toBeCloseTo(500, 6);
+      expect(evaluatedLayerWorldMatrix(layerOf(beforeAttach125, IDS.layerAsset)).ty).toBeCloseTo(600, 6);
+
+      // After detaching at 750ms (head offset 0 at 750ms, +4,+4 at 875ms): detached prop does NOT continue following head bob.
+      const withDetach = service.setParentKey(dynamicOnly, IDS.shot, IDS.layerAsset, 750, null);
+      const afterDetach875 = projectedAt(withDetach, 875);
+      expect(layerOf(afterDetach875, data.layerId).headGroupTransform?.translateX).toBeCloseTo(4, 6);
+      expect(evaluatedLayerWorldMatrix(layerOf(afterDetach875, IDS.layerAsset)).tx).toBeCloseTo(500, 6);
+      expect(evaluatedLayerWorldMatrix(layerOf(afterDetach875, IDS.layerAsset)).ty).toBeCloseTo(600, 6);
+
+      // After switching at 750ms to non-head part: prop follows the new non-head part, not the speaking head bob.
+      const withSwitch = service.setParentKey(dynamicOnly, IDS.shot, IDS.layerAsset, 750, data.layerId, {
+        target: { kind: 'character-part', partId: data.graphicPartId },
+      });
+      const afterSwitch875 = projectedAt(withSwitch, 875);
+      expect(evaluatedLayerWorldMatrix(layerOf(afterSwitch875, IDS.layerAsset)).tx).toBeCloseTo(500, 6);
+      expect(evaluatedLayerWorldMatrix(layerOf(afterSwitch875, IDS.layerAsset)).ty).toBeCloseTo(600, 6);
+
+      // Outside dialogue / no head motion: neutral (500, 600).
+      const noHead1200 = projectedAt(dynamicOnly, 1_200);
+      expect(layerOf(noHead1200, data.layerId).headGroupTransform).toBeUndefined();
+      expect(evaluatedLayerWorldMatrix(layerOf(noHead1200, IDS.layerAsset)).tx).toBeCloseTo(500, 6);
+      expect(evaluatedLayerWorldMatrix(layerOf(noHead1200, IDS.layerAsset)).ty).toBeCloseTo(600, 6);
+
+      // Random seek order yields identical results to sequential evaluation.
+      const seq = [125, 250, 625, 875].map((t) => evaluatedLayerWorldMatrix(layerOf(projectedAt(withDetach, t), IDS.layerAsset)));
+      const rnd = [875, 125, 625, 250].map((t) => evaluatedLayerWorldMatrix(layerOf(projectedAt(withDetach, t), IDS.layerAsset)));
+      expectMatrix(rnd[1]!, seq[0]!);
+      expectMatrix(rnd[3]!, seq[1]!);
+      expectMatrix(rnd[2]!, seq[2]!);
+      expectMatrix(rnd[0]!, seq[3]!);
     });
   });
 });
