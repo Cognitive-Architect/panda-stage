@@ -32,7 +32,7 @@ import { buildDialogueSubtitleCues } from '../shared/preview/dialogue-subtitle';
 import { evaluateSubtitleAtTime } from '../shared/preview/subtitle-engine';
 import { CanvasStage } from '../renderer/stage/CanvasStage';
 import { PROBE_ASSET_URLS } from '../renderer/stage/probe-assets';
-import { evaluateExportShotAtTime, selectExportDrawingLayers } from './evaluateExportShotAtTime';
+import { evaluateFormalExportFrame } from './evaluateExportShotAtTime';
 import { resolveProductPreviewSubtitleStyle } from '../renderer/shell/productPreviewModel';
 import {
   isExactExportFrameDrawn,
@@ -195,35 +195,33 @@ export function ExportRendererApp(): React.JSX.Element {
       [PROBE_CHARACTER_ASSET_ID]: `${characterUrl}?issue573-frame=${frame}`,
     };
   }, [formalAssetUrls, formalRequest, issue573ExactFrameProbe, requestedTimeMs, videoFrameUrls]);
-  const evaluatedBaseShot = useMemo(
-    () => evaluateShotAtTime(shot, shotLocalTimeMs, project),
-    [shotLocalTimeMs, shot, project],
-  );
   const subtitleCues = useMemo(
     () => formalRequest ? buildDialogueSubtitleCues(shot.dialogues) : PROBE_SUBTITLE_CUES,
     [formalRequest, shot.dialogues],
   );
-  const subtitle = evaluateSubtitleAtTime(subtitleCues, evaluatedBaseShot.timeMs);
-  const evaluatedShot = useMemo(
-    () => formalRequest
-      ? selectExportDrawingLayers(evaluateExportShotAtTime(
-          project,
-          shot,
-          shotLocalTimeMs,
-          subtitle?.id ?? null,
-          formalRequest.dialogueSilence,
-          formalRequest.outputLayerId,
-        ))
-      : evaluatedBaseShot,
-    [
-      evaluatedBaseShot,
-      formalRequest,
-      project,
-      shot,
-      shotLocalTimeMs,
-      subtitle?.id,
-    ],
-  );
+  const { subtitle, evaluatedShot } = useMemo(() => {
+    if (formalRequest) {
+      return evaluateFormalExportFrame(
+        project,
+        shot,
+        shotLocalTimeMs,
+        subtitleCues,
+        formalRequest.dialogueSilence,
+        formalRequest.outputLayerId,
+      );
+    }
+    const evaluatedBaseShot = evaluateShotAtTime(shot, shotLocalTimeMs, project);
+    return {
+      subtitle: evaluateSubtitleAtTime(subtitleCues, evaluatedBaseShot.timeMs),
+      evaluatedShot: evaluatedBaseShot,
+    };
+  }, [
+    formalRequest,
+    project,
+    shot,
+    shotLocalTimeMs,
+    subtitleCues,
+  ]);
   const cameraPlan = useMemo(
     () => formalRequest && !formalRequest.outputLayerId
       ? prepareShotCamera(project, shot, formalRequest.cameraMode)

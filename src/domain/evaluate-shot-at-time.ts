@@ -25,7 +25,7 @@ import {
   type FlaGraphicInternalTimeline,
 } from './models/flaGraphicTimeline';
 import { LAYER_MAX_SCALE, LAYER_MIN_SCALE } from './constants';
-import { TIMELINE_FPS, frameTimeMs, isValidFrameTime } from './timeline/frame-grid';
+import { TIMELINE_FPS, frameTimeMs, isValidFrameTime, isValidSignedFrameTime } from './timeline/frame-grid';
 import { evaluateLayerMotionAtTime, type EvaluatedLayerMotion } from './evaluate-layer-motion';
 import { evaluateAnimationClipAtTime, evaluateAnimationEase, type EvaluatedAnimationValue } from './evaluate-animation-core';
 import {
@@ -216,8 +216,8 @@ function resolveCharacterActionHoldTimeMs(animation: ProjectAnimationDefinition)
 }
 
 function elapsedAnimationSourcePosition(timeMs: number, startTimeMs: number, sourceFps: number): number {
-  // Resolve on-grid stamps as frame indices so 958 ms is frame 23 at 24 fps.
-  return isValidFrameTime(timeMs) && isValidFrameTime(startTimeMs)
+  // Resolve on-grid stamps (including negative signed frame offsets) as frame indices so 958 ms is frame 23 at 24 fps.
+  return isValidFrameTime(timeMs) && isValidSignedFrameTime(startTimeMs)
     ? (Math.round(timeMs * TIMELINE_FPS / 1_000) - Math.round(startTimeMs * TIMELINE_FPS / 1_000)) *
       sourceFps / TIMELINE_FPS
     : (timeMs - startTimeMs) * sourceFps / 1_000;
@@ -535,8 +535,9 @@ export function evaluateLayerPreTrackState(
     ? activeTimeLink.startMs
     : (layer.startTimeMs ?? 0);
   const insideTimeLinkWindow = activeTimeLink
-    ? graphicTimeMs >= activeTimeLink.startMs &&
-      graphicTimeMs < activeTimeLink.endMs
+    ? !activeTimeLink.outOfShotBounds &&
+      graphicTimeMs >= activeTimeLink.visibleStartMs &&
+      graphicTimeMs < activeTimeLink.visibleEndMs
     : true;
   const events = [...(eventsOverride ?? shot.timelineEvents.filter((event) => event.layerId === layer.id))].sort(
     (left, right) =>
@@ -753,6 +754,17 @@ export function assertLayerClipFinalScalesInBounds(
 }
 
 /**
+ * Normalizes a requested Shot timestamp to an integer millisecond value
+ * clamped within `[0, durationMs]`, matching `evaluateShotAtTime`.
+ */
+export function normalizeShotTimeMs(
+  requestedTimeMs: number,
+  durationMs: number,
+): number {
+  return Math.max(0, Math.min(Math.round(requestedTimeMs), durationMs));
+}
+
+/**
  * Deterministic point-state resolver for authored Mouth Cues (`rest | open | none`).
  * Depends strictly on `shot.timelineEvents`, `layerId`, and `requestedTimeMs`.
  */
@@ -761,10 +773,7 @@ export function resolveEffectiveMouthCue(
   layerId: string,
   requestedTimeMs: number,
 ): MouthCueState | 'none' {
-  const timeMs = Math.max(
-    0,
-    Math.min(Math.round(requestedTimeMs), shot.durationMs),
-  );
+  const timeMs = normalizeShotTimeMs(requestedTimeMs, shot.durationMs);
   const effective = shot.timelineEvents
     .filter(
       (event): event is MouthCueEvent =>
@@ -828,10 +837,7 @@ export function evaluateShotAtTime(
   project: Project,
   options?: { graphicFrameTimeMs?: number; includeShake?: boolean },
 ): EvaluatedShot {
-  const timeMs = Math.max(
-    0,
-    Math.min(Math.round(requestedTimeMs), shot.durationMs),
-  );
+  const timeMs = normalizeShotTimeMs(requestedTimeMs, shot.durationMs);
 
   const eventsByLayer = new Map<string, TimelineEvent[]>();
   for (const event of shot.timelineEvents) {

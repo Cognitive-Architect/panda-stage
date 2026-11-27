@@ -1,5 +1,9 @@
 import { invertAffineMatrix, multiplyAffineMatrices, type AffineMatrix2D } from '../shared/affine-matrix';
-import { resolveLayerAttachmentLocalMatrix } from './layer-attachment';
+import {
+  buildLayerAttachmentTargetLookup,
+  resolveLayerAttachmentLocalMatrix,
+  type LayerAttachmentTargetLookup,
+} from './layer-attachment';
 import { resolveCharacterActionRenderTransform } from './selectors/visualParts';
 import { evaluateAnimationTrackAtTime } from './evaluate-animation-core';
 import type { EvaluatedLayer } from './evaluate-shot-at-time';
@@ -122,6 +126,41 @@ export function validLayerParentTargets(
   });
 }
 
+export function batchBaseParentEditCreatesCycle(
+  shot: Shot,
+  childIds: readonly string[],
+  parentId: string,
+): boolean {
+  const selectedSet = new Set(childIds);
+  if (selectedSet.has(parentId)) return true;
+  const candidateLayers = shot.layers.map((layer) =>
+    selectedSet.has(layer.id) ? { ...layer, parentLayerId: parentId } : layer,
+  );
+  const candidateShot: Shot = { ...shot, layers: candidateLayers };
+  const candidateById = new Map(candidateLayers.map((layer) => [layer.id, layer]));
+  for (const childId of selectedSet) {
+    const child = candidateById.get(childId);
+    if (!child) continue;
+    const baseEndMs = child.parentKeys?.[0]?.timeMs ?? Infinity;
+    const sampleTimes = parentCycleSampleTimes(candidateShot, 0, baseEndMs);
+    if (sampleTimes.some((sampleTime) => repeatedParentId(candidateById, childId, parentId, sampleTime) !== undefined)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function validBatchLayerParentTargets(
+  shot: Shot,
+  childIds: readonly string[],
+): Layer[] {
+  const selectedSet = new Set(childIds);
+  if (selectedSet.size === 0) return [];
+  return shot.layers.filter((candidate) =>
+    !selectedSet.has(candidate.id) && !batchBaseParentEditCreatesCycle(shot, childIds, candidate.id),
+  );
+}
+
 export function applyLayerParenting(project: Project, shot: Shot, layers: EvaluatedLayer[], timeMs: number): EvaluatedLayer[] {
   if (!shot.layers.some((layer) =>
     layer.parentLayerId || layer.parentSpaceOffset || layer.parentKeys?.length ||
@@ -129,6 +168,8 @@ export function applyLayerParenting(project: Project, shot: Shot, layers: Evalua
   )) return layers;
   const evaluated = new Map(layers.map((layer) => [layer.id, layer]));
   const usingAttachmentFallback = new Set<string>();
+  // Per-invocation, per-owner-Layer-instance attachment lookup (no cross-frame cache).
+  const attachmentLookups = new Map<string, LayerAttachmentTargetLookup>();
   const authored = new Map(shot.layers.map((layer) => [layer.id, layer]));
   const bindings = new Map(shot.layers.map((layer) => [layer.id, resolveLayerParentBindingAtTime(layer, timeMs)]));
   const local = new Map(layers.map((layer) => [layer.id, layerPoseMatrix(layer)]));
@@ -183,7 +224,20 @@ export function applyLayerParenting(project: Project, shot: Shot, layers: Evalua
       if (parent && parentId && binding?.parentAttachment) {
         const owner = authored.get(parentId)!;
         const ownerPose = evaluated.get(parentId)!;
-        const targetLocal = resolveLayerAttachmentLocalMatrix(project, owner, ownerPose, binding.parentAttachment.target);
+        const targetLocal = resolveLayerAttachmentLocalMatrix(
+          project,
+          owner,
+          ownerPose,
+          binding.parentAttachment.target,
+          () => {
+            let lookup = attachmentLookups.get(parentId);
+            if (!lookup) {
+              lookup = buildLayerAttachmentTargetLookup(project, owner, ownerPose);
+              attachmentLookups.set(parentId, lookup);
+            }
+            return lookup;
+          },
+        );
         if (!targetLocal) usingAttachmentFallback.add(entry);
         targetWorld = layerAttachmentWorldMatrix(
           ownerPose, targetLocal ?? binding.parentAttachment.ownerLocalFallback, spaces.get(parentId),

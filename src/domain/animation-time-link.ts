@@ -7,14 +7,26 @@ import {
   type Project,
   type Shot,
 } from './models';
+import {
+  isValidFrameTime,
+  isValidSignedFrameTime,
+  signedFrameOffsetMs,
+  TIMELINE_FPS,
+} from './timeline/frame-grid';
 
 export type ResolvedLayerAnimationTimeLink =
   | { readonly status: 'none' }
   | {
       readonly status: 'active';
       readonly link: LayerAnimationTimeLink;
+      readonly offsetMs: number;
+      readonly sourceStartMs: number;
+      readonly sourceEndMs: number;
       readonly startMs: number;
       readonly endMs: number;
+      readonly visibleStartMs: number;
+      readonly visibleEndMs: number;
+      readonly outOfShotBounds: boolean;
       readonly sourceLayer: Layer;
       readonly event: CharacterActionEvent;
     }
@@ -50,11 +62,50 @@ export function formatAnimationTimeLinkWindow(
   return `${formatLinkSeconds(startMs)}–${formatLinkSeconds(endMs)}s`;
 }
 
+export function formatAnimationTimeLinkOffset(offsetMs: number): string {
+  if (!Number.isFinite(offsetMs) || offsetMs === 0) return '0ms';
+  const rounded = Math.round(offsetMs);
+  return rounded > 0 ? `+${rounded}ms` : `${rounded}ms`;
+}
+
+function shiftAnimationTimeLinkWindow(
+  sourceStartMs: number,
+  sourceEndMs: number,
+  offsetMs: number,
+): { readonly startMs: number; readonly endMs: number } {
+  if (offsetMs === 0) {
+    return { startMs: sourceStartMs, endMs: sourceEndMs };
+  }
+  if (isValidFrameTime(sourceStartMs) && isValidSignedFrameTime(offsetMs)) {
+    const offsetFrames = Math.round((offsetMs * TIMELINE_FPS) / 1_000);
+    const startFrame =
+      Math.round((sourceStartMs * TIMELINE_FPS) / 1_000) + offsetFrames;
+    const startMs = signedFrameOffsetMs(startFrame);
+    if (isValidFrameTime(sourceEndMs)) {
+      const endFrame =
+        Math.round((sourceEndMs * TIMELINE_FPS) / 1_000) + offsetFrames;
+      return { startMs, endMs: signedFrameOffsetMs(endFrame) };
+    }
+    return { startMs, endMs: startMs + (sourceEndMs - sourceStartMs) };
+  }
+  return {
+    startMs: sourceStartMs + offsetMs,
+    endMs: sourceEndMs + offsetMs,
+  };
+}
+
 /**
  * Resolves an animation layer's optional character-action time link against
  * the current Shot state. Never throws on deleted/missing targets: broken links
  * return `{ status: 'broken', link }` so evaluation can fall back to the
  * layer's independent startTimeMs and UI can offer repair or unlink.
+ *
+ * When `link.offsetMs` is set, author-frame-aligned inputs shift by exact
+ * frame indices (preserving frame span without integer rounding drift), while
+ * arbitrary millisecond offsets shift `[s, e)` to `[s + offsetMs, e + offsetMs)`
+ * directly. Crossing the Shot boundaries clips only `visibleStartMs`/`visibleEndMs`;
+ * completely out-of-bounds shifted windows remain `status: 'active'` with
+ * `outOfShotBounds: true` (never misclassified as broken).
  */
 export function resolveLayerAnimationTimeLink(
   shot: Shot,
@@ -81,11 +132,25 @@ export function resolveLayerAnimationTimeLink(
   if (!event || event.endMs <= event.startMs) {
     return { status: 'broken', link };
   }
+  const offsetMs = link.offsetMs ?? 0;
+  const { startMs, endMs } = shiftAnimationTimeLinkWindow(
+    event.startMs,
+    event.endMs,
+    offsetMs,
+  );
+  const visibleStartMs = Math.max(0, startMs);
+  const visibleEndMs = Math.min(shot.durationMs, endMs);
   return {
     status: 'active',
     link,
-    startMs: event.startMs,
-    endMs: event.endMs,
+    offsetMs,
+    sourceStartMs: event.startMs,
+    sourceEndMs: event.endMs,
+    startMs,
+    endMs,
+    visibleStartMs,
+    visibleEndMs,
+    outOfShotBounds: visibleStartMs >= visibleEndMs,
     sourceLayer,
     event,
   };
@@ -198,7 +263,20 @@ export function setLayerAnimationTimeLink(
 
   const nextLayer: Layer = { ...layer };
   if (validatedLink) {
-    nextLayer.animationTimeLink = { ...validatedLink };
+    const normalizedOffset = validatedLink.offsetMs;
+    nextLayer.animationTimeLink =
+      normalizedOffset !== undefined && normalizedOffset !== 0
+        ? {
+            kind: validatedLink.kind,
+            sourceLayerId: validatedLink.sourceLayerId,
+            eventId: validatedLink.eventId,
+            offsetMs: normalizedOffset,
+          }
+        : {
+            kind: validatedLink.kind,
+            sourceLayerId: validatedLink.sourceLayerId,
+            eventId: validatedLink.eventId,
+          };
   } else {
     delete nextLayer.animationTimeLink;
   }

@@ -525,6 +525,7 @@ export const LayerAnimationTimeLinkSchema = z.strictObject({
   kind: z.literal('character-action'),
   sourceLayerId: IdSchema,
   eventId: IdSchema,
+  offsetMs: FiniteNumberSchema.int().optional(),
 });
 
 export type LayerParentKeyDepthMode = z.infer<typeof LayerParentKeyDepthModeSchema>;

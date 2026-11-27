@@ -295,11 +295,36 @@ export function resolveLayerAttachmentTargets(
   });
 }
 
+export type LayerAttachmentTargetLookup = ReadonlyMap<string, AffineMatrix2D>;
+
+/**
+ * Builds a per-invocation owner-local target lookup for one specific owner Layer
+ * instance. Failures are isolated locally so each attached child can fall back
+ * to its own `ownerLocalFallback` without affecting other owners.
+ */
+export function buildLayerAttachmentTargetLookup(
+  project: Project,
+  owner: Layer,
+  evaluated: EvaluatedLayer,
+): LayerAttachmentTargetLookup {
+  const lookup = new Map<string, AffineMatrix2D>();
+  try {
+    for (const item of resolveLayerAttachmentTargets(project, owner, evaluated)) {
+      const key = layerAttachmentTargetKey(item.target);
+      if (!lookup.has(key)) lookup.set(key, item.transform);
+    }
+  } catch {
+    // A damaged or temporarily unavailable owner falls back locally per child.
+  }
+  return lookup;
+}
+
 export function resolveLayerAttachmentLocalMatrix(
   project: Project,
   owner: Layer,
   evaluated: EvaluatedLayer,
   target: LayerAttachmentTarget,
+  targetLookup?: LayerAttachmentTargetLookup | (() => LayerAttachmentTargetLookup),
 ): AffineMatrix2D | undefined {
   try {
     let resolvedTarget: LayerAttachmentTarget = target;
@@ -313,6 +338,10 @@ export function resolveLayerAttachmentLocalMatrix(
       resolvedTarget = { kind: 'graphic-node', identityPath: [...proven] };
     }
     const key = layerAttachmentTargetKey(resolvedTarget);
+    if (targetLookup) {
+      const lookup = typeof targetLookup === 'function' ? targetLookup() : targetLookup;
+      return lookup.get(key);
+    }
     return resolveLayerAttachmentTargets(project, owner, evaluated)
       .find((item) => layerAttachmentTargetKey(item.target) === key)?.transform;
   } catch {

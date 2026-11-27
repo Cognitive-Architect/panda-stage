@@ -1,15 +1,32 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Plus } from 'lucide-react';
 import {
-  canEditLayerDepth, moveLayerDepthKey, moveShotCameraKey, removeLayerDepthKey, removeShotCameraKey,
-  removeShotCameraOverride, resolveTimelineFrameTime, setLayerDepthKey, setShotCameraKey, TIMELINE_FPS,
-  type Layer, type Project, type Shot,
+  canEditLayerDepth, moveLayerDepthKey, moveShotCameraKey, moveShotCameraOverride,
+  removeLayerDepthKey, removeShotCameraKey, removeShotCameraOverride, resolveTimelineFrameTime,
+  setLayerDepthKey, setShotCameraKey, TIMELINE_FPS, updateShotCameraOverride,
+  type Layer, type Project, type Shot, type ShotCameraOverride,
 } from '../../../domain';
 import { editorProjectStore, type EditorProjectSnapshot } from '../../stores/EditorProjectStore';
-import { shotStore } from '../../stores/shotStore';
+import { resolveSelectedCameraOverride, shotStore } from '../../stores/shotStore';
+import {
+  OVERRIDE_DRAG_THRESHOLD_PX,
+  previewCameraOverrideDrag,
+  type CameraOverrideDraftRange,
+  type CameraOverrideDragMode,
+} from './cameraOverrideGesture';
 import { previewPositionKeyTime } from './positionKeyGesture';
 import { formatTimecode, timeToPx } from './timeGeometry';
 import { timelineUiStore } from './timelineUiStore';
+
+interface OverrideDragState {
+  pointer: number;
+  id: string;
+  mode: CameraOverrideDragMode;
+  startX: number;
+  moved: boolean;
+  snapshot: EditorProjectSnapshot;
+  shotId: string;
+}
 
 export function ShotCameraLane({ snapshot, shot, currentTimeMs, pixelsPerMs, trackWidth, disabled, depthLayer }: {
   snapshot: EditorProjectSnapshot;
@@ -27,18 +44,133 @@ export function ShotCameraLane({ snapshot, shot, currentTimeMs, pixelsPerMs, tra
   const testId = depthLayer ? 'layer-depth' : 'shot-camera';
   const inactive = disabled || (depthLayer !== undefined && !canEditLayerDepth(depthLayer, shot));
   const time = resolveTimelineFrameTime(currentTimeMs, shot.durationMs);
+  const selectedOverrideId = useSyncExternalStore(
+    shotStore.subscribe,
+    shotStore.getSelectedCameraOverrideId,
+    shotStore.getSelectedCameraOverrideId,
+  );
+  const effectiveSelectedOverrideId = !depthLayer
+    ? (resolveSelectedCameraOverride(shot, selectedOverrideId, time)?.id ?? null)
+    : null;
+
   const drag = useRef<{ pointer: number; time: number; x: number; snapshot: EditorProjectSnapshot } | null>(null);
   const [draft, setDraft] = useState<number | null>(null);
+  const overrideDrag = useRef<OverrideDragState | null>(null);
+  const [overrideDraft, setOverrideDraft] = useState<({ id: string } & CameraOverrideDraftRange) | null>(null);
   const [error, setError] = useState(false);
 
-  function commit(operation: (project: Project) => Project, label: string) {
+  useEffect(() => {
+    overrideDrag.current = null;
+    setOverrideDraft(null);
+  }, [snapshot, shot.id, inactive]);
+
+  useEffect(() => {
+    if (!overrideDraft) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !overrideDrag.current) return;
+      overrideDrag.current = null;
+      setOverrideDraft(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [overrideDraft]);
+
+  function commit(operation: (project: Project) => Project, actionLabel: string) {
     if (inactive || editorProjectStore.getSnapshot() !== snapshot || shotStore.getCurrentShotId() !== shot.id) return;
     try {
       const next = operation(snapshot.project);
-      if (next !== snapshot.project) editorProjectStore.updateProject(next, label);
+      if (next !== snapshot.project) editorProjectStore.updateProject(next, actionLabel);
       setError(false);
     } catch {
       setError(true);
+    }
+  }
+
+  function cancelOverrideDrag() {
+    overrideDrag.current = null;
+    setOverrideDraft(null);
+  }
+
+  function startOverrideDrag(
+    event: React.PointerEvent<HTMLElement>,
+    override: ShotCameraOverride,
+    mode: CameraOverrideDragMode,
+  ) {
+    event.stopPropagation();
+    if (inactive || event.button !== 0) return;
+    shotStore.selectCameraOverride(override.id);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    overrideDrag.current = {
+      pointer: event.pointerId,
+      id: override.id,
+      mode,
+      startX: event.clientX,
+      moved: false,
+      snapshot,
+      shotId: shot.id,
+    };
+  }
+
+  function moveOverrideDrag(event: React.PointerEvent<HTMLElement>, override: ShotCameraOverride) {
+    const active = overrideDrag.current;
+    if (!active || active.pointer !== event.pointerId || active.id !== override.id) return;
+    if (
+      inactive ||
+      active.snapshot !== snapshot ||
+      editorProjectStore.getSnapshot() !== snapshot ||
+      shotStore.getCurrentShotId() !== active.shotId
+    ) {
+      cancelOverrideDrag();
+      return;
+    }
+    const deltaPx = event.clientX - active.startX;
+    if (!active.moved && Math.abs(deltaPx) < OVERRIDE_DRAG_THRESHOLD_PX) return;
+    active.moved = true;
+    const preview = previewCameraOverrideDrag({
+      override,
+      overrides,
+      mode: active.mode,
+      deltaPx,
+      pixelsPerMs,
+      durationMs: shot.durationMs,
+    });
+    setOverrideDraft({ id: override.id, ...preview });
+  }
+
+  function endOverrideDrag(event: React.PointerEvent<HTMLElement>, override: ShotCameraOverride) {
+    event.stopPropagation();
+    const active = overrideDrag.current;
+    if (!active || active.pointer !== event.pointerId || active.id !== override.id) return;
+    overrideDrag.current = null;
+    setOverrideDraft(null);
+    if (
+      inactive ||
+      active.snapshot !== snapshot ||
+      editorProjectStore.getSnapshot() !== snapshot ||
+      shotStore.getCurrentShotId() !== active.shotId
+    ) {
+      return;
+    }
+    if (!active.moved) {
+      shotStore.selectCameraOverride(override.id);
+      timelineUiStore.seek(override.startMs, shot.durationMs);
+      return;
+    }
+    const target = previewCameraOverrideDrag({
+      override,
+      overrides,
+      mode: active.mode,
+      deltaPx: event.clientX - active.startX,
+      pixelsPerMs,
+      durationMs: shot.durationMs,
+    });
+    if (target.startMs === override.startMs && target.endMs === override.endMs) return;
+    if (active.mode === 'move') {
+      commit((project) => moveShotCameraOverride(project, shot.id, override.id, target.startMs), '移动相机接管段');
+    } else if (active.mode === 'resize-start') {
+      commit((project) => updateShotCameraOverride(project, shot.id, override.id, { startMs: target.startMs }), '调整相机接管段');
+    } else {
+      commit((project) => updateShotCameraOverride(project, shot.id, override.id, { endMs: target.endMs }), '调整相机接管段');
     }
   }
 
@@ -54,27 +186,86 @@ export function ShotCameraLane({ snapshot, shot, currentTimeMs, pixelsPerMs, tra
       </span>
       <div className="timeline-lane-content position-lane-content" style={{ width: trackWidth }}>
         {overrides.map((override) => {
-          const active = time >= override.startMs && time < override.endMs;
+          const isDragging = overrideDraft?.id === override.id;
+          const displayStartMs = isDragging ? overrideDraft.startMs : override.startMs;
+          const displayEndMs = isDragging ? overrideDraft.endMs : override.endMs;
+          const active = time >= displayStartMs && time < displayEndMs;
+          const selected = effectiveSelectedOverrideId === override.id;
           return (
-            <button key={override.id} type="button" className="shot-camera-override-bar"
-              disabled={inactive} data-testid="shot-camera-override" data-active={active}
+            <div
+              key={override.id}
+              role="button"
+              tabIndex={inactive ? -1 : 0}
+              aria-disabled={inactive || undefined}
+              className="shot-camera-override-bar"
+              data-testid="shot-camera-override"
+              data-override-id={override.id}
+              data-active={active}
+              data-selected={selected}
+              data-dragging={isDragging}
+              data-start-ms={displayStartMs}
+              data-end-ms={displayEndMs}
               style={{
-                left: timeToPx(override.startMs, pixelsPerMs),
-                width: Math.max(6, timeToPx(override.endMs - override.startMs, pixelsPerMs)),
+                left: timeToPx(displayStartMs, pixelsPerMs),
+                width: Math.max(6, timeToPx(displayEndMs - displayStartMs, pixelsPerMs)),
               }}
-              aria-label={`手工接管 ${formatTimecode(override.startMs)}–${formatTimecode(override.endMs)}`}
-              title={`手工接管 ${formatTimecode(override.startMs)}–${formatTimecode(override.endMs)}`}
+              aria-label={`手工接管 ${formatTimecode(displayStartMs)}–${formatTimecode(displayEndMs)}`}
+              title={`手工接管 ${formatTimecode(displayStartMs)}–${formatTimecode(displayEndMs)}`}
               onClick={(event) => {
                 event.stopPropagation();
-                timelineUiStore.seek(override.startMs, shot.durationMs);
+                if (inactive) return;
+                if (event.detail === 0) {
+                  shotStore.selectCameraOverride(override.id);
+                  timelineUiStore.seek(override.startMs, shot.durationMs);
+                }
               }}
+              onPointerDown={(event) => startOverrideDrag(event, override, 'move')}
+              onPointerMove={(event) => moveOverrideDrag(event, override)}
+              onPointerUp={(event) => endOverrideDrag(event, override)}
+              onPointerCancel={cancelOverrideDrag}
+              onLostPointerCapture={cancelOverrideDrag}
               onKeyDown={(event) => {
+                if (event.key === 'Escape' && overrideDrag.current?.id === override.id) {
+                  event.stopPropagation();
+                  event.preventDefault();
+                  cancelOverrideDrag();
+                  return;
+                }
+                if (event.key === 'Enter' || event.key === ' ') {
+                  if (inactive) return;
+                  event.stopPropagation();
+                  event.preventDefault();
+                  shotStore.selectCameraOverride(override.id);
+                  timelineUiStore.seek(override.startMs, shot.durationMs);
+                  return;
+                }
                 if (event.key !== 'Delete' && event.key !== 'Backspace') return;
                 event.stopPropagation();
                 event.preventDefault();
                 commit((project) => removeShotCameraOverride(project, shot.id, override.id), '删除相机接管段');
               }}
-            />
+            >
+              <span
+                className="shot-camera-override-handle shot-camera-override-handle-start"
+                data-testid="shot-camera-override-handle-start"
+                aria-hidden="true"
+                onPointerDown={(event) => startOverrideDrag(event, override, 'resize-start')}
+                onPointerMove={(event) => moveOverrideDrag(event, override)}
+                onPointerUp={(event) => endOverrideDrag(event, override)}
+                onPointerCancel={cancelOverrideDrag}
+                onLostPointerCapture={cancelOverrideDrag}
+              />
+              <span
+                className="shot-camera-override-handle shot-camera-override-handle-end"
+                data-testid="shot-camera-override-handle-end"
+                aria-hidden="true"
+                onPointerDown={(event) => startOverrideDrag(event, override, 'resize-end')}
+                onPointerMove={(event) => moveOverrideDrag(event, override)}
+                onPointerUp={(event) => endOverrideDrag(event, override)}
+                onPointerCancel={cancelOverrideDrag}
+                onLostPointerCapture={cancelOverrideDrag}
+              />
+            </div>
           );
         })}
         {keys.map((key, index) => {

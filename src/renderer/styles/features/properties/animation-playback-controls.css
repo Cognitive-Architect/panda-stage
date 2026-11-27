@@ -150,6 +150,39 @@
   font-size: 11px;
 }
 
+.animation-playback-offset-control {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 150px;
+  align-items: center;
+  gap: 4px;
+}
+
+.animation-playback-offset-input-wrap {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 1 1 76px;
+  align-items: center;
+}
+
+.animation-playback-offset-input-wrap input {
+  width: 100%;
+  flex: 1 1 auto;
+}
+
+.animation-playback-offset-step {
+  min-height: 34px !important;
+  padding: 5px 6px !important;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.animation-playback-link-window {
+  color: var(--ui-color-text-secondary);
+  font-size: 11px;
+}
+
 .animation-playback-segmented {
   display: flex;
   width: 100%;

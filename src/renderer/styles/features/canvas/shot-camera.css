@@ -21,7 +21,9 @@
   position: absolute;
   right: 0;
   bottom: calc(100% + 6px);
-  width: min(290px, 76vw);
+  width: min(300px, 78vw);
+  max-height: min(74vh, 560px);
+  overflow-y: auto;
   display: grid;
   gap: 8px;
   padding: 10px;
@@ -52,6 +54,50 @@
   flex: 1;
 }
 
+.shot-camera-curve {
+  display: grid;
+  gap: 6px;
+}
+
+.shot-camera-presets {
+  border-top: 1px solid var(--ui-color-separator);
+  padding-top: 6px;
+}
+
+.shot-camera-presets > summary {
+  display: block;
+  width: auto;
+  height: auto;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 2px 0;
+  font-weight: 500;
+}
+
+.shot-camera-presets-body {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.shot-camera-panel label.shot-camera-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shot-camera-panel label.shot-camera-checkbox input {
+  width: auto;
+}
+
+.shot-camera-conflict {
+  display: grid;
+  gap: 4px;
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+}
+
 .product-preview-stage[data-manual-camera='true'] {
   background: black;
 }
@@ -66,14 +112,41 @@
   border: 1px solid var(--ui-color-selected-border);
   border-radius: var(--ui-radius-small);
   background: color-mix(in srgb, var(--ui-color-selected-border) 22%, transparent);
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
 }
 
 .shot-camera-override-bar[data-active='true'] {
   background: color-mix(in srgb, var(--ui-color-selected-border) 38%, transparent);
 }
 
+.shot-camera-override-bar[data-selected='true'] {
+  box-shadow: 0 0 0 1px var(--ui-color-selected-border);
+  background: color-mix(in srgb, var(--ui-color-selected-border) 44%, transparent);
+}
+
+.shot-camera-override-bar[data-dragging='true'] {
+  cursor: grabbing;
+}
+
 .shot-camera-override-bar:focus-visible {
   outline: 2px solid var(--ui-color-focus-ring);
   outline-offset: 1px;
+}
+
+.shot-camera-override-handle {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 6px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.shot-camera-override-handle-start {
+  left: -3px;
+}
+
+.shot-camera-override-handle-end {
+  right: -3px;
 }

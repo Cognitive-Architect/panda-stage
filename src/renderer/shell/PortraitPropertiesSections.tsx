@@ -4,6 +4,7 @@ import {
   type LayerBackgroundControlProps,
 } from '../features/properties/LayerBackgroundControl';
 import { LayerOrderControls } from '../features/properties/LayerOrderControls';
+import { ShotLayerListPanel } from '../features/properties/ShotLayerListPanel';
 import { AnimationPlaybackControls } from '../features/properties/AnimationPlaybackControls';
 import {
   LayerTransformPanel,
@@ -69,6 +70,7 @@ export function PortraitPropertiesSections({
         data-testid="right-inspector-layer-section"
       >
         <summary>图层</summary>
+        <ShotLayerListPanel />
         <LayerOrderControls
           backgroundLayerSelected={backgroundLayerSelected}
           compact

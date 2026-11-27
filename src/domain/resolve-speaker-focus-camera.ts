@@ -10,6 +10,42 @@ export type { CameraView };
 
 export const SPEAKER_FOCUS_ZOOM = 1.5;
 export const SPEAKER_FOCUS_TRANSITION_MS = 250;
+export const DEFAULT_AUTO_FRAMING_TARGET_U = 0.5;
+export const DEFAULT_AUTO_FRAMING_TARGET_V = 0.5;
+
+export const AUTO_FRAMING_PRESETS = {
+  center: { targetU: 0.5, targetV: 0.5 },
+  'left-third': { targetU: 1 / 3, targetV: 0.5 },
+  'right-third': { targetU: 2 / 3, targetV: 0.5 },
+} as const;
+
+export type AutoFramingPresetId = keyof typeof AUTO_FRAMING_PRESETS;
+
+export interface ResolvedShotAutoFraming {
+  readonly zoom: number;
+  readonly targetU: number;
+  readonly targetV: number;
+}
+
+export function resolveShotAutoFraming(
+  shot: Pick<Shot, 'camera'>,
+): ResolvedShotAutoFraming {
+  const configured = shot.camera?.autoFraming;
+  const rawZoom = configured?.zoom;
+  const rawU = configured?.targetU;
+  const rawV = configured?.targetV;
+  return {
+    zoom: typeof rawZoom === 'number' && Number.isFinite(rawZoom)
+      ? Math.max(1, rawZoom)
+      : SPEAKER_FOCUS_ZOOM,
+    targetU: typeof rawU === 'number' && Number.isFinite(rawU)
+      ? Math.max(0, Math.min(1, rawU))
+      : DEFAULT_AUTO_FRAMING_TARGET_U,
+    targetV: typeof rawV === 'number' && Number.isFinite(rawV)
+      ? Math.max(0, Math.min(1, rawV))
+      : DEFAULT_AUTO_FRAMING_TARGET_V,
+  };
+}
 
 export function fullStageCamera(width: number, height: number): CameraView {
   return { centerX: width / 2, centerY: height / 2, zoom: 1 };
@@ -58,6 +94,7 @@ export interface SpeakerFocusCameraPlan {
   readonly width: number;
   readonly height: number;
   readonly full: CameraView;
+  readonly autoFraming: ResolvedShotAutoFraming;
   readonly transitions: readonly CameraTransition[];
   readonly eventsByLayer: ReadonlyMap<string, readonly TimelineEvent[]>;
 }
@@ -65,7 +102,7 @@ export interface SpeakerFocusCameraPlan {
 function targetAt(
   layer: Layer | null,
   atMs: number,
-  { project, shot, width, height, full, eventsByLayer }: Omit<SpeakerFocusCameraPlan, 'transitions'>,
+  { project, shot, width, height, full, autoFraming, eventsByLayer }: Omit<SpeakerFocusCameraPlan, 'transitions'>,
 ): CameraView {
   if (!layer) return full;
   if (
@@ -88,13 +125,15 @@ function targetAt(
         anchor.ty,
         width,
         height,
-        SPEAKER_FOCUS_ZOOM,
+        autoFraming.zoom,
         evaluated.effectiveDepth ?? 0,
         evaluated.effectiveCameraSpace ?? 'world',
+        autoFraming.targetU,
+        autoFraming.targetV,
       );
       if (!solved) return full;
       return clampCamera(
-        { centerX: solved.centerX, centerY: solved.centerY, zoom: SPEAKER_FOCUS_ZOOM },
+        { centerX: solved.centerX, centerY: solved.centerY, zoom: autoFraming.zoom },
         width,
         height,
       );
@@ -105,8 +144,20 @@ function targetAt(
     eventsByLayer.get(layer.id) ?? [],
     atMs,
   ).mainPosition;
+  const solved = solveCameraCenterForWorldPoint(
+    main.x,
+    main.y,
+    width,
+    height,
+    autoFraming.zoom,
+    0,
+    'world',
+    autoFraming.targetU,
+    autoFraming.targetV,
+  );
+  if (!solved) return full;
   return clampCamera(
-    { centerX: main.x, centerY: main.y, zoom: SPEAKER_FOCUS_ZOOM },
+    { centerX: solved.centerX, centerY: solved.centerY, zoom: autoFraming.zoom },
     width,
     height,
   );
@@ -117,6 +168,7 @@ export function prepareSpeakerFocusCamera(
   shot: Shot,
 ): SpeakerFocusCameraPlan {
   const full = fullStageCamera(project.width, project.height);
+  const autoFraming = resolveShotAutoFraming(shot);
   const cues = buildDialogueSubtitleCues(shot.dialogues);
   const dialogueById = new Map(shot.dialogues.map((dialogue) => [dialogue.id, dialogue]));
   const eventsByLayer = new Map<string, TimelineEvent[]>();
@@ -125,7 +177,7 @@ export function prepareSpeakerFocusCamera(
     events.push(event);
     eventsByLayer.set(event.layerId, events);
   }
-  const context = { project, shot, width: project.width, height: project.height, full, eventsByLayer };
+  const context = { project, shot, width: project.width, height: project.height, full, autoFraming, eventsByLayer };
 
   const intentAt = (atMs: number): Layer | null => {
     const cue = evaluateSubtitleAtTime(cues, atMs);
