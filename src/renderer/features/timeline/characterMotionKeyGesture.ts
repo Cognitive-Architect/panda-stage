@@ -153,24 +153,3 @@ export function previewCharacterMotionKeyGroupShift(input: {
     previewTimesByOrigin,
   };
 }
-
-/** Resolve a drag preview time against adjacent Composite Keys without crossing either neighbor. */
-export function previewCharacterMotionKeyTime(input: {
-  fromTimeMs: number;
-  deltaPx: number;
-  pixelsPerMs: number;
-  previousTimeMs: number;
-  nextTimeMs: number | null;
-  durationMs: number;
-}): number {
-  const unselectedTimesMs = [input.previousTimeMs];
-  if (input.nextTimeMs !== null) unselectedTimesMs.push(input.nextTimeMs);
-  return previewCharacterMotionKeyGroupShift({
-    fromTimesMs: [input.fromTimeMs],
-    anchorTimeMs: input.fromTimeMs,
-    unselectedTimesMs,
-    deltaPx: input.deltaPx,
-    pixelsPerMs: input.pixelsPerMs,
-    durationMs: input.durationMs,
-  }).anchorPreviewTimeMs;
-}

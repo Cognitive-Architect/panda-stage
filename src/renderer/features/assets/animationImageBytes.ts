@@ -1,4 +1,4 @@
-export function copyAnimationImageBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+function copyAnimationImageBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
   return copy;

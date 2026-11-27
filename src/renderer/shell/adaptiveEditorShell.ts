@@ -24,13 +24,6 @@ export interface EditorViewportSize {
   height: number;
 }
 
-export const EDITOR_WORKSPACES: readonly EditorWorkspace[] = [
-  'canvas',
-  'assets',
-  'properties',
-  'timeline',
-];
-
 /**
  * Legacy Auto-mode seam retained for older callers. The current product route
  * is Cloud Touch and ignores this width threshold, choosing only by

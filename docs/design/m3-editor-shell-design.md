@@ -2,7 +2,7 @@
 
 > Issue #59 / #61 / #63 合同同步版
 >
-> 实施权威：`docs/design/stage1a-execution-contract.md`
+> Stage 1A 历史实施合同：[stage1a-execution-contract.md](./stage1a-execution-contract.md)
 >
 > 状态：1A-1～1A-5 已完成；Stage 1A 待人工验收
 

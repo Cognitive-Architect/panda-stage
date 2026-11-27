@@ -10,6 +10,8 @@
 >
 > 状态：1A-1～1A-5 已完成；Stage 1A 待人工验收
 
+本文记录 Stage 1A 当时的文件和验收状态。旧 `EditorTopBar` 已退役，当前 [EditorShell](../../src/renderer/shell/EditorShell.tsx) 直接使用 [CompactProjectBar](../../src/renderer/shell/CompactProjectBar.tsx)。
+
 ## 0. 冻结结论
 
 Issue #59 统一了 Stage 1A 的范围、Controller 所有权、过渡挂载和白名单。

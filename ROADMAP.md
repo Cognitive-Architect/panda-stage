@@ -13,3 +13,5 @@ Panda Stage 面向个人创作者，围绕角色与素材、镜头、动画、�
 ## 历史基线
 
 2026-07-19 的 [45 日 MVP 原始路线图](https://github.com/Cognitive-Architect/panda-stage/blob/a38d9318dffef6ab115c433b61f8ea266c92a44d/ROADMAP.md) 保留在 Git 历史中，包含早期产品合同、技术选择、里程碑和验收矩阵，供追溯原始决策使用。它不再作为现役派单总表，也不替代后续已冻结的产品合同和 Issue 级验收要求。
+
+Day 01 的[启动验收记录](https://github.com/Cognitive-Architect/panda-stage/blob/6162667900853a909ad3ca75d7d1f32a9c69840e/docs/day-01-results.md)和原始截图可从同一固定提交查看。

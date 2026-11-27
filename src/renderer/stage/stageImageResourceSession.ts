@@ -162,7 +162,7 @@ const TRUSTED_SHA256 = /^[a-f0-9]{64}$/u;
  * A Stage-local cache identity. Missing or invalid content versions stay
  * part-scoped, so an unverified URL can never alias another layer's image.
  */
-export function buildStageImageResourceKey(
+function buildStageImageResourceKey(
   layer: StageImageLayerSource,
 ): string {
   if (

@@ -62,12 +62,6 @@ export function formatAnimationTimeLinkWindow(
   return `${formatLinkSeconds(startMs)}–${formatLinkSeconds(endMs)}s`;
 }
 
-export function formatAnimationTimeLinkOffset(offsetMs: number): string {
-  if (!Number.isFinite(offsetMs) || offsetMs === 0) return '0ms';
-  const rounded = Math.round(offsetMs);
-  return rounded > 0 ? `+${rounded}ms` : `${rounded}ms`;
-}
-
 function shiftAnimationTimeLinkWindow(
   sourceStartMs: number,
   sourceEndMs: number,

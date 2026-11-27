@@ -5,7 +5,6 @@ import {
   compositeKeyTimesForTarget,
   deleteTargetKeyAtTime,
   hasTargetOutgoingInterval,
-  NEUTRAL_ANIMATION_MOTION,
   pasteTargetKeysAtTime,
   pasteTargetKeySnapshotAtTime,
   planTargetKeysRetime,
@@ -71,7 +70,6 @@ import { PositionProjectService } from './PositionProjectService';
 import { applyUserMotionPresetTracks, captureUserMotionPreset } from '../user-motion-presets';
 import { buildAudioMotionTracks, type AudioMotionDraft } from '../audio-motion';
 
-export const NEUTRAL_LAYER_MOTION = NEUTRAL_ANIMATION_MOTION;
 export type LayerMotionValues = AnimationMotionValues;
 
 export interface LayerMotionTargetInput {

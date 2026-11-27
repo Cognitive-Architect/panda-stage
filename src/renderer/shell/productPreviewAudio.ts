@@ -53,10 +53,6 @@ export function productPreviewSourceTimeMs(timeMs: number, clip: AudioClip, asse
     audioClipSourceTimeMs(clip, Number.isFinite(timeMs) ? timeMs : clip.startMs)));
 }
 
-export function isProductPreviewAudioActiveAtTime(timeMs: number, selection: ProductPreviewAudioSelection): boolean {
-  return isAudioClipActiveAtTime(selection.clip, timeMs);
-}
-
 export type ProductPreviewAudioContext = Pick<AudioContext,
   'currentTime' | 'state' | 'sampleRate' | 'destination' | 'createBufferSource' | 'createGain' | 'decodeAudioData' | 'resume' | 'close'>;
 

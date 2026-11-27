@@ -26,7 +26,7 @@ export function getAudioTrimPreviewEnd(
   );
 }
 
-export function canCommitAudioTrimGesture(
+function canCommitAudioTrimGesture(
   identity: AudioTrimGestureIdentity,
   context: AudioTrimGestureContext,
 ): boolean {

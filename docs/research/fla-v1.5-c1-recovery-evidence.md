@@ -74,9 +74,10 @@ Run from this checkout with an output directory outside the repository:
 pnpm install --frozen-lockfile
 pnpm research:fla-v1-5-c1 -- --root "D:\表情合集" --out "<external-c1-output>"
 pnpm exec vitest run tests/unit/fla-c1-recovery-evidence.test.ts
-pnpm research:fla-v1-5-c1-electron -- --root "<external-c1-output>\research-copies" --out "<external-c1-output>\electron-results.json"
 node scripts/fla-c1-v2r-target-probe.cjs --root "<external-c1-output>\research-copies" --builder "<PR285-validation-worktree>\dist-electron\main\services\fla-static-snapshot-svg-builder.js" --out "<external-c1-output>\v2r-targets.json"
 ```
+
+The closed #298 Electron batch experiment is archived at its original commit. To reproduce that part of the historical run, use the [research-copy materializer](https://github.com/Cognitive-Architect/panda-stage/blob/df9ce245d73cdd17bb10d90131c0128c3ff2e1a1/scripts/fla-c1-materialize-research-copies.cjs), [batch runner](https://github.com/Cognitive-Architect/panda-stage/blob/df9ce245d73cdd17bb10d90131c0128c3ff2e1a1/scripts/fla-c1-run-electron-probes.cjs), and [Electron probe](https://github.com/Cognitive-Architect/panda-stage/blob/df9ce245d73cdd17bb10d90131c0128c3ff2e1a1/scripts/fla-c1-electron-parser.cjs) in a checkout of that commit.
 
 The tracked JSON is a normalized backfill of the completed run; it intentionally contains no FLA bytes, extracted images, or private research-copy paths.
 
