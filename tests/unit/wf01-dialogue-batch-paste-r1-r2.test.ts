@@ -163,7 +163,7 @@ describe('WF-01 DialogueBatchPaste R1 & R2 UI regressions', () => {
         ...current,
         assets: [...current.assets, second],
       });
-      timelineUiStore.seek(first.durationMs, 20_000);
+      timelineUiStore.seek(2_000, 20_000);
     });
     expect(selectByTestId('dialogue-batch-audio-1').value).toBe(second.id);
     await act(async () => buttonByTestId('dialogue-batch-audio-commit').click());
