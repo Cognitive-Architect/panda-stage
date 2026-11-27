@@ -3,9 +3,9 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  evaluateCubicBezier2D, evaluateShotAtTime, evaluatedLayerWorldMatrix, frameTimeMs,
+  CharacterService, evaluateCubicBezier2D, evaluateShotAtTime, evaluatedLayerWorldMatrix, frameTimeMs,
   LayerMotionService, LayerService, ProjectSchema, projectShotDialogueVisual, sampleCubicBezierBySteps,
-  setShotCameraKey, setShotCameraMode, ShotService, type Project,
+  setShotCameraKey, setShotCameraMode, ShotService, upsertMouthCueEventAtTime, type Project,
 } from '../../src/domain';
 import { evaluateEditorCanvasShot } from '../../src/renderer/features/canvas/editorTemporalCanvasModel';
 import { projectProductPreviewDialogue } from '../../src/renderer/shell/productPreviewModel';
@@ -166,15 +166,20 @@ describe('ProjectToolsDrawer -> CurveMotionPanel (#1269 A02)', () => {
     const propId = placed.layer.id;
     const actor = placed.project.characters.find(({ id }) => id === data.characterId)!;
     const dialogueId = crypto.randomUUID();
-    const withDialogue = ProjectSchema.parse({
-      ...placed.project,
-      characters: placed.project.characters.map((character) => character.id === actor.id
+    const characters = new CharacterService();
+    const boundFace = characters.setAdaptivePartsFaceBinding(placed.project, actor.id, { targetPartId: data.graphicPartId });
+    const withMouth = characters.setMouthOpenAsset(boundFace, actor.id, IDS.assetChar2);
+    const dialogue = ProjectSchema.parse({
+      ...withMouth,
+      characters: withMouth.characters.map((character) => character.id === actor.id
         ? { ...character, headMotionBinding: { partIds: [data.imagePartId] }, talkingHeadMotionIntensityPercent: 100 } : character),
-      shots: placed.project.shots.map((shot) => shot.id === IDS.shot ? { ...shot, durationMs: 1500,
+      shots: withMouth.shots.map((shot) => shot.id === IDS.shot ? { ...shot, durationMs: 1500,
         dialogues: [{ id: dialogueId, characterId: actor.id, voiceProfileId: actor.defaultVoiceProfileId,
           text: '说话测试', startMs: 0, endMs: 1000, subtitleStyleId: shot.defaultSubtitleStyleId }],
       } : shot),
     });
+    const openMouth = upsertMouthCueEventAtTime(dialogue, IDS.shot, data.layerId, 'open', 625);
+    const withDialogue = upsertMouthCueEventAtTime(openMouth, IDS.shot, data.layerId, 'rest', 750);
     const head = { kind: 'character-part' as const, partId: data.imagePartId };
     const otherPart = { kind: 'character-part' as const, partId: data.graphicPartId };
     const dynamic = mode === 'dynamic';
@@ -207,6 +212,7 @@ describe('ProjectToolsDrawer -> CurveMotionPanel (#1269 A02)', () => {
     const unprojected = world(evaluateShotAtTime(original.shots[0]!, 625, original));
     expectPoint(unprojected, { x: 500, y: 600 });
     expectPoint(at(original, 625), { x: 496, y: 596 });
+    expect(formal(original, 625).layers.find(({ id }) => id === data.layerId)?.mouthOverrideAssetId).toBe(IDS.assetChar2);
 
     const startFrame = dynamic ? 3 : 15;
     const endFrame = 30;
