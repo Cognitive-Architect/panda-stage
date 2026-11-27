@@ -101,6 +101,7 @@ export function QuickActionDrawer({
     'png-sequence': '导出 PNG 序列',
     'sprite-sheet': '导出精灵图',
   }[exportFormat];
+  const exportActionLabel = exportBusy || exportSurfaceOpen ? '显示导出任务' : exportLabel;
   const panelId = `quick-action-drawer-panel-${useId()}`;
   const statusText = status.trim();
   const showFeedback =
@@ -256,14 +257,10 @@ export function QuickActionDrawer({
             }
             onClick={onOpenProductPreview}
             title="预览当前镜头"
-            variant="primary"
+            variant={docked ? 'secondary' : 'primary'}
           />
           <IconButton
-            aria-label={
-              exportBusy || exportSurfaceOpen
-                ? '\u663e\u793a\u5bfc\u51fa\u4efb\u52a1'
-                : exportLabel
-            }
+            aria-label={exportActionLabel}
             aria-busy={exportBusy}
             aria-pressed={exportSurfaceOpen}
             className="quick-action-drawer-action quick-action-drawer-export"
@@ -271,8 +268,8 @@ export function QuickActionDrawer({
             data-task4-core="export-video"
             data-testid="quick-action-export"
             disabled={busy}
-            icon={
-              exportBusy ? (
+            icon={<>
+              {exportBusy ? (
                 <LoaderCircle
                   aria-hidden="true"
                   className="ui-icon quick-action-drawer-spinner"
@@ -286,14 +283,11 @@ export function QuickActionDrawer({
                   focusable="false"
                   size={18}
                 />
-              )
-            }
+              )}
+              {docked && exportActionLabel}
+            </>}
             onClick={onExportVideo}
-            title={
-              exportBusy || exportSurfaceOpen
-                ? '\u663e\u793a\u5bfc\u51fa\u4efb\u52a1'
-                : exportLabel
-            }
+            title={exportActionLabel}
             variant="primary"
           />
           {onOpenExportSettings ? <IconButton aria-label="导出设置" title="导出设置"

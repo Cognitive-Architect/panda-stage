@@ -295,6 +295,7 @@ export interface CanvasStageProps {
   curveMotionDraft?: CurveMotionStageDraft | null;
   dialogueSilence?: DialogueSilence;
   showHeading?: boolean;
+  selectionAccent?: string;
   showToolbar?: boolean;
   onCharacterPartSelected?: () => void;
 }
@@ -304,6 +305,7 @@ export function CanvasStage({
   curveMotionDraft,
   dialogueSilence,
   showHeading = true,
+  selectionAccent,
   showToolbar = true,
   onCharacterPartSelected,
 }: CanvasStageProps = {}): React.JSX.Element {
@@ -1724,6 +1726,7 @@ export function CanvasStage({
                         return (
                           <StageLayerSpace key={render.id} space={stageLayer.evaluated.parentSpace} projection={displayCamera ? projection : undefined}>
                           <SelectableLayer
+                            selectionAccent={selectionAccent}
                             characterMotion={displayCamera || cameraTool || pickingParent ? undefined : motionCanvasForLayer(layer, characterView)}
                             characterView={characterView}
                             selectedCharacterNodeId={selectedLayerId === layer.id ? selectedCharacterNodeId : null}
@@ -2006,6 +2009,7 @@ export function CanvasStage({
                     selectedStageLayer.evaluated.parentSpace && !structuredTransformerVisible ? (
                       <StageLayerSpace space={selectedStageLayer.evaluated.parentSpace} projection={displayCamera ? selectedLayerProjection : undefined}>
                         <ParentLayerTransformer
+                          selectionAccent={selectionAccent}
                           key={`${projectInstanceId}:${selectedStageLayer.layer.id}:${snapshot?.revision}:${timelineUi.currentTimeMs}`}
                           nodeRef={getLayerNodeRef(selectedStageLayer.layer.id)}
                           render={selectedStageLayer.render}
@@ -2028,6 +2032,7 @@ export function CanvasStage({
                         />
                       </StageLayerSpace>
                     ) : <LayerTransformer
+                      selectionAccent={selectionAccent}
                       locked={
                         selectedStageLayer.layer.locked ||
                         (structuredTransformerVisible && !selectedStructuredNodeCanTransform)

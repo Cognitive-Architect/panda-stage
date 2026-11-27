@@ -219,6 +219,8 @@
 .editor-workbench .asset-import-panel-compact { display: none; }
 .editor-workbench .resource-activity-tabs button {
   min-height: 28px;
+  border-color: var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
   padding-block: 3px;
   color: var(--ui-color-text-primary);
   background: var(--ui-color-surface-work);
@@ -393,3 +395,311 @@
 }
 
 .workbench-timeline .timeline-playhead { z-index: 7; }
+
+.editor-workbench .eyebrow {
+  color: var(--ui-color-text-secondary);
+}
+
+/* Native controls in the docked editor share the same palette as the primitives. */
+.editor-workbench button:where(:not([data-ui-button], .dv-default-tab-action, .asset-card, .layer-delete-button, .close-confirm-discard, [data-layer-id] button, .timeline-lane-content button, .character-motion-part-select)) {
+  min-height: var(--ui-touch-regular);
+  border-color: var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background-color: var(--ui-color-surface-work);
+  color: var(--ui-color-text-primary);
+}
+
+.editor-workbench button[data-ui-button]:not([data-ui-size='icon']) {
+  padding-block: 3px;
+  font-weight: 600;
+}
+
+.editor-workbench :is(.workbench-toolbar, .workbench-panel-content, .export-options-dialog)
+  :is(select, input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='hidden']), textarea) {
+  min-width: 0;
+  min-height: 28px;
+  padding-block: 3px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background-color: var(--ui-color-surface-work);
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-body);
+}
+
+.editor-workbench input[type='number'] {
+  min-height: 29px;
+  font-variant-numeric: tabular-nums;
+}
+
+.editor-workbench input:is([type='checkbox'], [type='radio'], [type='range']) {
+  accent-color: var(--ui-color-selected-border);
+}
+
+.editor-workbench :is(button[data-ui-button], button.ui-icon-label, input, textarea, select):disabled {
+  border-color: var(--ui-color-border);
+  background-color: var(--ui-color-disabled-surface);
+  color: var(--ui-color-disabled-text);
+}
+
+.workbench-toolbar .quick-action-drawer[data-docked] .quick-action-drawer-export {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 30px;
+  padding-inline: 9px;
+  white-space: nowrap;
+}
+
+.workbench-toolbar .quick-action-drawer-export > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.editor-workbench .quick-action-drawer[data-docked] .quick-action-drawer-play:enabled {
+  border-color: var(--ui-color-border);
+  background: var(--ui-color-surface-work);
+  color: var(--ui-color-text-primary);
+}
+
+.editor-workbench .quick-action-drawer[data-docked] .quick-action-drawer-play:hover:enabled {
+  background: var(--ui-color-action-hover);
+}
+
+.editor-workbench :is(.right-rail-stack, .timeline-toolbar, .resource-activity-header, .history-actions)
+  button:where(:not([data-ui-variant='primary'], [data-ui-variant='danger'])):hover:not(:disabled),
+.editor-workbench :is(.asset-library, .right-inspector, .animation-curve-panel)
+  button:where(:not([data-ui-variant='primary'], [data-ui-variant='danger'], .layer-delete-button)):hover:not(:disabled) {
+  background-color: var(--ui-color-action-hover);
+  color: var(--ui-color-text-primary);
+}
+
+.editor-workbench :is(.workbench-toolbar, .workbench-panel-content) button:is([aria-pressed='true'], [aria-checked='true'], .asset-category-active):not(:disabled) {
+  border-color: var(--ui-color-selected-border);
+  background-color: var(--ui-color-action-pressed);
+  color: var(--ui-color-selected-border);
+}
+
+.editor-workbench :is(.asset-library .asset-category-tabs button, .asset-library-usage-filter-trigger, .resource-activity-panel button:not(.asset-card)) {
+  min-height: 28px;
+  border-radius: var(--ui-radius-small);
+}
+
+.editor-workbench .asset-library .asset-category-tabs button {
+  padding-block: 3px;
+  border-color: var(--ui-color-border);
+  background-color: var(--ui-color-surface-work);
+  color: var(--ui-color-text-primary);
+}
+
+.editor-workbench .asset-library .asset-category-tabs .asset-category-active {
+  border-color: var(--ui-color-selected-border);
+  background-color: var(--ui-color-selected-surface);
+  color: var(--ui-color-selected-border);
+}
+
+.editor-workbench .asset-category-tabs button > strong {
+  background: var(--ui-color-surface-overlay);
+  color: var(--ui-color-text-secondary);
+}
+
+.editor-workbench .asset-library-search-control input {
+  padding-inline: 31px;
+}
+
+.editor-workbench .asset-library-usage-filter-trigger {
+  min-width: 28px;
+  width: 28px;
+  padding: 0;
+}
+
+.editor-workbench :is(.resource-activity-body, .asset-category-tabs, .right-inspector-drawer, .timeline-ruler-scroll) {
+  scrollbar-color: #424955 var(--ui-color-surface-panel);
+}
+
+.editor-workbench .asset-library .asset-card {
+  border-color: var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-overlay);
+  color: var(--ui-color-text-primary);
+}
+
+.editor-workbench .asset-library .asset-card-selected {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-selected-surface);
+}
+
+.editor-workbench .asset-card-preview {
+  border-radius: 3px;
+  background-color: var(--ui-color-surface-app);
+}
+
+.editor-workbench .asset-card-type-badge-background {
+  border-color: #465e6c;
+  background: var(--ui-color-surface-work);
+  color: #8cb6cd;
+}
+
+.editor-workbench .asset-card-type-badge-character {
+  border-color: #55476b;
+  background: var(--ui-color-surface-work);
+  color: #b69bf2;
+}
+
+.editor-workbench [data-testid='shot-layer-list-scroll'] [data-layer-id][data-selected='true'] {
+  box-shadow: inset 2px 0 var(--ui-color-selected-border);
+}
+
+.workbench-properties .right-inspector-drawer-embedded {
+  padding: 10px;
+  overflow-x: hidden;
+}
+
+.workbench-properties :is(.right-inspector-selection, .right-inspector-empty-state,
+  .layer-order-controls, .layer-background-control, .layer-transform-panel) {
+  border-color: var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background-color: var(--ui-color-surface-panel);
+}
+
+.workbench-properties .right-inspector-selection-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.workbench-properties .right-inspector-selection-thumbnail {
+  display: grid;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-work);
+}
+
+.workbench-properties .right-inspector-selection-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.workbench-properties .right-inspector-selection-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.workbench-properties :is(.right-inspector-selection-copy > span, .right-inspector-selection-message) {
+  color: var(--ui-color-text-secondary);
+  font-size: 12px;
+}
+
+.workbench-properties :is(.layer-transform-action, .layer-order-actions button, .layer-lock-switch) {
+  min-height: 28px;
+  padding-block: 3px;
+  border-radius: var(--ui-radius-small);
+}
+
+.workbench-properties .layer-lock-switch {
+  border-color: var(--ui-color-border);
+  background-color: var(--ui-color-surface-work);
+}
+
+.editor-workbench .workbench-timeline .timeline-toolbar button:is(.timeline-return-to-start,
+  .timeline-dialogue-find, .animation-curve-toggle, .timeline-zoom-in, .timeline-zoom-out) {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-color: var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background-color: var(--ui-color-surface-work);
+  color: var(--ui-color-text-primary);
+}
+
+.workbench-timeline .timeline-zoom button {
+  display: grid;
+  place-items: center;
+  font-size: 0;
+}
+
+.workbench-timeline .timeline-timecode {
+  gap: 5px;
+  color: var(--ui-color-text-secondary);
+  font: 600 13px Consolas, monospace;
+}
+
+.workbench-timeline .timeline-tick {
+  background-color: var(--ui-color-border);
+}
+
+.workbench-timeline .timeline-tick-label {
+  color: var(--ui-color-text-secondary);
+}
+
+.workbench-timeline .dialogue-clip.timed {
+  border-color: #4c627b;
+  border-radius: var(--ui-radius-small);
+  background: #324458;
+  box-shadow: none;
+  color: var(--ui-color-text-primary);
+}
+
+.workbench-timeline :is(.timeline-audio-clip, .timeline-dock .standalone-audio-clip) {
+  border-color: #477569;
+  border-radius: var(--ui-radius-small);
+  background: #28594e;
+  color: var(--ui-color-text-primary);
+}
+
+.workbench-timeline .timeline-dock :is(.dialogue-clip, .timeline-audio-clip, .standalone-audio-clip).selected {
+  border-color: var(--ui-color-selected-border);
+  box-shadow: inset 0 0 0 1px var(--ui-color-selected-border);
+}
+
+.workbench-timeline .position-key-marker:where(:not([data-current='true']):not(:hover)) {
+  color: #f2b65c;
+}
+
+.workbench-timeline [data-testid='shot-camera-lane'] .position-key-diamond {
+  border-radius: 50%;
+  transform: none;
+}
+
+.workbench-timeline [data-testid='shot-camera-lane'] .position-key-marker:where(:not([data-current='true']):not(:hover)) {
+  color: #65c5a0;
+}
+
+.editor-workbench .close-confirm-overlay {
+  background: rgb(12 14 17 / 75%);
+}
+
+.editor-workbench .close-confirm-actions button {
+  min-width: 0;
+  min-height: 28px;
+}
+
+.editor-workbench .close-confirm-actions .close-confirm-save:enabled {
+  border-color: var(--ui-color-selected-border);
+  background: var(--ui-color-action-primary);
+  color: #13212a;
+}
+
+.editor-workbench .close-confirm-actions .close-confirm-discard {
+  border-color: var(--ui-color-action-danger);
+  background: var(--ui-color-action-danger);
+}
+
+.editor-workbench :is(.close-confirm-project, .close-confirm-hint, .layer-transform-guidance) {
+  color: var(--ui-color-text-secondary);
+}
+
+.editor-workbench :is(.export-options-dialog, .close-confirm-frame) {
+  border-color: var(--ui-color-border);
+  border-radius: 6px;
+  background: var(--ui-color-surface-panel);
+  color: var(--ui-color-text-primary);
+}

@@ -78,6 +78,7 @@ export interface LayerTransformerProps {
   locked: boolean;
   scale: number;
   scaleY?: number;
+  selectionAccent?: string;
 }
 
 export function LayerTransformer({
@@ -87,6 +88,7 @@ export function LayerTransformer({
   locked,
   scale,
   scaleY = scale,
+  selectionAccent,
 }: LayerTransformerProps): React.JSX.Element | null {
   const transformerRef = useRef<Konva.Transformer>(null);
 
@@ -101,10 +103,10 @@ export function LayerTransformer({
   if (!selected || locked) return null;
   return (
     <Transformer
-      anchorFill="#e8fff0"
+      anchorFill={selectionAccent ? '#e3e7ed' : '#e8fff0'}
       anchorSize={18}
-      anchorStroke="#235739"
-      borderStroke="#83d39a"
+      anchorStroke={selectionAccent ?? '#235739'}
+      borderStroke={selectionAccent ?? '#83d39a'}
       borderStrokeWidth={3}
       boundBoxFunc={(oldBox, newBox) =>
         isTransformerBoxAllowed(oldBox, newBox, scale, scaleY)

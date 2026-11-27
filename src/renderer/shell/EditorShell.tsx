@@ -2991,7 +2991,7 @@ export function EditorShell({
                         aria-hidden={Boolean(characterFloatMode) || assemblyActive}
                         data-character-assembly-inactive={assemblyActive ? 'true' : 'false'}
                         inert={Boolean(characterFloatMode) || assemblyActive || undefined}>
-                        <CanvasWorkspace showHeading={false} dialogueSilence={dialogueSilence}
+                        <CanvasWorkspace showHeading={false} dialogueSilence={dialogueSilence} selectionAccent="#54cdf3"
                           onCharacterPartSelected={() => workbench.current?.show('props')}
                           curveDraft={animationCurveDraft} curveMotionDraft={curveMotionStageDraft} />
                       </div>
