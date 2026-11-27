@@ -23,6 +23,12 @@ pnpm --dir prototypes/reshell-ui2 dev
 - 原型使用同一份模拟项目和示例资源。音频以示例波形呈现，口型轨与真实声音、视频导出缺少示例数据或实现，本轮沿用现有模拟边界。Dockview 体验限单个浏览器窗口。
 - 在 Windows 上用 Playwright 驱动有界面的 Chrome，走查了 1440×900 和 1280×768 工作台，覆盖素材、图层、画布、数值、曲线、时间轴、播放、镜头、模拟导出、四套方案切换与布局恢复。使用 `pnpm --dir prototypes/reshell-ui2 build` 构建。截图与交互来自浏览器原型，Windows Electron 实机验收待产品阶段。
 
+### D 的布局补修（#1392）
+
+D 按工作区实际高度初始化，创作区约占 68%，时间轴约占 32%。左栏再单独分配资源库和图层空间。超过面板容量的素材和轨道在各自面板内滚动。手动拖动后的布局会沿用并记忆，旧版 D 的布局仍可打开。若资源库被压缩或时间轴占比过大，请在「窗口」中选择「恢复默认布局」。
+
+在 Windows Chrome 的 1280×666 视口复现了旧版问题。时间轴和图层区的固定高度挤占了画布和资源库，展开和折叠时间轴时，Konva 实际画面分别约为 187×105 和 686×386。补修后，在 1280×768 下展开时间轴时，实际画面约为 596×335，资源库可浏览素材。已验证 1440×900 和 1280×768 的布局、轨道滚动、停靠、折叠、旧布局恢复及刷新后的记忆。下方 D 截图来自 Windows Chrome 构建预览。
+
 ## A / B / C 对照与供体记录
 
 ### A · 现代创作派（Rive / Figma）
@@ -63,7 +69,7 @@ pnpm --dir prototypes/reshell-ui2 dev
 - **示例素材许可**：`src/core/assets.ts` 中的全部角色、道具、背景矢量图与确定性伪波形均为本原型原创内联 SVG/算法生成，**未引入任何第三方美术或音频文件**，无额外版权负担。
 - **开源供体许可证**：Animora 与 OpenCut Classic 原始 `LICENSE` 全文保留在 `LICENSES/` 目录，npm 依赖包许可（MIT / Apache-2.0）随 `package.json` 记录。
 
-## 代表性截图（1440×900 实机运行采集）
+## 代表性运行截图
 
 > 截图仅作速览，不能代替启动后亲自拖拽画布、时间轴、面板停靠与缓动曲线的实际体验。
 
@@ -72,4 +78,4 @@ pnpm --dir prototypes/reshell-ui2 dev
 | **A · 现代创作派**（Rive / Figma） | ![Variant A](screenshots/variant-a.png) |
 | **B · 工业专业派**（Animate / AE / Resolve） | ![Variant B](screenshots/variant-b.png) |
 | **C · 现代效率派**（CapCut / OpenCut） | ![Variant C](screenshots/variant-c.png) |
-| **D · 融合工作台**（Windows Chrome） | ![Variant D](screenshots/variant-d.png) |
+| **D · 融合工作台**（Windows Chrome，1280×768） | ![Variant D](screenshots/variant-d.png) |

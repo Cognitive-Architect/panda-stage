@@ -7,13 +7,21 @@ import { sampleCamera, sampleTransform, STAGE_H, STAGE_W, uid, type Layer } from
 import { actions, currentShot, useStore } from './store';
 
 export interface StageTheme { backdrop: string; frameStroke: string; accent: string; safe?: boolean }
+export interface StagePan { x: number; y: number }
 export interface OverlayRect { x: number; y: number; w: number; h: number }
 
-export function Stage({ theme, onOverlay, dropAssets = true }: { theme: StageTheme; onOverlay?: (r: OverlayRect | null) => void; dropAssets?: boolean }) {
+export function Stage({ theme, onOverlay, dropAssets = true, panRef, padding = 24 }: {
+  theme: StageTheme; onOverlay?: (r: OverlayRect | null) => void; dropAssets?: boolean;
+  panRef?: { current: StagePan } | null; padding?: number;
+}) {
   const host = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 800, h: 450 });
   const [, force] = useState(0);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [pan, setPan] = useState(() => panRef?.current ?? { x: 0, y: 0 });
+  const updatePan = (next: StagePan) => {
+    if (panRef) panRef.current = next;
+    setPan(next);
+  };
   const shot = useStore(currentShot);
   const time = useStore((s) => s.time);
   const playing = useStore((s) => s.playing);
@@ -33,7 +41,7 @@ export function Stage({ theme, onOverlay, dropAssets = true }: { theme: StageThe
     imgs.forEach((img) => { if (!img.complete) img.addEventListener('load', () => force((n) => n + 1), { once: true }); });
   }, [shot]);
 
-  const fit = Math.max(0.01, Math.min((size.w - 48) / STAGE_W, (size.h - 48) / STAGE_H)) * viewZoom;
+  const fit = Math.max(0.01, Math.min((size.w - padding * 2) / STAGE_W, (size.h - padding * 2) / STAGE_H)) * viewZoom;
   const ox = (size.w - STAGE_W * fit) / 2 + pan.x;
   const oy = (size.h - STAGE_H * fit) / 2 + pan.y;
   const cam = sampleCamera(shot, time);
@@ -97,7 +105,7 @@ export function Stage({ theme, onOverlay, dropAssets = true }: { theme: StageThe
     if (e.button !== 1 && !(e.button === 0 && e.altKey)) return;
     e.preventDefault();
     const x0 = e.clientX - pan.x, y0 = e.clientY - pan.y;
-    const move = (m: PointerEvent) => setPan({ x: m.clientX - x0, y: m.clientY - y0 });
+    const move = (m: PointerEvent) => updatePan({ x: m.clientX - x0, y: m.clientY - y0 });
     const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
@@ -108,7 +116,7 @@ export function Stage({ theme, onOverlay, dropAssets = true }: { theme: StageThe
       className="stage-host"
       style={{ background: theme.backdrop }}
       onPointerDown={startPan}
-      onDoubleClick={(e) => { if (e.target === host.current) { setPan({ x: 0, y: 0 }); actions.setViewZoom(1); } }}
+      onDoubleClick={(e) => { if (e.target === host.current) { updatePan({ x: 0, y: 0 }); actions.setViewZoom(1); } }}
       onDragOver={(e) => dropAssets && e.dataTransfer.types.includes('text/asset') && e.preventDefault()}
       onDrop={(e) => {
         const id = e.dataTransfer.getData('text/asset'); if (!id) return;

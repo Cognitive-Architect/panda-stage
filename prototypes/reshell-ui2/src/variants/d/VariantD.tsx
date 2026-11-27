@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { DockviewReact, type DockviewApi, type DockviewReadyEvent, type IDockviewHeaderActionsProps, type IDockviewPanelProps } from 'dockview-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { ChevronDown, ChevronUp, Frame, Pause, Play, Redo2, SkipBack, SkipForward, StepBack, StepForward, Undo2 } from 'lucide-react';
 import { fmtTime, FPS } from '../../core/model';
-import { Stage, type OverlayRect } from '../../core/Stage';
+import { Stage, type OverlayRect, type StagePan } from '../../core/Stage';
 import { actions, currentLayer, currentShot, getState, useStore } from '../../core/store';
 import { ContextToolbar } from '../a/VariantA';
 import { ExportDialogC } from '../c/VariantC';
@@ -16,8 +16,12 @@ import { Timeline } from './Timeline';
 import './d.css';
 
 const LAYOUT_KEY = 'reshell-proto-d-layout-v1';
+const TIMELINE_FRACTION = 0.32;
+const LAYERS_FRACTION = 0.40;
+const StagePanContext = createContext<{ current: StagePan } | null>(null);
 
 function Canvas() {
+  const panRef = useContext(StagePanContext);
   const [safe, setSafe] = useState(false);
   const [overlay, setOverlay] = useState<OverlayRect | null>(null);
   const zoom = useStore((s) => s.viewZoom);
@@ -32,7 +36,7 @@ function Canvas() {
       </select>
     </div>
     <div className="vd-canvas">
-      <Stage theme={{ backdrop: '#141619', frameStroke: '#343940', accent: '#53ccf4', safe }} onOverlay={setOverlay} />
+      <Stage theme={{ backdrop: '#141619', frameStroke: '#343940', accent: '#53ccf4', safe }} onOverlay={setOverlay} panRef={panRef} padding={16} />
       {overlay && !playing && <ContextToolbar r={overlay} fusion />}
     </div>
   </div>;
@@ -50,7 +54,7 @@ const panels = {
 type PanelId = keyof typeof panels;
 const panelIds = Object.keys(panels) as PanelId[];
 const compactPanels = ['assets', 'layers', 'timeline'];
-type FoldState = { folded?: boolean; restoreHeight?: number };
+type FoldState = { folded?: boolean; restoreFraction?: number; restoreHeight?: number };
 
 function saveLayout(api: DockviewApi) {
   try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(api.toJSON())); } catch { /* Storage can be unavailable. */ }
@@ -64,12 +68,21 @@ function FoldControl({ activePanel, panels: groupPanels, containerApi }: IDockvi
     return () => subscription?.dispose();
   }, [activePanel]);
   if (!activePanel) return null;
-  const { folded, restoreHeight } = fold;
+  const { folded, restoreFraction, restoreHeight } = fold;
   const vertical = groupPanels.length === 1 && activePanel.api.location.type === 'grid'
     && compactPanels.includes(activePanel.id);
   return <IconButton label={folded ? '展开面板' : '折叠面板'} pressed={!!folded} onClick={() => {
-    activePanel.api.updateParameters({ folded: !folded, restoreHeight: !folded && vertical ? activePanel.api.group.api.height : undefined });
-    if (vertical) activePanel.api.setSize({ height: folded ? restoreHeight ?? 220 : 34 });
+    activePanel.api.updateParameters({
+      folded: !folded,
+      restoreFraction: !folded && vertical ? activePanel.api.group.api.height / containerApi.height : undefined,
+      restoreHeight: undefined,
+    });
+    if (vertical) {
+      const fraction = restoreFraction ?? TIMELINE_FRACTION;
+      const height = restoreFraction === undefined && restoreHeight !== undefined
+        ? restoreHeight : Math.round(containerApi.height * fraction);
+      activePanel.api.setSize({ height: folded ? height : 34 });
+    }
     saveLayout(containerApi);
   }}>{folded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}</IconButton>;
 }
@@ -86,20 +99,23 @@ function addPanel(api: DockviewApi, id: PanelId, options?: { position?: Paramete
 }
 
 function defaultLayout(api: DockviewApi) {
+  const timelineHeight = Math.round(api.height * TIMELINE_FRACTION);
+  const layersHeight = Math.round((api.height - timelineHeight) * LAYERS_FRACTION);
   api.clear();
   addPanel(api, 'stage');
+  // Split off the timeline before creating the columns inside the upper region.
+  addPanel(api, 'timeline', { position: { direction: 'below' }, initialHeight: timelineHeight });
   addPanel(api, 'assets', { position: { referencePanel: 'stage', direction: 'left' }, initialWidth: 260 });
-  addPanel(api, 'layers', { position: { referencePanel: 'assets', direction: 'below' }, initialHeight: 190 });
+  addPanel(api, 'layers', { position: { referencePanel: 'assets', direction: 'below' }, initialHeight: layersHeight });
   addPanel(api, 'props', { position: { referencePanel: 'stage', direction: 'right' }, initialWidth: 275 });
   addPanel(api, 'curve', { position: { referencePanel: 'props', direction: 'within' } });
   api.getPanel('props')?.api.setActive();
-  addPanel(api, 'timeline', { position: { direction: 'below' }, initialHeight: 318 });
-  api.getPanel('layers')?.api.setSize({ height: 218 });
   api.getPanel('stage')?.api.setActive();
 }
 
 export default function VariantD() {
   const dock = useRef<DockviewApi>(null);
+  const panRef = useRef<StagePan>({ x: 0, y: 0 });
   const [shown, setShown] = useState<PanelId[]>([]);
   const [exportOpen, setExportOpen] = useState(false);
   const project = useStore((s) => s.project);
@@ -191,8 +207,10 @@ export default function VariantD() {
         </div>
       </header>
       <div className="vd-dock">
-        <DockviewReact className="dockview-theme-dark" components={components} onReady={onReady}
-          rightHeaderActionsComponent={FoldControl} disableFloatingGroups />
+        <StagePanContext.Provider value={panRef}>
+          <DockviewReact className="dockview-theme-dark" components={components} onReady={onReady}
+            rightHeaderActionsComponent={FoldControl} disableFloatingGroups proportionalLayout />
+        </StagePanContext.Provider>
       </div>
       {toast && !toast.startsWith('已放入：') && !toast.startsWith('已添加音频：') && <div className="proto-toast vd-toast" role="status">{toast}</div>}
     </div>
