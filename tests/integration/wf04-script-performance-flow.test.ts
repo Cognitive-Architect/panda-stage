@@ -14,6 +14,7 @@ import {
   applyScriptPerformancePlan,
   createPresetEvents,
   planScriptPerformance,
+  saveActionRecipe,
   type AudioAsset,
   type Character,
   type Project,
@@ -159,6 +160,51 @@ afterEach(() => {
 });
 
 describe('WF-04 integration: UI single-commit + post-apply editing + Undo/Redo + save/reopen + CLI equivalence', () => {
+  it('U3 shares the recipe duration diagnostic and partial-confirm contract with script.plan and script.apply', () => {
+    const project = saveActionRecipe(buildIntegrationProject(), {
+      name: '长淡入',
+      steps: [{
+        id: crypto.randomUUID(), kind: 'preset', presetId: 'fade-in',
+        offsetMs: 0, durationMs: 2_000, parameters: {},
+      }],
+    });
+    editorProjectStore.open('C:/projects/wf04-u3-cli.pandastage', project);
+    const before = editorProjectStore.getSnapshot();
+    const session = {
+      sessionId: SESSION_ID, projectId: project.id,
+      instanceId: editorProjectStore.getProjectInstanceId()!,
+    };
+    const command = (name: 'script.plan' | 'script.apply', directive: string) =>
+      executeDesktopAutomation(DesktopAutomationRendererRequestSchema.parse({
+        requestId: REQUEST_ID, sessionId: SESSION_ID, deadlineMs: Date.now() + 5_000, appVersion: '0.1.0',
+        command: {
+          name, session, extendShotForPerformance: true,
+          script: [
+            '镜头：CLI 配方', '时长：1900ms', '出场：师兄[x=100,y=200]、小师妹',
+            '对白：', '师兄：第一句。', '表演：', directive, '1｜抖动｜时长=300ms',
+          ].join('\n'),
+        },
+      }), () => true);
+    const withOverride = '1｜配方｜长淡入｜时长=500ms';
+    expect(command('script.plan', withOverride)).toMatchObject({
+      ok: true, data: {
+        readyPerformanceCount: 1, issuePerformanceCount: 1,
+        performances: [
+          { status: 'issue', issueCode: 'RECIPE_DURATION_OVERRIDE_UNSUPPORTED', endMs: 2_000 },
+          { status: 'ready' },
+        ],
+      },
+    });
+    expect(command('script.apply', withOverride).ok).toBe(false);
+    expect(editorProjectStore.getSnapshot()).toBe(before);
+    expect(command('script.apply', '1｜配方｜长淡入').ok).toBe(true);
+    const shot = editorProjectStore.getSnapshot()!.project.shots.at(-1)!;
+    expect(shot.durationMs).toBe(2_000);
+    expect(shot.layers.filter((layer) => layer.source.kind === 'character')).toHaveLength(2);
+    expect(shot.timelineEvents.find((event) => event.type === 'opacity')?.endMs).toBe(2_000);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+  });
+
   it('previews without mutating Project, commits in 1 Undo/Redo, supports post-apply keyframe/camera editing and save/reopen', () => {
     const project = buildIntegrationProject();
     editorProjectStore.open('C:/projects/wf04-ui.pandastage', project);

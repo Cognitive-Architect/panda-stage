@@ -9,11 +9,13 @@ import {
   listUsableBackgroundCandidates,
   listUsableCharacterCandidates,
   listUsablePropCandidates,
+  parseScriptPerformanceInput,
   planScriptPerformance,
   type AudioAsset,
   type PlannedScriptDialogueRow,
   type Project,
   type SceneBackgroundRef,
+  type SceneDraftBlock,
   type ScenePlanOverrides,
   type ScenePropRef,
   type ScriptDialogueAudioOverride,
@@ -31,6 +33,18 @@ import { shotStore } from '../../stores/shotStore';
 export interface AutoScenePanelProps {
   snapshot: EditorProjectSnapshot | null;
   onBack: () => void;
+}
+
+function uniqueSceneIndices(blocks: readonly SceneDraftBlock[]): Map<string, number | null> {
+  const indices = new Map<string, number | null>();
+  for (const block of blocks) {
+    const key = JSON.stringify([
+      block.shotName, block.durationMs, block.durationExplicit,
+      block.backgroundName, block.cast, block.props, block.stance,
+    ]);
+    indices.set(key, indices.has(key) ? null : block.index);
+  }
+  return indices;
 }
 
 function buildExampleTemplate(project: Project | null): string {
@@ -270,6 +284,44 @@ export function AutoScenePanel({
   }, [activePlan, project]);
 
   const handleInputChange = (nextText: string): void => {
+    if (
+      project && activePlan && nextText !== rawInput &&
+      (Object.keys(sceneOverrides).length > 0 || excludedDirectiveIds.length > 0)
+    ) {
+      const previous = activePlan.parsed;
+      const next = parseScriptPerformanceInput(nextText, project.characters);
+      const previousIndices = uniqueSceneIndices(previous.sceneBlocks);
+      const nextIndices = uniqueSceneIndices(next.sceneBlocks);
+      const retainedIndices = new Map<number, number>();
+      for (const [key, oldIndex] of previousIndices) {
+        const newIndex = nextIndices.get(key);
+        if (oldIndex != null && newIndex != null) {
+          retainedIndices.set(oldIndex, newIndex);
+        }
+      }
+      // Ordinals can be reused by edited or inserted scenes. Carry choices
+      // forward only for uniquely identical parsed scene inputs.
+      setSceneOverrides((current) => {
+        const retained: Record<number, ScenePlanOverrides[number]> = {};
+        for (const [oldIndex, newIndex] of retainedIndices) {
+          const choice = current[oldIndex];
+          if (choice) retained[newIndex] = choice;
+        }
+        return retained;
+      });
+      setExcludedDirectiveIds((current) => current.filter((id) => {
+        const oldRow = previous.performances.find((row) => row.directiveId === id);
+        const nextRow = next.performances.find((row) => row.directiveId === id);
+        if (
+          !oldRow || !nextRow || oldRow.raw !== nextRow.raw ||
+          retainedIndices.get(oldRow.blockIndex) !== nextRow.blockIndex
+        ) return false;
+        const oldAnchor = previous.dialogues.find((row) => row.ordinal === oldRow.dialogueOrdinal);
+        const nextAnchor = next.dialogues.find((row) => row.ordinal === nextRow.dialogueOrdinal);
+        return oldAnchor?.raw === nextAnchor?.raw &&
+          (oldAnchor === undefined || retainedIndices.get(oldAnchor.blockIndex) === nextAnchor?.blockIndex);
+      }));
+    }
     setRawInput(nextText);
     setErrorMessage('');
   };

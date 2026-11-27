@@ -46,7 +46,6 @@ import { PathService } from './PathService';
 import { ProjectService } from './ProjectService';
 import { resolveProjectAssetPath } from './project-asset-path';
 
-const MAX_IMPORT_ASSETS = 300;
 const MAX_SELECTIONS = 100;
 const MAX_ACTIVE_SELECTIONS = 16;
 const SELECTION_TTL_MS = 15 * 60 * 1_000;
@@ -342,14 +341,6 @@ export class ProjectResourceImportService {
         closure.issues.slice(0, 6).join('；'),
       );
     }
-    if (closure.assets.length > MAX_IMPORT_ASSETS) {
-      throw this.error(
-        'PROJECT_RESOURCE_SELECTION_UNSUPPORTED',
-        targetRoot,
-        `本批共依赖 ${closure.assets.length} 个素材文件，超过单次导入上限 ${MAX_IMPORT_ASSETS} 个。`,
-      );
-    }
-
     const preflight = await this.preflightSourceAssets(
       session.sourceRoot,
       closure.assets,
@@ -478,7 +469,7 @@ export class ProjectResourceImportService {
               throw this.error(
                 'PROJECT_RESOURCE_SOURCE_INVALID',
                 targetRoot,
-                `“${file.assetName}”复制时内容发生变化，导入已取消。`,
+                `“${file.assetName}”复制时内容发生变化，请重新选择来源并预览导入。`,
               );
             }
           }
@@ -623,7 +614,7 @@ export class ProjectResourceImportService {
         throw this.error(
           'PROJECT_RESOURCE_SOURCE_INVALID',
           targetRoot,
-          `“${sourceAsset.name}”文件缺失，或资源路径越出了来源项目的 assets 目录。`,
+          `“${sourceAsset.name}”文件缺失或路径不安全，请检查来源项目后重新预览导入。`,
         );
       }
 
@@ -668,7 +659,7 @@ export class ProjectResourceImportService {
           throw this.error(
             'PROJECT_RESOURCE_SOURCE_INVALID',
             targetRoot,
-            `“${sourceAsset.name}”的文件内容与项目记录不一致。`,
+            `“${sourceAsset.name}”的文件内容与项目记录不一致，请检查来源项目后重新预览导入。`,
           );
         }
         planned.push({
@@ -796,7 +787,7 @@ export class ProjectResourceImportService {
       throw this.error(
         'PROJECT_RESOURCE_SOURCE_INVALID',
         targetRoot,
-        `“${sourceAsset.name}”的 SVG 内容与项目记录不一致。`,
+        `“${sourceAsset.name}”的 SVG 内容与项目记录不一致，请检查来源项目后重新预览导入。`,
       );
     }
     return {

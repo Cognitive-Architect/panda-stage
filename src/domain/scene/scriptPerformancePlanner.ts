@@ -16,6 +16,7 @@ import {
   type Project,
   type TimelineEvent,
 } from '../models';
+import type { ActionRecipe } from '../models/actionRecipe';
 import {
   AutoSubtitleAudioService,
   dialogueDraftSpeakerKey,
@@ -131,6 +132,7 @@ export type PlannedPerformanceIssueCode =
   | 'EXPRESSION_NOT_FOUND'
   | 'CHARACTER_ACTION_NOT_FOUND'
   | 'RECIPE_NOT_FOUND'
+  | 'RECIPE_DURATION_OVERRIDE_UNSUPPORTED'
   | 'OUT_OF_SHOT_BOUNDS'
   | 'PROPERTY_CONFLICT'
   | 'VALIDATION_FAILED';
@@ -267,19 +269,18 @@ function inferCharacterActionDurationMs(
   return DEFAULT_CHARACTER_ACTION_DURATION_MS;
 }
 
-function inferRecipeDurationMs(
-  project: Project,
-  recipeId: string,
+function getRecipeEndMs(
+  recipe: ActionRecipe,
+  startMs: number,
+  bindings: ActionRecipeBindings,
 ): number {
-  const recipe = project.actionRecipes?.find((entry) => entry.id === recipeId);
-  if (!recipe || recipe.steps.length === 0) return DEFAULT_CHARACTER_ACTION_DURATION_MS;
-  let maxEnd = 0;
+  let maxEnd = startMs;
   for (const step of recipe.steps) {
-    const stepDuration = 'durationMs' in step ? step.durationMs : 0;
-    const end = step.offsetMs + stepDuration;
-    if (end > maxEnd) maxEnd = end;
+    if (bindings[step.id] === null) continue;
+    const end = startMs + step.offsetMs + ('durationMs' in step ? step.durationMs : 0);
+    maxEnd = Math.max(maxEnd, end);
   }
-  return Math.max(1, maxEnd);
+  return maxEnd;
 }
 
 function resolveRecipeBindings(
@@ -1039,9 +1040,23 @@ export function planScriptPerformance(
       }
 
       referencedRecipeIds.add(matchedRecipe.id);
-      const durationMs =
-        directive.durationMs ?? inferRecipeDurationMs(candidate, matchedRecipe.id);
-      const endMs = startMs + durationMs;
+      const bindings = resolveRecipeBindings(
+        candidate,
+        shot.id,
+        layerId,
+        matchedRecipe.id,
+        overrides.recipeBindingsByDirectiveId?.[directive.directiveId],
+      );
+      const endMs = getRecipeEndMs(matchedRecipe, startMs, bindings);
+
+      if (directive.durationMs !== undefined) {
+        pushIssue(
+          'RECIPE_DURATION_OVERRIDE_UNSUPPORTED',
+          `配方「${matchedRecipe.name}」使用原时长 ${endMs - startMs}ms，请移除此行的「时长」参数后重试。`,
+          { layerId, property: 'action-recipe', startMs, endMs },
+        );
+        continue;
+      }
 
       if (startMs < 0) {
         pushIssue(
@@ -1052,42 +1067,35 @@ export function planScriptPerformance(
         continue;
       }
 
-      if (endMs > shot.durationMs) {
-        if (extendShotForPerformance) {
-          candidate = shotService.setDuration(candidate, shot.id, endMs);
-          extendedForPerformanceByBlock.add(directive.blockIndex);
-        } else {
-          pushIssue(
-            'OUT_OF_SHOT_BOUNDS',
-            `镜头「${shot.name}」时长 ${shot.durationMs}ms，第 ${directive.dialogueOrdinal} 句配方「${matchedRecipe.name}」（${startMs}–${endMs}ms）超出镜头边界；可确认延长镜头至 ${endMs}ms 或跳过此行。`,
-            {
-              layerId,
-              property: 'action-recipe',
-              startMs,
-              endMs,
-              requiredShotDurationMs: endMs,
-            },
-          );
-          continue;
-        }
+      const needsExtension = endMs > shot.durationMs;
+      if (needsExtension && !extendShotForPerformance) {
+        pushIssue(
+          'OUT_OF_SHOT_BOUNDS',
+          `镜头「${shot.name}」时长 ${shot.durationMs}ms，第 ${directive.dialogueOrdinal} 句配方「${matchedRecipe.name}」（${startMs}–${endMs}ms）超出镜头边界；可确认延长镜头至 ${endMs}ms 或跳过此行。`,
+          {
+            layerId,
+            property: 'action-recipe',
+            startMs,
+            endMs,
+            requiredShotDurationMs: endMs,
+          },
+        );
+        continue;
       }
 
       try {
-        const beforeShot = candidate.shots.find((s) => s.id === shot.id)!;
+        const recipeProject = needsExtension
+          ? shotService.setDuration(candidate, shot.id, endMs)
+          : candidate;
+        const beforeShot = recipeProject.shots.find((s) => s.id === shot.id)!;
         const beforeIds = new Set(beforeShot.timelineEvents.map((e) => e.id));
-        const bindings = resolveRecipeBindings(
-          candidate,
-          shot.id,
-          layerId,
-          matchedRecipe.id,
-          overrides.recipeBindingsByDirectiveId?.[directive.directiveId],
-        );
         candidate = applyActionRecipe(
-          candidate,
+          recipeProject,
           matchedRecipe.id,
           { shotId: shot.id, layerId, startMs },
           bindings,
         );
+        if (needsExtension) extendedForPerformanceByBlock.add(directive.blockIndex);
         const afterShot = candidate.shots.find((s) => s.id === shot.id)!;
         const createdIds = afterShot.timelineEvents
           .filter((e) => !beforeIds.has(e.id))

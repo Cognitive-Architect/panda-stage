@@ -163,7 +163,7 @@ export function listUsableCharacterCandidates(
   return project.characters.map((character): SceneCharacterCandidate => {
     if (character.mode === 'adaptive-parts') {
       const expressions = character.expressions ?? [];
-      const matchedExpr = normalizedExpr
+      const matchedExpr = normalizedExpr && character.faceBinding
         ? expressions.find(
             (expr) => normalizeSceneResourceName(expr.name) === normalizedExpr,
           )
@@ -180,7 +180,10 @@ export function listUsableCharacterCandidates(
         ...(matchedExpr
           ? { expressionId: matchedExpr.id, expressionName: matchedExpr.name }
           : {}),
-        usable: true,
+        usable: !normalizedExpr || matchedExpr !== undefined,
+        ...(normalizedExpr && !matchedExpr
+          ? { reason: `角色「${character.name}」无法使用表情「${requestedExpressionName}」。` }
+          : {}),
       };
     }
 
@@ -435,7 +438,12 @@ export function resolveCharacterMatch(
   expressionName?: string,
   override?: { readonly characterId: string; readonly expressionId?: string } | 'skip',
 ): ResolvedCharacterMatch {
-  const allCandidates = listUsableCharacterCandidates(project, expressionName);
+  const allCandidates = listUsableCharacterCandidates(
+    project,
+    override && override !== 'skip' && override.expressionId
+      ? undefined
+      : expressionName,
+  );
   const usableCandidates = allCandidates.filter((c) => c.usable);
 
   if (override === 'skip') {
@@ -469,7 +477,13 @@ export function resolveCharacterMatch(
         message: '手动选择的角色已不存在。',
       };
     }
-    if (!found.usable) {
+    const character = project.characters.find((entry) => entry.id === found.characterId);
+    const invalidAdaptiveOverride =
+      character?.mode === 'adaptive-parts' &&
+      override.expressionId !== undefined &&
+      (!character.faceBinding ||
+        !character.expressions?.some((expression) => expression.id === override.expressionId));
+    if (!found.usable || invalidAdaptiveOverride) {
       return {
         index,
         queryName,
@@ -479,7 +493,7 @@ export function resolveCharacterMatch(
         selectedName: found.name,
         candidates: usableCandidates,
         manualOverride: true,
-        message: found.reason ?? `角色「${found.name}」不可用。`,
+        message: found.reason ?? `角色「${found.name}」无法使用所选表情。`,
       };
     }
     const finalRef: SceneCharacterRef = override.expressionId

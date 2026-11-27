@@ -45,6 +45,7 @@ export interface SceneBlockOverrides {
   readonly props?: Readonly<Record<number, ScenePropRef | 'skip'>>;
 }
 
+/** Overrides are indexed against the scene input of this planning request. */
 export type ScenePlanOverrides = Readonly<Record<number, SceneBlockOverrides>>;
 
 export interface AutoScenePlanIssue {
@@ -205,11 +206,8 @@ function buildStandingOptionsForBlock(
 
 function characterExpressionSignature(character: Character): string {
   if (character.mode === 'adaptive-parts') {
-    const exprs = (character.expressions ?? [])
-      .map((expr) => `${expr.id}:${expr.name}`)
-      .sort()
-      .join(',');
-    return `adaptive:${character.defaultExpressionId ?? ''}:${exprs}`;
+    const expressions = [...(character.expressions ?? [])].sort((a, b) => a.id.localeCompare(b.id));
+    return JSON.stringify([character.defaultExpressionId, character.faceBinding, expressions]);
   }
   const exprs = character.expressions
     .map((expr) => `${expr.id}:${expr.assetId}`)
@@ -255,10 +253,9 @@ function buildStaleCheckToken(
   // Expand character expression assets and animation frame assets into assetIds.
   for (const characterId of characterIds) {
     const character = project.characters.find((c) => c.id === characterId);
-    if (character && character.mode !== 'adaptive-parts') {
-      for (const expr of character.expressions) {
-        if (expr.assetId) assetIds.add(expr.assetId);
-      }
+    for (const expr of character?.expressions ?? []) {
+      if (expr.visualSource) animationIds.add(expr.visualSource.animationId);
+      else if (expr.assetId) assetIds.add(expr.assetId);
     }
   }
   for (const animationId of animationIds) {
@@ -653,6 +650,7 @@ export function planAutoScenes(
             shotId,
             ref.characterId,
             initialPos,
+            ref.expressionId,
           );
           candidate = created.project;
           createdLayerId = created.layer.id;

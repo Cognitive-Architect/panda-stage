@@ -106,8 +106,20 @@ interface ParsedFieldLine {
   readonly value: string;
 }
 
-const ITEM_SEPARATORS = /[、,，；;]+/u;
+const SCENE_ITEM_TOKENS = /\[[^[\]]*\]|【[^【】]*】|\([^()]*\)|（[^（）]*）|(?<separator>[、,，；;]+)/gu;
 const NONE_TOKENS = new Set(['无', '空', '没有', 'none', 'empty', '-']);
+
+function splitSceneItems(value: string): string[] {
+  const items: string[] = [];
+  let start = 0;
+  for (const token of value.matchAll(SCENE_ITEM_TOKENS)) {
+    if (!token.groups?.separator) continue;
+    items.push(value.slice(start, token.index));
+    start = token.index + token[0].length;
+  }
+  items.push(value.slice(start));
+  return items;
+}
 
 function splitFieldLine(line: string): ParsedFieldLine | null {
   const asciiColon = line.indexOf(':');
@@ -518,7 +530,7 @@ export function parseStructuredSceneBlocks(
     const castRaw = fields.get('出场')?.value ?? '';
     const cast: SceneCastDraft[] = [];
     if (castRaw && !NONE_TOKENS.has(castRaw.toLowerCase())) {
-      const rawTokens = castRaw.split(ITEM_SEPARATORS);
+      const rawTokens = splitSceneItems(castRaw);
       for (const rawToken of rawTokens) {
         const parsedCast = parseCastEntry(rawToken, cast.length);
         if (parsedCast) cast.push(parsedCast);
@@ -528,7 +540,7 @@ export function parseStructuredSceneBlocks(
     const propRaw = fields.get('道具')?.value ?? '';
     const props: ScenePropDraft[] = [];
     if (propRaw && !NONE_TOKENS.has(propRaw.toLowerCase())) {
-      const rawTokens = propRaw.split(ITEM_SEPARATORS);
+      const rawTokens = splitSceneItems(propRaw);
       for (const rawToken of rawTokens) {
         const parsedProp = parsePropEntry(rawToken, props.length);
         if (parsedProp) props.push(parsedProp);

@@ -1,9 +1,17 @@
+// @vitest-environment happy-dom
+import { act, createElement } from 'react';
+import { createRoot } from 'react-dom/client';
 import { describe, expect, it } from 'vitest';
 import {
   applyAutoScenePlan,
   isAutoScenePlanStale,
+  isScriptPerformancePlanStale,
   parseAndPlanAutoScenes,
   parseStructuredSceneBlocks,
+  planScriptPerformance,
+  applyScriptPerformancePlan,
+  evaluateShotAtTime,
+  resolveShotVisualParts,
   planAutoScenes,
   planStandingPlacement,
   ProjectSchema,
@@ -11,6 +19,9 @@ import {
   type FlaGraphicDefinition,
   type Project,
 } from '../../src/domain';
+import { AutoScenePanel } from '../../src/renderer/features/shots/AutoScenePanel';
+import { editorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
+import { scenePreviewStore } from '../../src/renderer/stores/scenePreviewStore';
 import { buildProject, IDS } from './domain/testProject';
 
 const SHA_BG = 'a'.repeat(64);
@@ -305,6 +316,168 @@ function makeRichProject(options?: {
 }
 
 describe('WF-03 Auto Scene parser, resolver, and shared planner', () => {
+  it('U1 preserves picks for unchanged scenes and invalidates moved item ordinals in edited scenes', async () => {
+    const project = makeRichProject({ duplicateNames: true });
+    editorProjectStore.open('D:/wf03-u1.pandastage', project);
+    const initial = editorProjectStore.getSnapshot()!;
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const actEnvironment = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
+    const find = <T extends HTMLElement>(id: string): T =>
+      container.querySelector<T>(`[data-testid="${id}"]`)!;
+    const input = async (value: string) => {
+      const textarea = find<HTMLTextAreaElement>('auto-scene-input');
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea, value);
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    };
+    const select = async (id: string, value: string) => {
+      await act(async () => {
+        const item = find<HTMLSelectElement>(id);
+        item.value = value;
+        item.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    };
+    const scene = '镜头：手选\n背景：背景\n出场：熊猫1\n道具：缺少道具';
+    const skipped = '镜头：暂时跳过\n出场：师父';
+    const inserted = '镜头：插入\n出场：小师妹';
+    const editableShot = (name: string) =>
+      scenePreviewStore.getSnapshot()?.previewProject.shots.find((shot) => shot.name === name);
+    try {
+      await act(async () => root.render(createElement(AutoScenePanel, { snapshot: initial, onBack: () => {} })));
+      await input([scene, skipped].join('\n---\n'));
+      await select('auto-scene-cast-select-1-0', EXTRA_IDS.dupChar);
+      await select('auto-scene-bg-select-1', `graphic:${EXTRA_IDS.bgGraphic}`);
+      await select('auto-scene-prop-select-1-0', `image:${EXTRA_IDS.propCup}`);
+      await act(async () => {
+        find('auto-scene-block-2').querySelector<HTMLInputElement>('input[type=checkbox]')!.click();
+      });
+      expect(editableShot('手选')!.layers.map((layer) => layer.source)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: 'character', characterId: EXTRA_IDS.dupChar }),
+        expect.objectContaining({ kind: 'animation', animationId: EXTRA_IDS.bgGraphic }),
+        expect.objectContaining({ kind: 'asset', assetId: EXTRA_IDS.propCup }),
+      ]));
+      expect(editableShot('暂时跳过')).toBeUndefined();
+
+      await input([skipped, inserted, scene].join('\n---\n'));
+      expect(editableShot('暂时跳过')).toBeUndefined();
+      expect(editableShot('插入')).toBeDefined();
+      expect(editableShot('手选')!.layers.map((layer) => layer.source)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ characterId: EXTRA_IDS.dupChar }),
+        expect.objectContaining({ animationId: EXTRA_IDS.bgGraphic }),
+        expect.objectContaining({ assetId: EXTRA_IDS.propCup }),
+      ]));
+
+      const edited = scene.replace('熊猫1', '小师妹、熊猫1').replace('缺少道具', '其他道具');
+      await input([edited, inserted].join('\n---\n'));
+      expect(editableShot('手选')!.layers.map((layer) => layer.source)).toEqual([
+        expect.objectContaining({ kind: 'character', characterId: EXTRA_IDS.adaptiveChar }),
+      ]);
+      expect(find('auto-scene-cast-select-1-1')).not.toBeNull();
+      expect(editableShot('插入')).toBeDefined();
+      await select('auto-scene-cast-select-1-1', EXTRA_IDS.dupChar);
+      await input([edited.replace('小师妹、熊猫1', '熊猫1、小师妹'), inserted].join('\n---\n'));
+      expect(editableShot('手选')!.layers.map((layer) => layer.source)).toEqual([
+        expect.objectContaining({ kind: 'character', characterId: EXTRA_IDS.adaptiveChar }),
+      ]);
+      await input([edited.replace('小师妹、熊猫1', '小师妹'), inserted].join('\n---\n'));
+      expect(editableShot('手选')!.layers).toHaveLength(1);
+      expect(editorProjectStore.getSnapshot()).toBe(initial);
+      await act(async () => find<HTMLButtonElement>('auto-scene-confirm').click());
+      expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+      expect(editorProjectStore.getSnapshot()!.project.shots.slice(-2).map((shot) => shot.name))
+        .toEqual(['手选', '插入']);
+    } finally {
+      await act(async () => root.unmount());
+      container.remove();
+      editorProjectStore.clear();
+      delete actEnvironment.IS_REACT_ACT_ENVIRONMENT;
+    }
+  });
+
+  it('U2 materializes the requested face at 0 ms through WF-03 and WF-04', () => {
+    const source = makeRichProject();
+    const adaptive = source.characters.find((character) => character.mode === 'adaptive-parts')!;
+    const normal = { id: crypto.randomUUID(), name: '正常', assetId: IDS.assetChar };
+    const angry = { id: crypto.randomUUID(), name: '生气', assetId: IDS.assetChar2 };
+    const project = ProjectSchema.parse({
+      ...source,
+      characters: source.characters.map((character) => character === adaptive ? {
+        ...adaptive,
+        faceBinding: {
+          targetPartId: adaptive.parts[0]!.partId, replacePartIds: [],
+          anchorRect: { x: 0, y: 0, width: 100, height: 100 },
+          placement: { offsetX: 0, offsetY: 0, scale: 1, rotationDeg: 0, flipX: false },
+        },
+        expressions: [normal, angry],
+        defaultExpressionId: normal.id,
+      } : character),
+    });
+    const script = '镜头：指定表情\n出场：小师妹@生气\n---\n镜头：默认表情\n出场：小师妹';
+    const auto = parseAndPlanAutoScenes(project, script).plan!;
+    const wf04 = planScriptPerformance(project, script + '\n对白：\n小师妹：没有配音。');
+    const autoResult = applyAutoScenePlan(project, auto);
+    const wf04Result = applyScriptPerformancePlan(project, wf04, { allowPartialConfirm: true });
+    expect(autoResult.ok).toBe(true);
+    expect(wf04Result.ok).toBe(true);
+    if (!autoResult.ok || !wf04Result.ok) throw new Error('Could not apply scene');
+    expect(autoResult.project.shots).toEqual(auto.candidateProject!.shots);
+    expect(wf04Result.project.shots).toEqual(wf04.candidateProject!.shots);
+    for (const result of [autoResult.project, wf04Result.project]) {
+      const [explicit, inherited] = result.shots.slice(-2);
+      expect(explicit!.layers[0]!.source).toEqual({
+        kind: 'character', characterId: adaptive.id, expressionId: angry.id,
+      });
+      expect(inherited!.layers[0]!.source).toEqual({ kind: 'character', characterId: adaptive.id });
+      expect(explicit!.timelineEvents).toEqual([]);
+      expect(inherited!.timelineEvents).toEqual([]);
+      for (const [shot, expression] of [[explicit!, angry], [inherited!, normal]] as const) {
+        const evaluated = evaluateShotAtTime(shot, 0, result);
+        expect(evaluated.layers[0]!.currentExpressionId).toBe(expression.id);
+        expect(resolveShotVisualParts(result, shot, evaluated)[0]!.parts.map((part) => part.assetId))
+          .toContain(expression.assetId);
+      }
+      expect(result.characters).toEqual(project.characters);
+      expect(result.shots.slice(0, -2)).toEqual(project.shots);
+    }
+    const unavailable = parseAndPlanAutoScenes(project, script.replace('@生气', '@失踪')).plan!;
+    expect(unavailable.blocks[0]!.cast[0]!.match.status).toBe('unusable');
+    expect(unavailable.blocks[0]!.issues[0]!.message).toContain('失踪');
+    const changed = ProjectSchema.parse({
+      ...project,
+      characters: project.characters.map((character) =>
+        character.id === adaptive.id ? { ...character, faceBinding: undefined } : character),
+    });
+    expect(isAutoScenePlanStale(changed, auto).stale).toBe(true);
+    expect(isScriptPerformancePlanStale(changed, wf04).stale).toBe(true);
+  });
+
+  it('U4 keeps bracketed coordinates whole while splitting external list delimiters', () => {
+    const result = parseStructuredSceneBlocks([
+      '镜头：坐标',
+      '出场：熊猫[x=100,y=200], 小师妹（x=150 y=250）、师父',
+      '道具：茶杯[x=300,y=400]，佩剑【x=350，y=450】;扇子',
+      '---',
+      '镜头：普通语法',
+      '出场：熊猫@正常',
+    ].join('\n'));
+    expect(result.ok).toBe(true);
+    expect(result.blocks[0]!.cast).toEqual([
+      { index: 0, name: '熊猫', explicitPosition: { x: 100, y: 200 } },
+      { index: 1, name: '小师妹', explicitPosition: { x: 150, y: 250 } },
+      { index: 2, name: '师父' },
+    ]);
+    expect(result.blocks[0]!.props).toEqual([
+      { index: 0, name: '茶杯', explicitPosition: { x: 300, y: 400 } },
+      { index: 1, name: '佩剑', explicitPosition: { x: 350, y: 450 } },
+      { index: 2, name: '扇子' },
+    ]);
+    expect(result.blocks[1]!.cast).toEqual([{ index: 0, name: '熊猫', expressionName: '正常' }]);
+  });
+
   it('generates a single editable shot and 2 consecutive shots on the exact same pipeline with image/Graphic bg and adaptive character', () => {
     const project = makeRichProject();
 

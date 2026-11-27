@@ -264,7 +264,7 @@ export function ProjectResourceImportDialog({
               <div>
                 已选 {preview.selectedCount} 项 · 含 {preview.characterCount}{' '}
                 个角色、{preview.animationCount} 个 Graphic/动画、
-                {preview.newFileCount} 个待复制素材文件
+                预计复制 {preview.newFileCount} 个素材文件
               </div>
               {preview.reusableAssetCount > 0 ? (
                 <label className="project-resource-import-reuse-option">
@@ -277,8 +277,7 @@ export function ProjectResourceImportDialog({
                     type="checkbox"
                   />
                   <span>
-                    复用目标工程中内容相同的已有素材（可省去{' '}
-                    {preview.reusableAssetCount} 个重复文件）
+                    复用目标工程中内容相同的已有素材（{preview.reusableAssetCount} 个候选）
                   </span>
                 </label>
               ) : null}

@@ -277,6 +277,92 @@ async function createSourceFixture(parentDir: string): Promise<{
 }
 
 describe('ProjectResourceImportService integration', () => {
+  it('U5 previews and atomically imports one Graphic character with 301 dependencies', async () => {
+    const tempDir = await makeTempDir('panda-wf05-capacity-');
+    const source = await createSourceFixture(tempDir);
+    const character = source.sourceProject.characters.find((entry) => entry.id === source.characterId)!;
+    const body = source.sourceProject.assets.find((asset) => asset.name === 'BodyBitmap')!;
+    const extras = Array.from({ length: 299 }, (_, index) => ({
+      ...body,
+      id: randomUUID(),
+      name: `Expression ${index + 1}`,
+      relativePath: `assets/expr-${index + 1}.png`,
+      sha256: sha256(TINY_PNG_B),
+    }));
+    for (const asset of extras) {
+      await writeFile(path.join(source.sourceRoot, asset.relativePath), TINY_PNG_B);
+    }
+    const expandedSource = ProjectSchema.parse({
+      ...source.sourceProject,
+      assets: [...source.sourceProject.assets, ...extras],
+      characters: [{
+        ...character,
+        expressions: [
+          ...character.expressions!,
+          ...extras.map((asset) => ({ id: randomUUID(), name: asset.name, assetId: asset.id })),
+        ],
+      }],
+    });
+    const sourceDocumentPath = path.join(source.sourceRoot, 'project.json');
+    const sourceDocument = JSON.stringify(expandedSource);
+    await writeFile(sourceDocumentPath, sourceDocument);
+
+    const projectService = new ProjectService();
+    const projectRoot = path.join(tempDir, 'target.pandastage');
+    const target = await projectService.create(projectRoot, { name: 'Capacity target' });
+    const existingBody = { ...body, id: randomUUID(), relativePath: 'assets/existing.png' };
+    const existingPath = path.join(projectRoot, existingBody.relativePath);
+    await writeFile(existingPath, TINY_PNG_A);
+    const project = ProjectSchema.parse({ ...target.project, assets: [existingBody] });
+    const service = new ProjectResourceImportService({
+      projectService,
+      getCurrentProjectSnapshot: () => ({ project, revision: 1 }),
+    });
+    const targetDocument = path.join(projectRoot, 'project.json');
+    const before = await readFile(targetDocument, 'utf8');
+    const choose = () => service.selectSourceProject({ projectRoot, project, baseRevision: 1 }, source.sourceRoot);
+    const chosen = await choose();
+    if (!chosen.ok || chosen.status !== 'selected') throw new Error('expected selected');
+    const request = {
+      projectRoot, project, baseRevision: 1, sourceToken: chosen.sourceToken,
+      resources: [{ kind: 'character' as const, id: source.characterId }],
+      reuseIdenticalAssets: true,
+    };
+    expect(service.previewImport(request)).toMatchObject({
+      ok: true, selectedCount: 1, characterCount: 1, assetCount: 301,
+      reusableAssetCount: 1, newFileCount: 300, issues: [],
+    });
+    expect(service.previewImport({ ...request, reuseIdenticalAssets: false }))
+      .toMatchObject({ ok: true, newFileCount: 301, issues: [] });
+    const assetDir = path.join(projectRoot, 'assets');
+    expect(await readdir(assetDir)).toEqual(['existing.png']);
+    expect(await readFile(targetDocument, 'utf8')).toBe(before);
+
+    const changedSourcePath = path.join(source.sourceRoot, extras.at(-1)!.relativePath);
+    await writeFile(changedSourcePath, TINY_PNG_A);
+    await expect(service.importResources(request))
+      .rejects.toMatchObject({ code: 'PROJECT_RESOURCE_SOURCE_INVALID', message: expect.stringContaining('重新预览') });
+    expect(await readdir(assetDir)).toEqual(['existing.png']);
+    expect(await readFile(targetDocument, 'utf8')).toBe(before);
+
+    await writeFile(changedSourcePath, TINY_PNG_B);
+    const refreshed = await choose();
+    if (!refreshed.ok || refreshed.status !== 'selected') throw new Error('expected refreshed selection');
+    const result = await service.importResources({
+      ...request, sourceToken: refreshed.sourceToken,
+    });
+    expect(result.importedAssets).toHaveLength(300);
+    expect(result.reusedAssetIds).toEqual([existingBody.id]);
+    expect(result.importedCharacters).toHaveLength(1);
+    const imported = result.project.characters[0]!;
+    expect(imported.id).not.toBe(source.characterId);
+    expect(imported.expressions).toHaveLength(300);
+    expect(await readdir(assetDir)).toHaveLength(301);
+    expect(await readFile(existingPath)).toEqual(TINY_PNG_A);
+    expect(await readFile(sourceDocumentPath, 'utf8')).toBe(sourceDocument);
+    expect(ProjectSchema.parse(JSON.parse(await readFile(targetDocument, 'utf8')))).toEqual(result.project);
+  }, 30_000);
+
   it('imports Graphic character + background + prop, deduplicates shared Graphic, preserves unsaved target edits, and keeps source immutable', async () => {
     const tempDir = await makeTempDir('panda-wf05-');
     const source = await createSourceFixture(tempDir);

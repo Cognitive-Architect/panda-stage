@@ -122,6 +122,46 @@ function buildWf04Project(): Project {
 }
 
 describe('WF-04 shared script & performance planner and applier', () => {
+  it('U3 diagnoses recipe duration overrides and uses the authored range for extension and apply', () => {
+    const project = saveActionRecipe(buildWf04Project(), {
+      name: '长淡入',
+      steps: [{
+        id: crypto.randomUUID(), kind: 'preset', presetId: 'fade-in',
+        offsetMs: 0, durationMs: 2_000, parameters: {},
+      }],
+    });
+    const script = [
+      '镜头：配方长度', '时长：1900ms', '出场：师兄',
+      '对白：', '师兄：第一句。', '表演：',
+      '1｜配方｜长淡入', '1｜抖动｜时长=300ms',
+    ].join('\n');
+    const overridden = planScriptPerformance(project, script.replace('｜长淡入', '｜长淡入｜时长=500ms'),
+      { extendShotForPerformance: true });
+    expect(overridden.performances[0]).toMatchObject({
+      status: 'issue', issueCode: 'RECIPE_DURATION_OVERRIDE_UNSUPPORTED',
+      startMs: 0, endMs: 2_000, eventIds: [],
+    });
+    expect(overridden.blocks[0]).toMatchObject({ finalDurationMs: 1900, extendedForPerformance: false });
+    expect(overridden.readyPerformanceCount).toBe(1);
+    expect(applyScriptPerformancePlan(project, overridden, { allowPartialConfirm: false }).ok).toBe(false);
+    const partial = applyScriptPerformancePlan(project, overridden, { allowPartialConfirm: true });
+    expect(partial.ok).toBe(true);
+    if (!partial.ok) throw new Error('Could not apply the valid subset');
+    expect(partial.project.shots.at(-1)!.timelineEvents.map((event) => event.type)).toEqual(['shake']);
+
+    const bounded = planScriptPerformance(project, script);
+    expect(bounded.performances[0]).toMatchObject({ issueCode: 'OUT_OF_SHOT_BOUNDS', requiredShotDurationMs: 2_000 });
+    const extended = planScriptPerformance(project, script, { extendShotForPerformance: true });
+    expect(extended.performances[0]).toMatchObject({ status: 'ready', startMs: 0, endMs: 2_000 });
+    const applied = applyScriptPerformancePlan(project, extended);
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) throw new Error('Could not apply the authored recipe');
+    const shot = applied.project.shots.at(-1)!;
+    expect(shot).toEqual(extended.candidateProject!.shots.at(-1));
+    expect(shot.durationMs).toBe(2_000);
+    expect(shot.timelineEvents.find((event) => event.type === 'opacity')).toMatchObject({ startMs: 0, endMs: 2_000 });
+  });
+
   it('plans and applies 2 shots with 4 real-audio lines, auto-extending shot without clipping, and >=3 editable actions in one commit', () => {
     const project = buildWf04Project();
     const script = [
