@@ -11,6 +11,7 @@ import { shotStore } from '../../stores/shotStore';
 import { Button } from '../../ui';
 import { formatTimecode } from '../timeline/timeGeometry';
 import { timelineUiStore } from '../timeline/timelineUiStore';
+import { ShotAutoFramingControls } from './ShotAutoFramingControls';
 
 const easingLabels: Readonly<Record<AnimationInterpolation, string>> = {
   linear: '线性', 'ease-in': '缓入', 'ease-out': '缓出', 'ease-in-out': '缓入缓出', step: '保持',
@@ -106,6 +107,9 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
         <option value="manual">手工运镜</option>
         <option value="hybrid">自动+手工接管</option>
       </select></label>
+      {(mode === 'speaker-focus' || mode === 'hybrid' || !mode) && (
+        <ShotAutoFramingControls shot={shot} onEdit={edit} onError={setError} />
+      )}
       {hasManualTrack && <>
         <div className="shot-camera-actions">
           <Button variant={cameraTool ? 'primary' : 'secondary'} aria-pressed={cameraTool} onClick={() => onToolChange(!cameraTool)}>编辑相机框</Button>

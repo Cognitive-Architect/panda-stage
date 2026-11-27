@@ -42,11 +42,18 @@ export const ShotCameraOverrideSchema = z.object({
   }
 });
 
+export const ShotCameraAutoFramingSchema = z.object({
+  zoom: FiniteNumberSchema.min(1).optional(),
+  targetU: FiniteNumberSchema.min(0).max(1).optional(),
+  targetV: FiniteNumberSchema.min(0).max(1).optional(),
+}).strict();
+
 export const ShotCameraModeSchema = z.enum(['static', 'speaker-focus', 'manual', 'hybrid']);
 export const ShotCameraSchema = z.object({
   mode: ShotCameraModeSchema,
   keys: z.array(ShotCameraKeySchema),
   overrides: z.array(ShotCameraOverrideSchema).optional(),
+  autoFraming: ShotCameraAutoFramingSchema.optional(),
 }).strict();
 
 export type ManualCameraPose = z.infer<typeof ManualCameraPoseSchema>;
@@ -55,4 +62,5 @@ export type ShotCameraV45 = z.infer<typeof ShotCameraV45Schema>;
 export type ShotCameraMode = z.infer<typeof ShotCameraModeSchema>;
 export type ShotCameraKey = z.infer<typeof ShotCameraKeySchema>;
 export type ShotCameraOverride = z.infer<typeof ShotCameraOverrideSchema>;
+export type ShotCameraAutoFraming = z.infer<typeof ShotCameraAutoFramingSchema>;
 export type ShotCamera = z.infer<typeof ShotCameraSchema>;

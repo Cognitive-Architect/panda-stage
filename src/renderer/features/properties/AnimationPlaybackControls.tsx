@@ -7,6 +7,7 @@ import {
   resolveLayerAnimationTimeLink,
   setLayerAnimationTimeLink,
 } from '../../../domain/animation-time-link';
+import { stepSignedFrameOffsetMs } from '../../../domain/timeline/frame-grid';
 import type { LayerAnimationTimeLink } from '../../../domain/models';
 import { resolveFlaGraphicPreviewTimeline } from '../../../domain/selectors/animationSourceTimeline';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
@@ -138,10 +139,14 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
   const startTimeMs = layer?.source.kind === 'animation'
     ? layer.startTimeMs ?? 0
     : 0;
+  const linkOffsetMs = layer?.source.kind === 'animation'
+    ? layer.animationTimeLink?.offsetMs ?? 0
+    : 0;
   const projectInstanceId = editorProjectStore.getProjectInstanceId();
   const [startDraft, setStartDraft] = useState(() =>
     formatStartSeconds(startTimeMs),
   );
+  const [offsetDraft, setOffsetDraft] = useState(() => String(linkOffsetMs));
   const [status, setStatus] = useState('');
   const [loopStatus, setLoopStatus] = useState<{ layerId: string; message: string }>();
   const activeStartEditRef = useRef<{
@@ -160,6 +165,7 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
     activeStartEditRef.current = null;
     cancelOnBlurIdRef.current = null;
     setStartDraft(formatStartSeconds(startTimeMs));
+    setOffsetDraft(String(linkOffsetMs));
     setStatus(
       discardedStaleDraft && currentContext
         ? currentContext.locked
@@ -170,6 +176,7 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
   }, [
     layer?.id,
     layer?.locked,
+    linkOffsetMs,
     projectInstanceId,
     snapshot?.project.id,
     snapshot?.projectRoot,
@@ -389,7 +396,12 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
                   (candidate) => candidate.key === selectedKey,
                 );
                 if (chosen) {
-                  updateTimeLink(chosen.link);
+                  const preservedOffset = layer.animationTimeLink?.offsetMs;
+                  updateTimeLink(
+                    preservedOffset
+                      ? { ...chosen.link, offsetMs: preservedOffset }
+                      : chosen.link,
+                  );
                 }
               }}
               value={currentTimeLinkKey}
@@ -428,6 +440,111 @@ export function AnimationPlaybackControls(): React.JSX.Element | null {
             ) : null}
           </div>
         </div>
+        {resolvedTimeLink.status === 'active' ? (
+          <>
+            <div
+              className="animation-playback-field"
+              data-testid="animation-time-link-offset-field"
+            >
+              <span>时间偏移</span>
+              <div className="animation-playback-offset-control">
+                <Button
+                  aria-label="提前一帧"
+                  className="animation-playback-offset-step"
+                  data-testid="animation-time-link-offset-dec"
+                  disabled={locked}
+                  onClick={() => {
+                    const nextOffset = stepSignedFrameOffsetMs(linkOffsetMs, -1);
+                    updateTimeLink({
+                      ...resolvedTimeLink.link,
+                      offsetMs: nextOffset,
+                    });
+                  }}
+                  variant="secondary"
+                >
+                  -1帧
+                </Button>
+                <span className="animation-playback-offset-input-wrap">
+                  <input
+                    aria-label="动作联动时间偏移（毫秒）"
+                    data-testid="animation-time-link-offset"
+                    disabled={locked}
+                    onBlur={() => {
+                      const trimmed = offsetDraft.trim();
+                      if (!trimmed) {
+                        setOffsetDraft(String(linkOffsetMs));
+                        return;
+                      }
+                      const parsed = Number(trimmed);
+                      if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+                        setOffsetDraft(String(linkOffsetMs));
+                        setStatus('时间偏移必须是整数毫秒（支持正负值）。');
+                        return;
+                      }
+                      if (parsed !== linkOffsetMs) {
+                        updateTimeLink({
+                          ...resolvedTimeLink.link,
+                          offsetMs: parsed,
+                        });
+                      } else {
+                        setStatus('');
+                      }
+                    }}
+                    onChange={(event) => {
+                      setOffsetDraft(event.currentTarget.value);
+                      setStatus('');
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        event.currentTarget.blur();
+                      }
+                      if (event.key === 'Escape') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setOffsetDraft(String(linkOffsetMs));
+                        setStatus('');
+                        event.currentTarget.blur();
+                      }
+                    }}
+                    step="1"
+                    type="number"
+                    value={offsetDraft}
+                  />
+                  <span aria-hidden="true" className="animation-playback-time-unit">
+                    ms
+                  </span>
+                </span>
+                <Button
+                  aria-label="延后一帧"
+                  className="animation-playback-offset-step"
+                  data-testid="animation-time-link-offset-inc"
+                  disabled={locked}
+                  onClick={() => {
+                    const nextOffset = stepSignedFrameOffsetMs(linkOffsetMs, 1);
+                    updateTimeLink({
+                      ...resolvedTimeLink.link,
+                      offsetMs: nextOffset,
+                    });
+                  }}
+                  variant="secondary"
+                >
+                  +1帧
+                </Button>
+              </div>
+            </div>
+            <div
+              className="animation-playback-link-window"
+              data-testid="animation-time-link-window"
+            >
+              {resolvedTimeLink.outOfShotBounds
+                ? `联动区间 ${formatAnimationTimeLinkWindow(resolvedTimeLink.startMs, resolvedTimeLink.endMs)}（超出当前镜头，不显示）`
+                : resolvedTimeLink.startMs < 0 || resolvedTimeLink.endMs > shot.durationMs
+                  ? `联动区间 ${formatAnimationTimeLinkWindow(resolvedTimeLink.startMs, resolvedTimeLink.endMs)}（可见 ${formatAnimationTimeLinkWindow(resolvedTimeLink.visibleStartMs, resolvedTimeLink.visibleEndMs)}）`
+                  : `联动区间 ${formatAnimationTimeLinkWindow(resolvedTimeLink.startMs, resolvedTimeLink.endMs)}`}
+            </div>
+          </>
+        ) : null}
         {resolvedTimeLink.status === 'broken' ? (
           <output
             className="animation-playback-link-broken"

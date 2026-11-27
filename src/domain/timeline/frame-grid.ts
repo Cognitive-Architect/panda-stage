@@ -124,3 +124,55 @@ export function isValidFrameTime(
     snapToFrame(timeMs, fps) === timeMs
   );
 }
+
+/** Convert a signed frame delta to an integer millisecond offset at the Timeline FPS. */
+export function signedFrameOffsetMs(
+  frameDelta: number,
+  fps: number = TIMELINE_FPS,
+): number {
+  if (!Number.isFinite(frameDelta) || frameDelta === 0) {
+    return 0;
+  }
+  const sign = frameDelta < 0 ? -1 : 1;
+  const frames = Math.round(Math.abs(frameDelta));
+  const ms = Math.round(frames * (1_000 / safeFps(fps)));
+  return ms === 0 ? 0 : sign * ms;
+}
+
+/** Snap a signed millisecond offset to the nearest signed Timeline frame offset. */
+export function snapSignedFrameOffsetMs(
+  offsetMs: number,
+  fps: number = TIMELINE_FPS,
+): number {
+  if (!Number.isFinite(offsetMs) || offsetMs === 0) {
+    return 0;
+  }
+  const sign = offsetMs < 0 ? -1 : 1;
+  const frames = Math.round((Math.abs(offsetMs) * safeFps(fps)) / 1_000);
+  return signedFrameOffsetMs(sign * frames, fps);
+}
+
+/** Step a signed millisecond offset by `deltaFrames` on the Timeline frame grid. */
+export function stepSignedFrameOffsetMs(
+  currentOffsetMs: number,
+  deltaFrames: number,
+  fps: number = TIMELINE_FPS,
+): number {
+  const resolvedFps = safeFps(fps);
+  const currentFrames = Number.isFinite(currentOffsetMs)
+    ? Math.round((currentOffsetMs * resolvedFps) / 1_000)
+    : 0;
+  const nextFrames = currentFrames + Math.round(deltaFrames);
+  return signedFrameOffsetMs(nextFrames, resolvedFps);
+}
+
+/** True for integer times (including negative offsets) aligned to the Timeline frame grid. */
+export function isValidSignedFrameTime(
+  timeMs: number,
+  fps: number = TIMELINE_FPS,
+): boolean {
+  return (
+    Number.isInteger(timeMs) &&
+    (timeMs >= 0 ? isValidFrameTime(timeMs, fps) : isValidFrameTime(-timeMs, fps))
+  );
+}

@@ -166,16 +166,14 @@ function shotVisualSampleTimes(shot: Project['shots'][number]): number[] {
   }
   for (const layer of shot.layers) {
     const resolvedLink = resolveLayerAnimationTimeLink(shot, layer);
-    if (resolvedLink.status !== 'active') continue;
-    if (resolvedLink.startMs >= 0 && resolvedLink.startMs < shot.durationMs) {
-      times.add(resolvedLink.startMs);
-    }
-    const lastActiveMs = Math.min(shot.durationMs, resolvedLink.endMs - 1);
-    if (lastActiveMs >= resolvedLink.startMs && lastActiveMs >= 0) {
+    if (resolvedLink.status !== 'active' || resolvedLink.outOfShotBounds) continue;
+    times.add(resolvedLink.visibleStartMs);
+    const lastActiveMs = Math.min(shot.durationMs, resolvedLink.visibleEndMs - 1);
+    if (lastActiveMs >= resolvedLink.visibleStartMs) {
       times.add(lastActiveMs);
     }
-    if (resolvedLink.endMs >= 0 && resolvedLink.endMs <= shot.durationMs) {
-      times.add(resolvedLink.endMs);
+    if (resolvedLink.visibleEndMs <= shot.durationMs) {
+      times.add(resolvedLink.visibleEndMs);
     }
   }
   return [...times].sort((left, right) => left - right);

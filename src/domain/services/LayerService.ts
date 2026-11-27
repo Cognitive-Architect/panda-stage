@@ -1,3 +1,4 @@
+import { resolveLayerAnimationTimeLink } from '../animation-time-link';
 import { layerAttachmentTargetKey, resolveLayerAttachmentLocalMatrix } from '../layer-attachment';
 import { layerAttachmentWorldMatrix } from '../layer-parent-space';
 import { projectShotDialogueVisual } from '../selectors/temporalRender';
@@ -2166,7 +2167,11 @@ export class LayerService {
       parentLayerId: keepParent ? layer.parentLayerId : undefined,
       parentAttachment: keepParent ? layer.parentAttachment : undefined,
       ...(copiedParentKeys?.length ? { parentKeys: copiedParentKeys } : {}),
-      ...(sameShot && layer.animationTimeLink ? { animationTimeLink: { ...layer.animationTimeLink } } : {}),
+      ...(sameShot &&
+      layer.animationTimeLink &&
+      resolveLayerAnimationTimeLink(destination, layer).status === 'active'
+        ? { animationTimeLink: { ...layer.animationTimeLink } }
+        : {}),
       parentSpaceOffset: copiedSpace,
       cameraSpace: detachedPose ? detachedPose.effectiveCameraSpace : layer.cameraSpace,
       depth: copiedDepth,

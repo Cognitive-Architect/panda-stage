@@ -2,9 +2,11 @@ import {
   ProjectSchema,
   type Project,
   type Shot,
+  type ShotCameraAutoFraming,
 } from '../models';
 import { SHOT_MIN_DURATION_MS } from '../constants';
 import { remapLayerMotionOwner } from '../layer-animation';
+import { setShotCameraAutoFraming } from '../shot-camera';
 
 export type ShotServiceErrorCode =
   | 'SHOT_NOT_FOUND'
@@ -196,6 +198,17 @@ export class ShotService {
     const shots = [...project.shots];
     shots[index] = { ...shot, durationMs };
     return this.replaceShots(project, shots);
+  }
+
+  setCameraAutoFraming(
+    project: Project,
+    shotId: string,
+    autoFraming: ShotCameraAutoFraming | undefined,
+  ): Project {
+    this.shotIndex(project, shotId);
+    const updated = setShotCameraAutoFraming(project, shotId, autoFraming);
+    if (updated === project) return project;
+    return this.replaceShots(project, updated.shots);
   }
 
   remove(project: Project, shotId: string): Project {

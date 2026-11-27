@@ -25,7 +25,7 @@ import {
   type FlaGraphicInternalTimeline,
 } from './models/flaGraphicTimeline';
 import { LAYER_MAX_SCALE, LAYER_MIN_SCALE } from './constants';
-import { TIMELINE_FPS, frameTimeMs, isValidFrameTime } from './timeline/frame-grid';
+import { TIMELINE_FPS, frameTimeMs, isValidFrameTime, isValidSignedFrameTime } from './timeline/frame-grid';
 import { evaluateLayerMotionAtTime, type EvaluatedLayerMotion } from './evaluate-layer-motion';
 import { evaluateAnimationClipAtTime, evaluateAnimationEase, type EvaluatedAnimationValue } from './evaluate-animation-core';
 import {
@@ -215,8 +215,8 @@ function resolveCharacterActionHoldTimeMs(animation: ProjectAnimationDefinition)
 }
 
 function elapsedAnimationSourcePosition(timeMs: number, startTimeMs: number, sourceFps: number): number {
-  // Resolve on-grid stamps as frame indices so 958 ms is frame 23 at 24 fps.
-  return isValidFrameTime(timeMs) && isValidFrameTime(startTimeMs)
+  // Resolve on-grid stamps (including negative signed frame offsets) as frame indices so 958 ms is frame 23 at 24 fps.
+  return isValidFrameTime(timeMs) && isValidSignedFrameTime(startTimeMs)
     ? (Math.round(timeMs * TIMELINE_FPS / 1_000) - Math.round(startTimeMs * TIMELINE_FPS / 1_000)) *
       sourceFps / TIMELINE_FPS
     : (timeMs - startTimeMs) * sourceFps / 1_000;

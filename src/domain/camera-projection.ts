@@ -55,8 +55,9 @@ export function cameraLayerTransform(
 
 /**
  * Invert `cameraLayerTransform` at `zoom` so a world-space point on `depth`
- * projects onto the stage center. Returns `null` for screen-space planes or
- * planes clipped at `zoom`.
+ * projects onto the normalized screen target `(targetU, targetV)` (defaults to
+ * stage center `(0.5, 0.5)`). Returns `null` for screen-space planes, invalid
+ * inputs, or planes clipped at `zoom`.
  */
 export function solveCameraCenterForWorldPoint(
   worldX: number,
@@ -66,17 +67,38 @@ export function solveCameraCenterForWorldPoint(
   zoom: number,
   depth: number,
   space: 'world' | 'screen',
+  targetU = 0.5,
+  targetV = 0.5,
 ): { centerX: number; centerY: number } | null {
   if (space === 'screen') return null;
-  if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return null;
-  if (depth === 0) return { centerX: worldX, centerY: worldY };
+  if (
+    !Number.isFinite(worldX) ||
+    !Number.isFinite(worldY) ||
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    !Number.isFinite(zoom) ||
+    zoom <= 0 ||
+    !Number.isFinite(targetU) ||
+    !Number.isFinite(targetV)
+  ) {
+    return null;
+  }
+  const stageCenterX = width / 2;
+  const stageCenterY = height / 2;
+  const desiredOffsetX = targetU * width - stageCenterX;
+  const desiredOffsetY = targetV * height - stageCenterY;
+  if (depth === 0) {
+    return {
+      centerX: worldX - desiredOffsetX / zoom,
+      centerY: worldY - desiredOffsetY / zoom,
+    };
+  }
   const plane = nativeCameraPlaneMetrics(zoom, depth);
   if (!plane) return null;
   const pan = NATIVE_CAMERA_FOCAL_LENGTH / plane.restDistance;
-  const stageCenterX = width / 2;
-  const stageCenterY = height / 2;
+  const effectiveZoom = plane.restDistance / plane.distance;
   return {
-    centerX: stageCenterX + (worldX - stageCenterX) / pan,
-    centerY: stageCenterY + (worldY - stageCenterY) / pan,
+    centerX: stageCenterX + (worldX - stageCenterX - desiredOffsetX / effectiveZoom) / pan,
+    centerY: stageCenterY + (worldY - stageCenterY - desiredOffsetY / effectiveZoom) / pan,
   };
 }

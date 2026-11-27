@@ -3,7 +3,14 @@ import { evaluateAnimationEase, sliceAnimationCurve } from './evaluate-animation
 import { PROJECT_HEIGHT, PROJECT_WIDTH } from './constants';
 import { ProjectSchema, type Project, type Shot } from './models';
 import type { AnimationCurve, AnimationInterpolation } from './models/animationCore';
-import type { ManualCameraPose, ShotCameraKey, ShotCameraMode, ShotCameraOverride } from './models/shotCamera';
+import {
+  ShotCameraAutoFramingSchema,
+  type ManualCameraPose,
+  type ShotCameraAutoFraming,
+  type ShotCameraKey,
+  type ShotCameraMode,
+  type ShotCameraOverride,
+} from './models/shotCamera';
 import {
   cameraLayerTransform,
   cameraWorldTransform,
@@ -11,9 +18,12 @@ import {
   type CameraView,
 } from './camera-projection';
 import {
+  DEFAULT_AUTO_FRAMING_TARGET_U,
+  DEFAULT_AUTO_FRAMING_TARGET_V,
   evaluateSpeakerFocusCamera,
   fullStageCamera,
   prepareSpeakerFocusCamera,
+  SPEAKER_FOCUS_ZOOM,
 } from './resolve-speaker-focus-camera';
 import { resolveTimelineFrameTime } from './timeline/frame-grid';
 
@@ -214,6 +224,26 @@ function preserveOverrides(camera: Shot['camera']): { overrides?: ShotCameraOver
   return camera?.overrides?.length ? { overrides: camera.overrides } : {};
 }
 
+function preserveAutoFraming(camera: Shot['camera']): { autoFraming?: ShotCameraAutoFraming } {
+  return camera?.autoFraming ? { autoFraming: { ...camera.autoFraming } } : {};
+}
+
+function normalizeAutoFraming(
+  input: ShotCameraAutoFraming | undefined,
+): ShotCameraAutoFraming | undefined {
+  if (!input) return undefined;
+  const parsed = ShotCameraAutoFramingSchema.parse(input);
+  const zoom = parsed.zoom ?? SPEAKER_FOCUS_ZOOM;
+  const targetU = parsed.targetU ?? DEFAULT_AUTO_FRAMING_TARGET_U;
+  const targetV = parsed.targetV ?? DEFAULT_AUTO_FRAMING_TARGET_V;
+  const isDefault =
+    Math.abs(zoom - SPEAKER_FOCUS_ZOOM) < 1e-9 &&
+    Math.abs(targetU - DEFAULT_AUTO_FRAMING_TARGET_U) < 1e-9 &&
+    Math.abs(targetV - DEFAULT_AUTO_FRAMING_TARGET_V) < 1e-9;
+  if (isDefault) return undefined;
+  return { zoom, targetU, targetV };
+}
+
 function assertValidOverrideRange(
   startMs: number,
   endMs: number,
@@ -271,7 +301,25 @@ export function setShotCameraMode(project: Project, shotId: string, mode: ShotCa
     mode,
     keys: shot.camera?.keys ?? [],
     ...preserveOverrides(shot.camera),
+    ...preserveAutoFraming(shot.camera),
   }));
+}
+
+export function setShotCameraAutoFraming(
+  project: Project,
+  shotId: string,
+  autoFraming: ShotCameraAutoFraming | undefined,
+): Project {
+  const normalized = normalizeAutoFraming(autoFraming);
+  return editCamera(project, shotId, (shot) => {
+    if (!shot.camera && !normalized) return undefined;
+    return {
+      mode: shot.camera?.mode ?? 'speaker-focus',
+      keys: shot.camera?.keys ?? [],
+      ...preserveOverrides(shot.camera),
+      ...(normalized ? { autoFraming: normalized } : {}),
+    };
+  });
 }
 
 export function setShotCameraKey(
@@ -303,6 +351,7 @@ export function setShotCameraKey(
       mode: shot.camera?.mode === 'hybrid' ? 'hybrid' : 'manual',
       keys,
       ...preserveOverrides(shot.camera),
+      ...preserveAutoFraming(shot.camera),
     };
   });
 }
@@ -379,6 +428,7 @@ export function addShotCameraOverride(
       mode: 'hybrid',
       keys,
       overrides,
+      ...preserveAutoFraming(shot.camera),
     };
   });
 }
@@ -430,6 +480,7 @@ export function updateShotCameraOverride(
       mode: shot.camera?.mode ?? 'hybrid',
       keys: shot.camera?.keys ?? [],
       overrides,
+      ...preserveAutoFraming(shot.camera),
     };
   });
 }
@@ -468,6 +519,7 @@ export function removeShotCameraOverride(
       mode: shot.camera.mode,
       keys: shot.camera.keys,
       ...(overrides.length ? { overrides } : {}),
+      ...preserveAutoFraming(shot.camera),
     };
   });
 }
