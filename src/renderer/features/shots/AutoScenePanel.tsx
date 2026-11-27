@@ -1,0 +1,570 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  applyAutoScenePlan,
+  isAutoScenePlanStale,
+  listUsableBackgroundCandidates,
+  listUsableCharacterCandidates,
+  listUsablePropCandidates,
+  parseAndPlanAutoScenes,
+  type AutoScenePlan,
+  type PlannedSceneBlock,
+  type Project,
+  type SceneBackgroundRef,
+  type ScenePlanOverrides,
+  type ScenePropRef,
+} from '../../../domain';
+import {
+  editorProjectStore,
+  type EditorProjectSnapshot,
+} from '../../stores/EditorProjectStore';
+import { scenePreviewStore } from '../../stores/scenePreviewStore';
+import { shotStore } from '../../stores/shotStore';
+
+export interface AutoScenePanelProps {
+  snapshot: EditorProjectSnapshot | null;
+  onBack: () => void;
+}
+
+function buildExampleTemplate(project: Project | null): string {
+  const bg = project
+    ? listUsableBackgroundCandidates(project).find((c) => c.usable)?.name
+    : undefined;
+  const chars = project
+    ? listUsableCharacterCandidates(project)
+        .filter((c) => c.usable)
+        .map((c) => c.name)
+    : [];
+  const bgLine = bg ? `背景：${bg}` : '背景：无';
+  const cast1 = chars[0] ? `出场：${chars[0]}` : '出场：无';
+  const cast2 =
+    chars.length >= 2
+      ? `出场：${chars[0]}、${chars[1]}\n站位：双人对话`
+      : chars[0]
+        ? `出场：${chars[0]}\n站位：居中`
+        : '出场：无';
+
+  return [
+    '镜头：开场空镜',
+    bgLine,
+    cast1,
+    '时长：3s',
+    '---',
+    '镜头：对话镜头',
+    bgLine,
+    cast2,
+    '时长：4s',
+  ].join('\n');
+}
+
+function encodeBackgroundRef(ref: SceneBackgroundRef): string {
+  if (ref.kind === 'empty') return 'empty';
+  if (ref.kind === 'image') return `image:${ref.assetId}`;
+  return `graphic:${ref.animationId}`;
+}
+
+function decodeBackgroundRef(value: string): SceneBackgroundRef {
+  if (value === 'empty') return { kind: 'empty' };
+  if (value.startsWith('image:')) {
+    return { kind: 'image', assetId: value.slice('image:'.length) };
+  }
+  if (value.startsWith('graphic:')) {
+    return { kind: 'graphic', animationId: value.slice('graphic:'.length) };
+  }
+  return { kind: 'empty' };
+}
+
+function encodePropRef(ref: ScenePropRef | null): string {
+  if (!ref) return 'skip';
+  if (ref.kind === 'image') return `image:${ref.assetId}`;
+  return `animation:${ref.animationId}`;
+}
+
+function decodePropRef(value: string): ScenePropRef | 'skip' {
+  if (value === 'skip') return 'skip';
+  if (value.startsWith('image:')) {
+    return { kind: 'image', assetId: value.slice('image:'.length) };
+  }
+  if (value.startsWith('animation:')) {
+    return { kind: 'animation', animationId: value.slice('animation:'.length) };
+  }
+  return 'skip';
+}
+
+export function AutoScenePanel({
+  snapshot,
+  onBack,
+}: AutoScenePanelProps): React.JSX.Element {
+  const project = snapshot?.project ?? null;
+  const [rawInput, setRawInput] = useState('');
+  const [overrides, setOverrides] = useState<ScenePlanOverrides>({});
+  const [selectedPreviewIndex, setSelectedPreviewIndex] = useState<number | null>(
+    null,
+  );
+  const [pinnedEntry, setPinnedEntry] = useState<{
+    readonly key: string;
+    readonly plan: AutoScenePlan | null;
+    readonly parseIssues: readonly { readonly code: string; readonly message: string }[];
+  } | null>(null);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const inputKey = useMemo(
+    () => `${refreshNonce}::${rawInput}::${JSON.stringify(overrides)}`,
+    [overrides, rawInput, refreshNonce],
+  );
+
+  // Plan once per (inputKey), pinning the plan to the project snapshot that
+  // generated it so external project/reference mutations trigger stale-plan guard.
+  const computed = useMemo(() => {
+    if (!project || !rawInput.trim()) {
+      return { parseOk: true, parseIssues: [], plan: null };
+    }
+    if (pinnedEntry && pinnedEntry.key === inputKey) {
+      return {
+        parseOk: pinnedEntry.parseIssues.length === 0,
+        parseIssues: pinnedEntry.parseIssues,
+        plan: pinnedEntry.plan,
+      };
+    }
+    return parseAndPlanAutoScenes(project, rawInput, overrides);
+  }, [inputKey, overrides, pinnedEntry, project, rawInput]);
+
+  useEffect(() => {
+    if (!project || !rawInput.trim()) {
+      if (pinnedEntry !== null) setPinnedEntry(null);
+      return;
+    }
+    if (pinnedEntry?.key !== inputKey) {
+      setPinnedEntry({
+        key: inputKey,
+        plan: computed.plan,
+        parseIssues: computed.parseIssues,
+      });
+    }
+  }, [computed.parseIssues, computed.plan, inputKey, pinnedEntry, project, rawInput]);
+
+  const activePlan = computed.plan;
+
+  const staleCheck = useMemo(() => {
+    if (!project || !activePlan) return { stale: false };
+    return isAutoScenePlanStale(project, activePlan);
+  }, [activePlan, project]);
+
+  const handleInputChange = (nextText: string): void => {
+    setRawInput(nextText);
+    setErrorMessage('');
+  };
+
+  const updateBlockOverride = (
+    blockIndex: number,
+    updater: (
+      current: ScenePlanOverrides[number] | undefined,
+    ) => ScenePlanOverrides[number],
+  ): void => {
+    setErrorMessage('');
+    setOverrides((current) => ({
+      ...current,
+      [blockIndex]: updater(current[blockIndex]),
+    }));
+  };
+
+  const usableBackgrounds = useMemo(
+    () => (project ? listUsableBackgroundCandidates(project).filter((c) => c.usable) : []),
+    [project],
+  );
+  const usableCharacters = useMemo(
+    () => (project ? listUsableCharacterCandidates(project).filter((c) => c.usable) : []),
+    [project],
+  );
+  const usableProps = useMemo(
+    () => (project ? listUsablePropCandidates(project).filter((c) => c.usable) : []),
+    [project],
+  );
+
+  const applicableBlocks = useMemo(
+    () => activePlan?.blocks.filter((b) => b.applicable && b.createdShotId) ?? [],
+    [activePlan],
+  );
+
+  const effectivePreviewBlock: PlannedSceneBlock | null = useMemo(() => {
+    if (applicableBlocks.length === 0) return null;
+    if (selectedPreviewIndex !== null) {
+      const matched = applicableBlocks.find(
+        (b) => b.blockIndex === selectedPreviewIndex,
+      );
+      if (matched) return matched;
+    }
+    return applicableBlocks[0] ?? null;
+  }, [applicableBlocks, selectedPreviewIndex]);
+
+  // Sync read-only preview to the main canvas without mutating EditorProjectStore.
+  useEffect(() => {
+    if (
+      !activePlan ||
+      !activePlan.candidateProject ||
+      !effectivePreviewBlock?.createdShotId ||
+      staleCheck.stale
+    ) {
+      scenePreviewStore.clear();
+      return;
+    }
+    const shotIndex = applicableBlocks.findIndex(
+      (b) => b.blockIndex === effectivePreviewBlock.blockIndex,
+    );
+    scenePreviewStore.setPreview({
+      previewProject: activePlan.candidateProject,
+      previewShotId: effectivePreviewBlock.createdShotId,
+      previewShotName: effectivePreviewBlock.shotName,
+      shotIndex: Math.max(0, shotIndex),
+      shotCount: applicableBlocks.length,
+    });
+  }, [activePlan, applicableBlocks, effectivePreviewBlock, staleCheck.stale]);
+
+  // Always clear preview on unmount.
+  useEffect(() => {
+    return () => {
+      scenePreviewStore.clear();
+    };
+  }, []);
+
+  const handleCancel = (): void => {
+    scenePreviewStore.clear();
+    onBack();
+  };
+
+  const handleConfirm = (): void => {
+    const currentSnapshot = editorProjectStore.getSnapshot();
+    if (!currentSnapshot || !activePlan) return;
+    const result = applyAutoScenePlan(currentSnapshot.project, activePlan);
+    if (!result.ok) {
+      setErrorMessage(result.message);
+      return;
+    }
+    scenePreviewStore.clear();
+    editorProjectStore.updateProject(
+      result.project,
+      result.createdShotIds.length > 1
+        ? `自动布景（${result.createdShotIds.length} 个镜头）`
+        : `自动布景：${result.blocks.find((b) => b.applicable)?.shotName ?? '新镜头'}`,
+    );
+    shotStore.select(result.firstShotId);
+    onBack();
+  };
+
+  const handleRefreshStale = (): void => {
+    setPinnedEntry(null);
+    setRefreshNonce((n) => n + 1);
+    setErrorMessage('');
+  };
+
+  const canConfirm = Boolean(
+    snapshot &&
+      activePlan &&
+      activePlan.applicableCount > 0 &&
+      !staleCheck.stale,
+  );
+
+  return (
+    <section
+      aria-label="自动布景"
+      className="auto-scene-panel"
+      data-testid="auto-scene-panel"
+    >
+      <div className="auto-scene-toolbar">
+        <button
+          className="auto-scene-secondary-btn"
+          data-testid="auto-scene-fill-example"
+          disabled={!snapshot}
+          onClick={() => handleInputChange(buildExampleTemplate(project))}
+          type="button"
+        >
+          填入示例
+        </button>
+        {activePlan && activePlan.applicableCount > 0 ? (
+          <span className="auto-scene-count" data-testid="auto-scene-summary">
+            可生成 {activePlan.applicableCount} / {activePlan.blocks.length} 个镜头
+          </span>
+        ) : null}
+      </div>
+
+      <textarea
+        aria-label="布景结构化文本"
+        className="auto-scene-input"
+        data-testid="auto-scene-input"
+        disabled={!snapshot}
+        onChange={(event) => handleInputChange(event.target.value)}
+        placeholder={'镜头：客厅开场\n背景：客厅\n出场：小明、小红\n站位：双人对话\n时长：3s\n道具：茶杯\n---\n镜头：第二镜头\n...'}
+        rows={7}
+        value={rawInput}
+      />
+
+      {computed.parseIssues.length > 0 ? (
+        <ul className="auto-scene-issues" data-testid="auto-scene-parse-issues">
+          {computed.parseIssues.map((issue, idx) => (
+            <li key={`${issue.code}-${idx}`}>{issue.message}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {staleCheck.stale ? (
+        <div className="auto-scene-stale" data-testid="auto-scene-stale-banner">
+          <span>{staleCheck.reason ?? '工程内容已变更，请重新解析。'}</span>
+          <button
+            className="auto-scene-secondary-btn"
+            onClick={handleRefreshStale}
+            type="button"
+          >
+            重新解析
+          </button>
+        </div>
+      ) : null}
+
+      {activePlan && activePlan.blocks.length > 0 ? (
+        <div className="auto-scene-blocks" data-testid="auto-scene-blocks">
+          {activePlan.blocks.map((block) => {
+            const isPreviewing =
+              effectivePreviewBlock?.blockIndex === block.blockIndex;
+            const bgNeedsPick =
+              block.background.status === 'ambiguous' ||
+              block.background.status === 'missing' ||
+              block.background.status === 'unusable';
+
+            return (
+              <div
+                className={`auto-scene-block${isPreviewing ? ' is-previewing' : ''}${block.applicable ? '' : ' is-unavailable'}`}
+                data-block-index={block.blockIndex}
+                data-testid={`auto-scene-block-${block.blockIndex}`}
+                key={block.blockIndex}
+              >
+                <div className="auto-scene-block-header">
+                  {activePlan.blocks.length > 1 ? (
+                    <input
+                      aria-label={`包含镜头 ${block.shotName}`}
+                      checked={block.included}
+                      onChange={(event) =>
+                        updateBlockOverride(block.blockIndex, (cur) => ({
+                          ...cur,
+                          included: event.target.checked,
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                  ) : null}
+                  <button
+                    className="auto-scene-preview-trigger"
+                    data-testid={`auto-scene-preview-${block.blockIndex}`}
+                    disabled={!block.applicable}
+                    onClick={() => setSelectedPreviewIndex(block.blockIndex)}
+                    type="button"
+                  >
+                    <strong>{block.shotName || `镜头 ${block.blockIndex}`}</strong>
+                    <span>{(block.durationMs / 1000).toFixed(1)}s</span>
+                  </button>
+                </div>
+
+                <div className="auto-scene-row">
+                  <span className="auto-scene-row-label">背景</span>
+                  {bgNeedsPick ? (
+                    <select
+                      aria-label={`镜头 ${block.blockIndex} 背景选择`}
+                      data-testid={`auto-scene-bg-select-${block.blockIndex}`}
+                      onChange={(event) =>
+                        updateBlockOverride(block.blockIndex, (cur) => ({
+                          ...cur,
+                          background: decodeBackgroundRef(event.target.value),
+                        }))
+                      }
+                      value={encodeBackgroundRef(block.background.selectedRef)}
+                    >
+                      <option value="empty">空背景</option>
+                      {(block.background.status === 'ambiguous'
+                        ? block.background.candidates
+                        : usableBackgrounds
+                      ).map((candidate) => (
+                        <option
+                          key={candidate.id}
+                          value={encodeBackgroundRef(candidate.ref)}
+                        >
+                          {candidate.name}
+                          {candidate.kind === 'graphic' ? '（元件）' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="auto-scene-row-value">
+                      {block.background.selectedName ?? '空背景'}
+                    </span>
+                  )}
+                </div>
+
+                {block.cast.length > 0 ? (
+                  <div className="auto-scene-row-group">
+                    <span className="auto-scene-row-label">出场</span>
+                    <div className="auto-scene-item-list">
+                      {block.cast.map((castItem) => {
+                        const needsPick =
+                          castItem.match.status === 'ambiguous' ||
+                          castItem.match.status === 'missing' ||
+                          castItem.match.status === 'unusable';
+                        return (
+                          <div className="auto-scene-item" key={castItem.index}>
+                            <span>{castItem.match.queryName}</span>
+                            {needsPick ? (
+                              <select
+                                aria-label={`镜头 ${block.blockIndex} 角色 ${castItem.match.queryName} 选择`}
+                                data-testid={`auto-scene-cast-select-${block.blockIndex}-${castItem.index}`}
+                                onChange={(event) => {
+                                  const val = event.target.value;
+                                  updateBlockOverride(block.blockIndex, (cur) => ({
+                                    ...cur,
+                                    cast: {
+                                      ...cur?.cast,
+                                      [castItem.index]:
+                                        val === 'skip'
+                                          ? 'skip'
+                                          : { characterId: val },
+                                    },
+                                  }));
+                                }}
+                                value={
+                                  castItem.match.selectedRef?.characterId ?? 'skip'
+                                }
+                              >
+                                <option value="skip">跳过此角色</option>
+                                {(castItem.match.status === 'ambiguous'
+                                  ? castItem.match.candidates
+                                  : usableCharacters
+                                ).map((candidate) => (
+                                  <option
+                                    key={candidate.characterId}
+                                    value={candidate.characterId}
+                                  >
+                                    {candidate.name}
+                                    {candidate.mode === 'adaptive-parts'
+                                      ? '（分件）'
+                                      : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="auto-scene-item-status">
+                                {castItem.match.status === 'skipped'
+                                  ? '已跳过'
+                                  : castItem.match.selectedName}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                {block.props.length > 0 ? (
+                  <div className="auto-scene-row-group">
+                    <span className="auto-scene-row-label">道具</span>
+                    <div className="auto-scene-item-list">
+                      {block.props.map((propItem) => {
+                        const needsPick =
+                          propItem.match.status === 'ambiguous' ||
+                          propItem.match.status === 'missing' ||
+                          propItem.match.status === 'unusable';
+                        return (
+                          <div className="auto-scene-item" key={propItem.index}>
+                            <span>{propItem.match.queryName}</span>
+                            {needsPick ? (
+                              <select
+                                aria-label={`镜头 ${block.blockIndex} 道具 ${propItem.match.queryName} 选择`}
+                                data-testid={`auto-scene-prop-select-${block.blockIndex}-${propItem.index}`}
+                                onChange={(event) =>
+                                  updateBlockOverride(block.blockIndex, (cur) => ({
+                                    ...cur,
+                                    props: {
+                                      ...cur?.props,
+                                      [propItem.index]: decodePropRef(
+                                        event.target.value,
+                                      ),
+                                    },
+                                  }))
+                                }
+                                value={encodePropRef(propItem.match.selectedRef)}
+                              >
+                                <option value="skip">跳过此道具</option>
+                                {(propItem.match.status === 'ambiguous'
+                                  ? propItem.match.candidates
+                                  : usableProps
+                                ).map((candidate) => (
+                                  <option
+                                    key={candidate.id}
+                                    value={encodePropRef(candidate.ref)}
+                                  >
+                                    {candidate.name}
+                                    {candidate.kind === 'animation'
+                                      ? '（元件）'
+                                      : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="auto-scene-item-status">
+                                {propItem.match.status === 'skipped'
+                                  ? '已跳过'
+                                  : propItem.match.selectedName}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+
+                {block.issues.length > 0 ? (
+                  <ul className="auto-scene-block-issues">
+                    {block.issues.map((issue, idx) => (
+                      <li
+                        className={`is-${issue.severity}`}
+                        key={`${issue.scope}-${idx}`}
+                      >
+                        {issue.message}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {errorMessage ? (
+        <p className="auto-scene-error" role="alert">
+          {errorMessage}
+        </p>
+      ) : null}
+
+      <div className="auto-scene-actions">
+        <button
+          className="auto-scene-primary-btn"
+          data-testid="auto-scene-confirm"
+          disabled={!canConfirm}
+          onClick={handleConfirm}
+          type="button"
+        >
+          确认生成
+          {activePlan && activePlan.applicableCount > 0
+            ? `（${activePlan.applicableCount}）`
+            : ''}
+        </button>
+        <button
+          className="auto-scene-secondary-btn"
+          data-testid="auto-scene-cancel"
+          onClick={handleCancel}
+          type="button"
+        >
+          取消
+        </button>
+      </div>
+    </section>
+  );
+}
