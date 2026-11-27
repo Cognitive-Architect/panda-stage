@@ -27,8 +27,9 @@ react-konva, Zod, Vitest, ESLint, and pnpm.
 - `tests/` — unit, integration, contract, and Electron verifier support.
 - `scripts/` — focused Electron verifiers, gates, fixture generation, and
   distribution helpers.
-- `docs/`, `ROADMAP.md`, `DAILY_PLAN.md`, and `agent task/` — architecture,
-  planning, work-order, handoff, and historical evidence material.
+- `docs/` and `ROADMAP.md` — architecture, current planning navigation,
+  design decisions, handoffs, and historical evidence. Active work orders
+  live in GitHub Issues and PRs.
 
 ## Stable architecture and ownership invariants
 
@@ -97,6 +98,10 @@ react-konva, Zod, Vitest, ESLint, and pnpm.
   make loading feedback visible. The active Issue still defines UI scope.
 
 ## Execution budget and validation proportionality
+
+The former Full CI workflow and `verify:project` aggregator were retired by
+CI-LEAN-02; see `docs/ci-routing.md`. The restrictions below also apply to
+any equivalent manual repository-wide verifier sweep.
 
 - Do not manually trigger Full CI, rerun Full CI, run `pnpm verify:project`, or
   invoke an equivalent repository-wide verifier sweep unless the repository
@@ -185,12 +190,13 @@ pnpm build
 - `docs/architecture.md`, `docs/development.md`, and `docs/ipc.md` contain
   architecture and engineering contracts; reconcile them with current code
   when a version-specific section differs.
-- `ROADMAP.md` and `DAILY_PLAN.md` describe product planning, not proof that a
-  planned stage is currently shipped.
-- `agent task/` contains historical and planned daily work orders.
-- `docs/design/` and `docs/handoff/` contain design decisions and handoffs;
-  use them when the task names them and confirm their claims against current
-  code and the active Issue/PR.
+- `ROADMAP.md` points to active GitHub planning and implementation Issues;
+  a planned stage is not proof that a capability has shipped. Retired daily
+  plans and handoffs remain available in Git history.
+- `docs/design/` and `docs/handoff/` contain design decisions and historical
+  handoffs. Past stage-specific contracts and status snapshots do not
+  authorize work on their own. A contract adopted by the active Issue/PR
+  remains binding; reconcile its facts with current code.
 - `docs/test-receipts/` and `docs/evidence/` are historical validation
   records. They are useful evidence but do not automatically define current
   product capability.

@@ -1304,25 +1304,6 @@ export function cloneAdaptivePartsHeadMotionBinding(
   };
 }
 
-export function adaptiveCharacterHasFaceBinding(
-  character: Pick<AdaptivePartsCharacter, 'faceBinding' | 'parts'>,
-): boolean {
-  return Boolean(
-    character.faceBinding &&
-      character.parts.some((part) => part.partId === character.faceBinding?.targetPartId),
-  );
-}
-
-export function characterHasExpressions(
-  character: Pick<Character, 'mode'> & {
-    faceBinding?: AdaptivePartsFaceBinding;
-    expressions?: readonly CharacterExpression[];
-  },
-): boolean {
-  if (character.mode !== 'adaptive-parts') return true;
-  return Boolean(character.faceBinding) || Boolean(character.expressions?.length);
-}
-
 export type ExpressionCharacter = Extract<
   Character,
   { mode: 'single-image' | 'composite' }

@@ -1,8 +1,5 @@
 import { useEffect, useState } from 'react';
 import type { ExportJobUpdate } from '../shared/export-types';
-import exampleProject from '../../demo-project/project-v1.example.json';
-import { migrateProject } from '../domain';
-import { editorProjectStore } from './stores/EditorProjectStore';
 import { StagePreview } from './stage/StagePreview';
 import { EditorShell } from './shell/EditorShell';
 import { FlaImportDebugSurface } from './fla-import/FlaImportDebugSurface';
@@ -27,28 +24,6 @@ export function App(): React.JSX.Element {
   const [exportError, setExportError] = useState<string | null>(null);
   const [gatePreviewRequest, setGatePreviewRequest] =
     useState<GatePreviewRequest | null>(null);
-
-  // Day 25 (R1): mount the full editing shell. Open a demo project so the
-  // editor components have data to render without manual IPC open.
-  // Gated behind ?demo=1 so the CI/acceptance launch path stays identical to
-  // main (verify-day16.cjs opens the real project via the recovery row and
-  // must own the only store.open call — an unconditional auto-open reset
-  // editorProjectStore.revision to 0 and broke the Day 16 asset-import gate).
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('demo') !== '1') {
-      return;
-    }
-    if (!editorProjectStore.getSnapshot()) {
-      try {
-        editorProjectStore.open(
-          'D:\\day25-editor.pandastage',
-          migrateProject(exampleProject),
-        );
-      } catch (error) {
-        console.error('无法打开示例项目用于编辑外壳。', error);
-      }
-    }
-  }, []);
 
   useEffect(() => window.pandaStage.export.onUpdate(setExportJob), []);
   useEffect(() => {

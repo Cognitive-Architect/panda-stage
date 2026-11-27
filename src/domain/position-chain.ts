@@ -932,6 +932,3 @@ export function compilePositionChain(
   }
   return chain.segments;
 }
-
-/** Alias emphasizing that timelineEvents remain the persisted V1 truth. */
-export const positionChainToMoveEvents = compilePositionChain;

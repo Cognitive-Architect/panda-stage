@@ -57,7 +57,7 @@ Project
 - v12→v13 为图片补充作者用途和关键词：旧图片迁移为“未分类”且关键词为空，不根据角色/镜头引用推断作者用途。
 - 已是正式 v13 的项目只做完整 `ProjectSchema.parse()`，不会重复迁移；`ProjectSchema.parse()` 不迁移旧版本。
 
-示例项目位于 `demo-project/project-v1.example.json`，由单元测试真实 parse，并执行 parse→serialize→parse 语义一致性验证。
+V1 样本位于 [demo-project/project-v1.example.json](../demo-project/project-v1.example.json)，供迁移与回归测试读取，包含 parse→serialize→parse 语义一致性验证和真实素材文件检查。应用从项目中心打开工程，启动代码不再内置样本。
 
 ## 确定性帧协议
 

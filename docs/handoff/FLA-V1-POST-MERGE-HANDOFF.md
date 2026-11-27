@@ -1,8 +1,10 @@
 # FLA V1 post-merge handoff
 
-> Canonical transfer document for the next WorkBuddy agent researching FLA V1.5
-> and V2. This document records the merged V1 boundary; it does not authorize
-> new production behavior.
+> Historical post-merge snapshot of FLA V1 (2026-08-20). It preserves the
+> original parser boundary, security decisions, and evidence, not the current
+> feature inventory or a live continuation instruction. V1.5 and later
+> product work must be assessed against current main and active Issues/PRs.
+> This document does not authorize new production behavior.
 
 Verified on 2026-08-20 against live `main`:
 
@@ -274,7 +276,7 @@ the ownership boundary and the corresponding non-ownership rule.
 | `scripts/verify-issue251-slice1.cjs`, `verify-issue253-slice2.cjs`, `verify-issue257-slice3.cjs`, `verify-issue260-slice4.cjs` | Focused Windows Electron verifiers for the four V1 slices. | Treating headless/static results as human acceptance or widening V1 scope. |
 | `tests/unit/` FLA contracts/review/commit tests and `tests/integration/` asset/recovery tests | Contract, boundary, persistence, and failure-injection regression evidence. | Replacing real Windows acceptance where a receipt requires interaction. |
 | `resources/licenses/FLA-PARSER-NOTICE.txt` | Pinned closure, dependency, notice, and update-policy record. | Claiming a stronger upstream legal clearance than the recorded evidence. |
-| `docs/handoff/issue-251-slice1-receipt.md` through `issue-260-slice4-candidate-receipt.md` | Historical slice evidence that is linked to its original candidate and scope. | Acting as current authorization or silently overriding live GitHub state. |
+| [Original FLA V1 slice receipts](https://github.com/Cognitive-Architect/panda-stage/tree/4b1521d1e9f8be07b8203114f2f785d1fc2ff3cf/docs/handoff) (Issues #251, #253–#258, #260; PR #252) | Historical slice evidence, preserved at a fixed revision; all eight delivery Issues are closed/completed. | Acting as current authorization or silently overriding live GitHub state. |
 
 ## 6. Proven V1 evidence and its limits
 

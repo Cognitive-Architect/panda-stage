@@ -38,7 +38,7 @@ export function shouldClearDialogueSelectionOnClick(
 }
 
 /** Full stale-target guard required before a pointer gesture may commit. */
-export function canCommitDialogueGesture(
+function canCommitDialogueGesture(
   identity: DialogueGestureIdentity,
   context: DialogueGestureContext,
 ): boolean {
