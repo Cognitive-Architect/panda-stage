@@ -1,0 +1,225 @@
+{
+  "schemaVersion": 1,
+  "id": "10000000-0000-4000-8000-000000000001",
+  "name": "Panda Stage MVP Project v1 Example",
+  "width": 1920,
+  "height": 1080,
+  "fps": 24,
+  "assets": [
+    {
+      "id": "10000000-0000-4000-8000-000000000002",
+      "kind": "image",
+      "name": "Bamboo background",
+      "relativePath": "assets/bamboo-background.png",
+      "mimeType": "image/png",
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000003",
+      "kind": "image",
+      "name": "Panda neutral",
+      "relativePath": "assets/panda-neutral.png",
+      "mimeType": "image/png",
+      "width": 640,
+      "height": 640
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000004",
+      "kind": "image",
+      "name": "Panda happy",
+      "relativePath": "assets/panda-happy.png",
+      "mimeType": "image/png",
+      "width": 640,
+      "height": 640
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000005",
+      "kind": "audio",
+      "name": "Opening dialogue",
+      "relativePath": "assets/opening-dialogue.wav",
+      "mimeType": "audio/wav",
+      "durationMs": 3000
+    }
+  ],
+  "characters": [
+    {
+      "id": "20000000-0000-4000-8000-000000000001",
+      "name": "Panda",
+      "baseAssetId": "10000000-0000-4000-8000-000000000003",
+      "defaultVoiceProfileId": "30000000-0000-4000-8000-000000000001",
+      "expressions": [
+        {
+          "id": "20000000-0000-4000-8000-000000000002",
+          "name": "Neutral",
+          "assetId": "10000000-0000-4000-8000-000000000003"
+        },
+        {
+          "id": "20000000-0000-4000-8000-000000000003",
+          "name": "Happy",
+          "assetId": "10000000-0000-4000-8000-000000000004"
+        }
+      ]
+    }
+  ],
+  "voiceProfiles": [
+    {
+      "id": "30000000-0000-4000-8000-000000000001",
+      "name": "Panda Mandarin",
+      "characterId": "20000000-0000-4000-8000-000000000001",
+      "locale": "zh-CN",
+      "rate": 1,
+      "pitch": 0
+    }
+  ],
+  "subtitleStyles": [
+    {
+      "id": "40000000-0000-4000-8000-000000000001",
+      "name": "Default bottom subtitle",
+      "fontFamily": "Microsoft YaHei",
+      "fontSize": 44,
+      "textColor": "#fffdf6",
+      "backgroundColor": "#0a1411c7",
+      "position": "bottom",
+      "align": "center",
+      "maxWidth": 1600
+    }
+  ],
+  "shots": [
+    {
+      "id": "50000000-0000-4000-8000-000000000001",
+      "name": "Opening",
+      "durationMs": 3000,
+      "defaultSubtitleStyleId": "40000000-0000-4000-8000-000000000001",
+      "layers": [
+        {
+          "id": "60000000-0000-4000-8000-000000000001",
+          "name": "Background",
+          "source": {
+            "kind": "asset",
+            "assetId": "10000000-0000-4000-8000-000000000002"
+          },
+          "anchor": "center",
+          "x": 960,
+          "y": 540,
+          "scaleX": 1,
+          "scaleY": 1,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 0
+        },
+        {
+          "id": "60000000-0000-4000-8000-000000000002",
+          "name": "Panda",
+          "source": {
+            "kind": "character",
+            "characterId": "20000000-0000-4000-8000-000000000001",
+            "expressionId": "20000000-0000-4000-8000-000000000002"
+          },
+          "anchor": "center",
+          "x": 430,
+          "y": 690,
+          "scaleX": 0.72,
+          "scaleY": 0.72,
+          "rotationDeg": 0,
+          "opacity": 1,
+          "visible": true,
+          "zIndex": 1
+        }
+      ],
+      "dialogues": [
+        {
+          "id": "80000000-0000-4000-8000-000000000001",
+          "characterId": "20000000-0000-4000-8000-000000000001",
+          "voiceProfileId": "30000000-0000-4000-8000-000000000001",
+          "audioClipId": "70000000-0000-4000-8000-000000000001",
+          "subtitleStyleId": "40000000-0000-4000-8000-000000000001",
+          "startMs": 400,
+          "endMs": 2600,
+          "text": "每一个故事，都从勇敢迈出第一步开始。"
+        }
+      ],
+      "audioClips": [
+        {
+          "id": "70000000-0000-4000-8000-000000000001",
+          "name": "Opening dialogue clip",
+          "assetId": "10000000-0000-4000-8000-000000000005",
+          "startMs": 400,
+          "endMs": 3000,
+          "offsetMs": 0,
+          "volume": 1
+        }
+      ],
+      "timelineEvents": [
+        {
+          "id": "90000000-0000-4000-8000-000000000001",
+          "type": "move",
+          "layerId": "60000000-0000-4000-8000-000000000002",
+          "startMs": 0,
+          "endMs": 3000,
+          "from": { "x": 430, "y": 690 },
+          "to": { "x": 1490, "y": 690 },
+          "easing": "ease-in-out"
+        },
+        {
+          "id": "90000000-0000-4000-8000-000000000002",
+          "type": "scale",
+          "layerId": "60000000-0000-4000-8000-000000000002",
+          "startMs": 500,
+          "endMs": 1200,
+          "from": { "x": 0.72, "y": 0.72 },
+          "to": { "x": 0.8, "y": 0.8 },
+          "easing": "ease-in-out"
+        },
+        {
+          "id": "90000000-0000-4000-8000-000000000003",
+          "type": "opacity",
+          "layerId": "60000000-0000-4000-8000-000000000001",
+          "startMs": 0,
+          "endMs": 400,
+          "from": 0,
+          "to": 1,
+          "easing": "linear"
+        },
+        {
+          "id": "90000000-0000-4000-8000-000000000004",
+          "type": "shake",
+          "layerId": "60000000-0000-4000-8000-000000000002",
+          "startMs": 1300,
+          "endMs": 1800,
+          "amplitudeX": 8,
+          "amplitudeY": 5,
+          "frequencyHz": 12
+        },
+        {
+          "id": "90000000-0000-4000-8000-000000000005",
+          "type": "expression",
+          "layerId": "60000000-0000-4000-8000-000000000002",
+          "startMs": 1400,
+          "endMs": 1400,
+          "expressionId": "20000000-0000-4000-8000-000000000003"
+        },
+        {
+          "id": "90000000-0000-4000-8000-000000000006",
+          "type": "flip",
+          "layerId": "60000000-0000-4000-8000-000000000002",
+          "startMs": 2000,
+          "endMs": 2000,
+          "axis": "horizontal",
+          "flipped": true
+        },
+        {
+          "id": "90000000-0000-4000-8000-000000000007",
+          "type": "visibility",
+          "layerId": "60000000-0000-4000-8000-000000000001",
+          "startMs": 2800,
+          "endMs": 2900,
+          "visible": false
+        }
+      ]
+    }
+  ],
+  "createdAt": "2026-07-23T00:00:00.000Z",
+  "updatedAt": "2026-07-23T00:00:00.000Z"
+}
