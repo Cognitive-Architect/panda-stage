@@ -22,12 +22,26 @@ const RecipeShape = { shotId: z.uuid(), layerId: z.uuid(), recipeId: z.uuid(), s
 const RecipeEditSchema = z.object({ name: z.literal('recipe.apply'), ...RecipeShape }).strict();
 const UndoSchema = z.object({ name: z.literal('undo') }).strict();
 const EditSchema = z.discriminatedUnion('name', [DialogueEditSchema, PresetEditSchema, RecipeEditSchema]);
+const ScriptAudioOverrideSchema = z.object({
+  audioAssetId: z.uuid().nullable().optional(),
+  sourceStartMs: TimeMsSchema.optional(),
+  sourceEndMs: TimeMsSchema.optional(),
+}).strict();
+const ScriptCommandShape = {
+  script: z.string().trim().min(1).max(32_000),
+  extendShotForPerformance: z.boolean().optional(),
+  excludedDirectiveIds: z.array(z.string().min(1).max(128)).max(128).optional(),
+  audioByOrdinal: z.record(z.string().regex(/^\d+$/u), ScriptAudioOverrideSchema).optional(),
+  defaultDurationMs: z.number().int().positive().optional(),
+};
 const SessionSchema = z.object({ sessionId: z.uuid(), projectId: z.uuid(), instanceId: z.number().int().nonnegative() }).strict();
 const Scene = { session: SessionSchema };
 export const DesktopAutomationCommandSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('state') }).strict(),
   DialogueEditSchema.extend(Scene), PresetEditSchema.extend(Scene), RecipeEditSchema.extend(Scene), UndoSchema.extend(Scene),
   z.object({ name: z.literal('recipe.preview'), ...RecipeShape, ...Scene }).strict(),
+  z.object({ name: z.literal('script.plan'), ...ScriptCommandShape, ...Scene }).strict(),
+  z.object({ name: z.literal('script.apply'), ...ScriptCommandShape, allowPartialConfirm: z.boolean().optional(), ...Scene }).strict(),
   z.object({ name: z.literal('batch'), ...Scene, operations: z.array(EditSchema).min(1).max(32) }).strict(),
   z.object({ name: z.literal('sequence'), ...Scene, operations: z.array(z.union([EditSchema, UndoSchema])).min(1).max(32) }).strict(),
 ]);

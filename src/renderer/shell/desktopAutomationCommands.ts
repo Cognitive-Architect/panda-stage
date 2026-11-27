@@ -1,6 +1,7 @@
 import {
   ACTION_PRESETS, ACTION_PRESET_BY_ID, DialogueService, applyActionRecipe, applyPresetEvents,
-  createPresetEvents, validatePresetApplication, type Project,
+  applyScriptPerformancePlan, createPresetEvents, planScriptPerformance, validatePresetApplication,
+  type Project, type ScriptDialogueAudioOverride, type ScriptPerformancePlan,
 } from '../../domain';
 import type { DesktopAutomationEdit, DesktopAutomationRendererRequest, DesktopAutomationResult } from '../../shared/desktop-automation-api';
 import { timelineUiStore } from '../features/timeline/timelineUiStore';
@@ -92,6 +93,103 @@ function commitOne(operation: SerialOperation): DesktopAutomationResult {
   }
 }
 
+function buildScriptPlanFromCommand(
+  project: Project,
+  command: Extract<DesktopAutomationRendererRequest['command'], { name: 'script.plan' | 'script.apply' }>,
+): ScriptPerformancePlan {
+  const baseOptions = {
+    ...(command.defaultDurationMs !== undefined ? { defaultDurationMs: command.defaultDurationMs } : {}),
+    ...(command.extendShotForPerformance !== undefined ? { extendShotForPerformance: command.extendShotForPerformance } : {}),
+  };
+  if (!command.audioByOrdinal || Object.keys(command.audioByOrdinal).length === 0) {
+    return planScriptPerformance(project, command.script, {
+      ...baseOptions,
+      ...(command.excludedDirectiveIds
+        ? { overrides: { excludedDirectiveIds: command.excludedDirectiveIds } }
+        : {}),
+    });
+  }
+  // Map 1-based ordinal overrides to stable draftRowIds via the same shared planner.
+  const initial = planScriptPerformance(project, command.script, baseOptions);
+  const audioByDraftRowId: Record<string, ScriptDialogueAudioOverride> = {};
+  for (const row of initial.dialogues) {
+    const override = command.audioByOrdinal[String(row.ordinal)];
+    if (override) {
+      audioByDraftRowId[row.draftRowId] = {
+        ...(override.audioAssetId !== undefined ? { audioAssetId: override.audioAssetId } : {}),
+        ...(override.sourceStartMs !== undefined ? { sourceStartMs: override.sourceStartMs } : {}),
+        ...(override.sourceEndMs !== undefined ? { sourceEndMs: override.sourceEndMs } : {}),
+      };
+    }
+  }
+  return planScriptPerformance(project, command.script, {
+    ...baseOptions,
+    previousDialogueRows: initial.dialogueDraftRows,
+    overrides: {
+      audioByDraftRowId,
+      ...(command.excludedDirectiveIds ? { excludedDirectiveIds: command.excludedDirectiveIds } : {}),
+    },
+  });
+}
+
+function summarizeScriptPlan(plan: ScriptPerformancePlan): Record<string, unknown> {
+  return {
+    applicableBlockCount: plan.applicableBlockCount,
+    scheduledDialogueCount: plan.scheduledDialogueCount,
+    unreadyDialogueCount: plan.unreadyDialogueCount,
+    readyPerformanceCount: plan.readyPerformanceCount,
+    issuePerformanceCount: plan.issuePerformanceCount,
+    skippedPerformanceCount: plan.skippedPerformanceCount,
+    hasIssues: plan.hasIssues,
+    createdShotIds: plan.createdShotIds,
+    dialogueIdByDraftRowId: plan.dialogueIdByDraftRowId,
+    parseIssues: plan.parsed.sceneParseIssues,
+    blocks: plan.blocks.map((block) => ({
+      blockIndex: block.scene.blockIndex,
+      shotName: block.scene.shotName,
+      applicable: block.scene.applicable,
+      createdShotId: block.scene.createdShotId,
+      finalDurationMs: block.finalDurationMs,
+      extendedForAudio: block.extendedForAudio,
+      extendedForPerformance: block.extendedForPerformance,
+      issues: block.scene.issues,
+    })),
+    dialogues: plan.dialogues.map((row) => ({
+      draftRowId: row.draftRowId,
+      ordinal: row.ordinal,
+      blockIndex: row.blockIndex,
+      speakerName: row.speakerName,
+      text: row.text,
+      status: row.status,
+      shotId: row.shotId,
+      dialogueId: row.dialogueId,
+      audioClipId: row.audioClipId,
+      startMs: row.startMs,
+      endMs: row.endMs,
+      issueCode: row.issueCode,
+      issueMessage: row.issueMessage,
+    })),
+    performances: plan.performances.map((row) => ({
+      directiveId: row.directiveId,
+      blockIndex: row.blockIndex,
+      dialogueOrdinal: row.dialogueOrdinal,
+      draftRowId: row.draftRowId,
+      dialogueId: row.dialogueId,
+      shotId: row.shotId,
+      layerId: row.layerId,
+      action: row.action,
+      actionLabel: row.actionLabel,
+      startMs: row.startMs,
+      endMs: row.endMs,
+      requiredShotDurationMs: row.requiredShotDurationMs,
+      status: row.status,
+      eventIds: row.eventIds,
+      issueCode: row.issueCode,
+      issueMessage: row.issueMessage,
+    })),
+  };
+}
+
 export function executeDesktopAutomation(request: DesktopAutomationRendererRequest,
   previewDraft: (project: Project, shotId: string) => boolean): DesktopAutomationResult {
   if (Date.now() >= request.deadlineMs) return fail('TIMEOUT', 'The desktop command expired.');
@@ -104,6 +202,27 @@ export function executeDesktopAutomation(request: DesktopAutomationRendererReque
   }
   try {
     editorProjectStore.assertProjectOperationIdle();
+    if (command.name === 'script.plan') {
+      const plan = buildScriptPlanFromCommand(current.project, command);
+      return outcome(current.revision, { command: command.name, ...summarizeScriptPlan(plan) });
+    }
+    if (command.name === 'script.apply') {
+      const plan = buildScriptPlanFromCommand(current.project, command);
+      const applied = applyScriptPerformancePlan(current.project, plan, {
+        allowPartialConfirm: command.allowPartialConfirm ?? false,
+      });
+      if (!applied.ok) return fail('COMMAND_FAILED', applied.message);
+      const label = plan.parsed.hasDialogueOrPerformance
+        ? `剧本表演生成（${applied.createdShotIds.length} 镜头 / ${applied.scheduledDialogueCount} 对白 / ${applied.readyPerformanceCount} 动作）`
+        : `自动布景（${applied.createdShotIds.length} 个镜头）`;
+      editorProjectStore.updateProject(applied.project, label);
+      shotStore.select(applied.firstShotId);
+      return outcome(current.revision, {
+        command: command.name,
+        firstShotId: applied.firstShotId,
+        ...summarizeScriptPlan(plan),
+      });
+    }
     if (command.name === 'sequence') {
       const steps = command.operations.map(operation => ({ command: operation.name, result: commitOne(operation) }));
       return outcome(current.revision, { command: command.name, steps, allSucceeded: steps.every(({ result }) => result.ok) });

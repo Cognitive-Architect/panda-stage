@@ -1,0 +1,384 @@
+import { describe, expect, it } from 'vitest';
+import {
+  ProjectSchema,
+  applyScriptPerformancePlan,
+  isScriptPerformancePlanStale,
+  planScriptPerformance,
+  saveActionRecipe,
+  type AudioAsset,
+  type Character,
+  type Project,
+} from '../../src/domain';
+import { IDS } from './domain/testProject';
+import { characterActionGraphicFixture } from '../helpers/characterActionGraphicFixture';
+
+const AUDIO_IDS = {
+  a1: '14140000-0000-4000-8000-000000000001',
+  a2: '14140000-0000-4000-8000-000000000002',
+  a3: '14140000-0000-4000-8000-000000000003',
+  a4: '14140000-0000-4000-8000-000000000004',
+  a5: '14140000-0000-4000-8000-000000000005',
+  a6: '14140000-0000-4000-8000-000000000006',
+  a7: '14140000-0000-4000-8000-000000000007',
+  a8: '14140000-0000-4000-8000-000000000008',
+};
+
+const CHAR2_ID = '14140000-0000-4000-8000-000000000101';
+const CHAR2_EXPR_NORMAL = '14140000-0000-4000-8000-000000000102';
+const CHAR2_EXPR_ANGRY = '14140000-0000-4000-8000-000000000103';
+const CHAR2_VOICE_ID = '14140000-0000-4000-8000-000000000104';
+const RECIPE_STEP_ID = '14140000-0000-4000-8000-000000000301';
+
+function makeAudioAsset(
+  id: string,
+  name: string,
+  durationMs: number,
+): AudioAsset {
+  return {
+    id,
+    kind: 'audio',
+    name,
+    relativePath: `assets/audio/${name}.wav`,
+    mimeType: 'audio/wav',
+    sha256: id.replaceAll('-', '').padEnd(64, 'a').slice(0, 64),
+    durationMs,
+  };
+}
+
+function buildWf04Project(): Project {
+  const base = characterActionGraphicFixture(false);
+  const baseChar = base.characters[0]!;
+  const char1: Character = {
+    ...baseChar,
+    name: '师兄',
+  };
+
+  const char2: Character = {
+    id: CHAR2_ID,
+    name: '小师妹',
+    mode: 'single-image',
+    baseAssetId: IDS.assetChar,
+    defaultVoiceProfileId: CHAR2_VOICE_ID,
+    defaultScale: 1,
+    defaultFlipX: false,
+    defaultExpressionId: CHAR2_EXPR_NORMAL,
+    expressions: [
+      {
+        id: CHAR2_EXPR_NORMAL,
+        name: '开心',
+        assetId: IDS.assetChar,
+      },
+      {
+        id: CHAR2_EXPR_ANGRY,
+        name: '生气',
+        assetId: IDS.assetChar2,
+      },
+    ],
+  };
+
+  const audioAssets: AudioAsset[] = [
+    makeAudioAsset(AUDIO_IDS.a1, '1_师兄', 1_800),
+    makeAudioAsset(AUDIO_IDS.a2, '2_小师妹', 2_400),
+    makeAudioAsset(AUDIO_IDS.a3, '3_小师妹', 1_600),
+    makeAudioAsset(AUDIO_IDS.a4, '4_师兄', 1_500),
+    makeAudioAsset(AUDIO_IDS.a5, '5_师兄', 1_200),
+    makeAudioAsset(AUDIO_IDS.a6, '6_小师妹', 1_200),
+    makeAudioAsset(AUDIO_IDS.a7, '7_师兄', 1_200),
+    makeAudioAsset(AUDIO_IDS.a8, '8_小师妹', 1_200),
+  ];
+
+  const withAssets = ProjectSchema.parse({
+    ...base,
+    assets: [...base.assets, ...audioAssets],
+    characters: [char1, char2],
+    voiceProfiles: [
+      ...base.voiceProfiles,
+      {
+        id: CHAR2_VOICE_ID,
+        name: '小师妹配音',
+        characterId: CHAR2_ID,
+        locale: 'zh-CN',
+        rate: 1,
+        pitch: 0,
+      },
+    ],
+  });
+
+  return saveActionRecipe(withAssets, {
+    name: '强调登场',
+    steps: [
+      {
+        id: RECIPE_STEP_ID,
+        kind: 'preset',
+        presetId: 'scale-emphasis',
+        offsetMs: 0,
+        durationMs: 500,
+        parameters: { scaleFactor: 1.25 },
+      },
+    ],
+  });
+}
+
+describe('WF-04 shared script & performance planner and applier', () => {
+  it('plans and applies 2 shots with 4 real-audio lines, auto-extending shot without clipping, and >=3 editable actions in one commit', () => {
+    const project = buildWf04Project();
+    const script = [
+      '镜头：宗门大厅',
+      '背景：背景',
+      '出场：师兄、小师妹',
+      '站位：双人对话',
+      '对白：',
+      '师兄：听我解释。',
+      '小师妹：你又偷懒了！',
+      '表演：',
+      '1｜抖动',
+      '2｜表情｜生气',
+      '---',
+      '镜头：花园',
+      '背景：背景',
+      '出场：师兄、小师妹',
+      '站位：双人对话',
+      '对白：',
+      '小师妹：快去修炼。',
+      '师兄：知道了。',
+      '表演：',
+      '3｜淡入',
+      '4｜移动｜x=1260｜y=760',
+    ].join('\n');
+
+    const plan = planScriptPerformance(project, script);
+    expect(plan.applicableBlockCount).toBe(2);
+    expect(plan.scheduledDialogueCount).toBe(4);
+    expect(plan.readyPerformanceCount).toBe(4);
+    expect(plan.issuePerformanceCount).toBe(0);
+    expect(plan.hasIssues).toBe(false);
+
+    // Shot 1 total real audio = 1800 + 2400 = 4200ms > default 3000ms -> extended cleanly!
+    expect(plan.blocks[0]!.extendedForAudio).toBe(true);
+    expect(plan.blocks[0]!.finalDurationMs).toBe(4_200);
+    // Shot 2 total real audio = 1600 + 1500 = 3100ms > default 3000ms -> extended cleanly!
+    expect(plan.blocks[1]!.extendedForAudio).toBe(true);
+    expect(plan.blocks[1]!.finalDurationMs).toBe(3_100);
+
+    // Dialogue ordinal -> draftRowId -> formal Dialogue.id mapping
+    for (const perf of plan.performances) {
+      expect(perf.status).toBe('ready');
+      expect(perf.draftRowId).toBeTruthy();
+      expect(perf.dialogueId).toBe(plan.dialogueIdByDraftRowId[perf.draftRowId!]);
+      expect(perf.eventIds.length).toBeGreaterThanOrEqual(1);
+    }
+
+    const applied = applyScriptPerformancePlan(project, plan, {
+      allowPartialConfirm: false,
+    });
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) return;
+
+    // Input project was never mutated
+    expect(project.shots).toHaveLength(1);
+
+    const shot1 = applied.project.shots.find((s) => s.name === '宗门大厅')!;
+    const shot2 = applied.project.shots.find((s) => s.name === '花园')!;
+    expect(shot1.durationMs).toBe(4_200);
+    expect(shot1.dialogues).toHaveLength(2);
+    expect(shot1.audioClips).toHaveLength(2);
+    expect(shot1.dialogues[0]).toMatchObject({ startMs: 0, endMs: 1_800 });
+    expect(shot1.dialogues[1]).toMatchObject({ startMs: 1_800, endMs: 4_200 });
+    expect(shot1.timelineEvents.map((e) => e.type)).toEqual(['shake', 'expression']);
+
+    expect(shot2.durationMs).toBe(3_100);
+    expect(shot2.dialogues).toHaveLength(2);
+    expect(shot2.audioClips).toHaveLength(2);
+    expect(shot2.timelineEvents.map((e) => e.type)).toEqual(['opacity', 'move']);
+    const moveEvt = shot2.timelineEvents.find((e) => e.type === 'move');
+    expect(moveEvt?.type === 'move' && moveEvt.to).toEqual({ x: 1260, y: 760 });
+  });
+
+  it('supports all 8 basic performance directives plus official CharacterActionEvent and ActionRecipe', () => {
+    const project = buildWf04Project();
+    const script = [
+      '镜头：全动作验证一',
+      '背景：背景',
+      '出场：师兄、小师妹',
+      '站位：双人对话',
+      '对白：',
+      '师兄：第一句。',
+      '小师妹：第二句。',
+      '小师妹：第三句。',
+      '师兄：第四句。',
+      '表演：',
+      '1｜左入场',
+      '1｜角色动作｜挥手',
+      '2｜右入场',
+      '2｜配方｜强调登场',
+      '3｜淡入',
+      '4｜淡出',
+      '---',
+      '镜头：全动作验证二',
+      '背景：背景',
+      '出场：师兄、小师妹',
+      '站位：双人对话',
+      '对白：',
+      '师兄：第五句。',
+      '小师妹：第六句。',
+      '师兄：第七句。',
+      '小师妹：第八句。',
+      '表演：',
+      '5｜移动｜x=900｜y=640',
+      '6｜放大｜1.4',
+      '7｜抖动',
+      '8｜表情｜生气',
+    ].join('\n');
+
+    const plan = planScriptPerformance(project, script);
+    expect(plan.hasIssues).toBe(false);
+    expect(plan.scheduledDialogueCount).toBe(8);
+    expect(plan.readyPerformanceCount).toBe(10);
+
+    const shot1 = plan.candidateProject!.shots.find((s) => s.name === '全动作验证一')!;
+    const shot2 = plan.candidateProject!.shots.find((s) => s.name === '全动作验证二')!;
+
+    expect(shot1.timelineEvents.map((e) => e.type)).toEqual([
+      'move',
+      'character-action',
+      'move',
+      'scale',
+      'opacity',
+      'opacity',
+    ]);
+    expect(shot2.timelineEvents.map((e) => e.type)).toEqual([
+      'move',
+      'scale',
+      'shake',
+      'expression',
+    ]);
+  });
+
+  it('preserves stable draftRowId across dialogue edits/inserts and supports anchor offset/end timing', () => {
+    const project = buildWf04Project();
+    const initialScript = [
+      '镜头：锚点测试',
+      '出场：师兄、小师妹',
+      '对白：',
+      '师兄：听我解释。',
+      '小师妹：你又偷懒了！',
+      '表演：',
+      '1｜抖动｜偏移=+200ms｜时长=400ms',
+      '2｜淡出｜锚点=结尾｜偏移=-300ms｜时长=300ms',
+    ].join('\n');
+
+    const firstPlan = planScriptPerformance(project, initialScript);
+    expect(firstPlan.hasIssues).toBe(false);
+    expect(firstPlan.performances[0]).toMatchObject({ startMs: 200, endMs: 600 });
+    expect(firstPlan.performances[1]).toMatchObject({ startMs: 3_900, endMs: 4_200 });
+
+    const originalRow1Id = firstPlan.dialogues[0]!.draftRowId;
+    const originalRow2Id = firstPlan.dialogues[1]!.draftRowId;
+
+    // Insert a new line before row 2 and re-plan with previousDialogueRows
+    const editedScript = [
+      '镜头：锚点测试',
+      '出场：师兄、小师妹',
+      '对白：',
+      '师兄：听我解释。',
+      '师兄：新增的一句。',
+      '小师妹：你又偷懒了！',
+      '表演：',
+      '1｜抖动',
+    ].join('\n');
+
+    const secondPlan = planScriptPerformance(project, editedScript, {
+      previousDialogueRows: firstPlan.dialogueDraftRows,
+    });
+    expect(secondPlan.dialogues[0]!.draftRowId).toBe(originalRow1Id);
+    expect(secondPlan.dialogues[2]!.draftRowId).toBe(originalRow2Id);
+    expect(secondPlan.dialogues[1]!.draftRowId).not.toBe(originalRow1Id);
+    expect(secondPlan.dialogues[1]!.draftRowId).not.toBe(originalRow2Id);
+  });
+
+  it('reports row-level feedback for missing actions, same-property conflicts, and shot-bounds overflow while allowing valid subset confirmation', () => {
+    const project = buildWf04Project();
+    const script = [
+      '镜头：冲突与反馈',
+      '背景：背景',
+      '出场：师兄、小师妹',
+      '站位：双人对话',
+      '对白：',
+      '师兄：第一句。',
+      '小师妹：第二句。',
+      '表演：',
+      '1｜左入场',
+      '1｜抖动',
+      '1｜瞬移',
+      '2｜表情｜不存在的表情',
+      '2｜淡出｜锚点=结尾｜时长=500ms',
+    ].join('\n');
+
+    const plan = planScriptPerformance(project, script);
+    expect(plan.hasIssues).toBe(true);
+    expect(plan.readyPerformanceCount).toBe(1); // 1｜左入场 succeeds
+    expect(plan.issuePerformanceCount).toBe(4);
+
+    // 1｜抖动 conflicts on `position` with 1｜左入场
+    expect(plan.performances[1]).toMatchObject({
+      status: 'issue',
+      issueCode: 'PROPERTY_CONFLICT',
+    });
+    // 1｜瞬移 is unknown action
+    expect(plan.performances[2]).toMatchObject({
+      status: 'issue',
+      issueCode: 'PARSE_ISSUE',
+    });
+    // 2｜表情｜不存在的表情
+    expect(plan.performances[3]).toMatchObject({
+      status: 'issue',
+      issueCode: 'EXPRESSION_NOT_FOUND',
+    });
+    // 2｜淡出 at endMs (4200..4700) overflows 4200ms shot
+    expect(plan.performances[4]).toMatchObject({
+      status: 'issue',
+      issueCode: 'OUT_OF_SHOT_BOUNDS',
+      requiredShotDurationMs: 4_700,
+    });
+
+    // Strict confirmation refuses without writing Project
+    const refused = applyScriptPerformancePlan(project, plan, {
+      allowPartialConfirm: false,
+    });
+    expect(refused).toMatchObject({ ok: false, errorCode: 'HAS_ISSUES' });
+
+    // Explicit partial confirmation commits valid subset
+    const partial = applyScriptPerformancePlan(project, plan, {
+      allowPartialConfirm: true,
+    });
+    expect(partial.ok).toBe(true);
+    if (partial.ok) {
+      const shot = partial.project.shots.find((s) => s.name === '冲突与反馈')!;
+      expect(shot.timelineEvents).toHaveLength(1);
+      expect(shot.timelineEvents[0]!.type).toBe('move');
+    }
+
+    // Opting in to extendShotForPerformance resolves the overflow row cleanly
+    const extendedPlan = planScriptPerformance(project, script, {
+      extendShotForPerformance: true,
+    });
+    expect(extendedPlan.performances[4]).toMatchObject({
+      status: 'ready',
+      startMs: 4_200,
+      endMs: 4_700,
+    });
+    expect(extendedPlan.blocks[0]!.finalDurationMs).toBe(4_700);
+    expect(extendedPlan.blocks[0]!.extendedForPerformance).toBe(true);
+
+    // Stale check detects audio deletion before apply
+    const mutatedProject = ProjectSchema.parse({
+      ...project,
+      assets: project.assets.filter((a) => a.id !== AUDIO_IDS.a1),
+    });
+    expect(isScriptPerformancePlanStale(mutatedProject, plan).stale).toBe(true);
+    expect(applyScriptPerformancePlan(mutatedProject, plan)).toMatchObject({
+      ok: false,
+      errorCode: 'STALE_PLAN',
+    });
+  });
+});

@@ -30,6 +30,37 @@
   gap: 8px;
 }
 
+.auto-scene-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.auto-scene-option-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.auto-scene-script-row {
+  display: grid;
+  gap: 2px;
+}
+
+.auto-scene-perf-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.auto-scene-row-issue {
+  font-size: 11px;
+  color: #e6a23c;
+  padding-left: 14px;
+}
+
 .auto-scene-count {
   font-size: 11px;
   color: var(--text-muted, #9aa6b2);
