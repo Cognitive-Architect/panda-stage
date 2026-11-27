@@ -20,3 +20,4 @@ export * from './ShotService';
 export * from './SubtitleStyleService';
 export * from './AssetService';
 export * from './mouthPoses';
+export * from './ProjectResourceImportPlanner';

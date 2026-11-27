@@ -37,6 +37,10 @@ import {
 } from './AssetCard';
 import { AssetImportPanel, selectImportedAudioAssetIds } from './AssetImportPanel';
 import {
+  ProjectResourceImportDialog,
+  type ProjectResourceImportSessionState,
+} from './ProjectResourceImportDialog';
+import {
   refreshImportedAudioMetadata,
   type AssetMetadataProjectIdentity,
   type AssetMetadataRefreshOutcome,
@@ -75,6 +79,7 @@ export interface AssetLibraryProps {
   onViewChange?: (view: AssetWorkspaceView) => void;
   importRequestToken?: number;
   flaReviewRequestToken?: number;
+  crossProjectImportRequestToken?: number;
   closeRequestToken?: number;
   hideHeading?: boolean;
   showFlaAction?: boolean;
@@ -92,6 +97,7 @@ export function AssetLibrary({
   onViewChange = () => undefined,
   importRequestToken,
   flaReviewRequestToken,
+  crossProjectImportRequestToken,
   closeRequestToken,
   hideHeading = false,
   showFlaAction = true,
@@ -141,6 +147,11 @@ export function AssetLibrary({
   const [flaReviewOpen, setFlaReviewOpen] = useState(false);
   const [flaInspection, setFlaInspection] =
     useState<FlaInspectionOperation | null>(null);
+  const [crossProjectImportSession, setCrossProjectImportSession] =
+    useState<ProjectResourceImportSessionState | null>(null);
+  const lastCrossProjectImportRequest = useRef(
+    crossProjectImportRequestToken ?? 0,
+  );
   const flaInspectionLifecycle = useRef<FlaInspectionLifecycle | null>(null);
   const flaInspectionOperation = useRef<FlaInspectionOperation | null>(null);
   const detailsDialogRef = useRef<HTMLDivElement | null>(null);
@@ -800,6 +811,49 @@ export function AssetLibrary({
     );
   };
 
+  const openCrossProjectImport = useCallback(async (): Promise<void> => {
+    const current = editorProjectStore.getSnapshot();
+    const openInstanceId = editorProjectStore.getProjectInstanceId();
+    if (!current || openInstanceId === null) {
+      setStatus('请先打开一个 Panda Stage 项目。');
+      return;
+    }
+    try {
+      const response =
+        await window.pandaStage.projectResourceImport.chooseSource({
+          projectRoot: current.projectRoot,
+          project: current.project,
+          baseRevision: current.revision,
+          openInstanceId,
+        });
+      if (!response.ok) {
+        setStatus(response.error.message);
+        return;
+      }
+      if (response.status === 'cancelled') return;
+      setCrossProjectImportSession({
+        sourceToken: response.sourceToken,
+        sourceProjectName: response.sourceProjectName,
+        items: response.items,
+      });
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : '选择来源工程失败。',
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    if (
+      crossProjectImportRequestToken === undefined ||
+      crossProjectImportRequestToken === lastCrossProjectImportRequest.current
+    ) {
+      return;
+    }
+    lastCrossProjectImportRequest.current = crossProjectImportRequestToken;
+    void openCrossProjectImport();
+  }, [crossProjectImportRequestToken, openCrossProjectImport]);
+
   useEffect(() => {
     if (
       flaReviewRequestToken === undefined ||
@@ -993,9 +1047,23 @@ export function AssetLibrary({
             showFlaAction={showFlaAction}
             importRequestToken={importRequestToken}
             onImportFla={openFlaReview}
+            onImportFromProject={() => void openCrossProjectImport()}
             onImportedAudioAssets={refreshAudioMetadataBatch}
             snapshot={snapshot}
           />
+          {snapshot && crossProjectImportSession ? (
+            <ProjectResourceImportDialog
+              onClose={() => setCrossProjectImportSession(null)}
+              onImported={(result) => {
+                setCrossProjectImportSession(null);
+                setStatus(
+                  `已从“${result.sourceProjectName}”导入 ${result.importedCharacterCount} 个角色、${result.importedAnimationCount} 个 Graphic/动画、${result.importedAssetCount} 个新素材。`,
+                );
+              }}
+              session={crossProjectImportSession}
+              snapshot={snapshot}
+            />
+          ) : null}
           <div
             className="asset-library-filter-controls"
             data-testid="asset-library-filter-controls"

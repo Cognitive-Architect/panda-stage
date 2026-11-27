@@ -245,6 +245,12 @@ export class ProjectService {
   }
 
   async open(rawProjectRoot: string): Promise<ProjectDocument> {
+    const document = await this.openReadOnly(rawProjectRoot);
+    await this.onProjectOpened?.(document.projectRoot, document.project);
+    return document;
+  }
+
+  async openReadOnly(rawProjectRoot: string): Promise<ProjectDocument> {
     const projectRoot = this.resolveProjectRoot(rawProjectRoot);
     let serialized: string;
     try {
@@ -271,14 +277,12 @@ export class ProjectService {
       // Current input is validated unchanged; historical normalization and
       // explicit version upgrades are owned by migrateProject.
       const project = migrateProject(input);
-      const document = this.document(
+      return this.document(
         projectRoot,
         project,
         sourceVersion !== PROJECT_SCHEMA_VERSION,
         sourceVersion,
       );
-      await this.onProjectOpened?.(projectRoot, project);
-      return document;
     } catch (error) {
       throw this.mapError('open', projectRoot, error);
     }

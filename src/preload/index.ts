@@ -10,6 +10,17 @@ import {
   type AssetImportProjectRequest,
 } from '../shared/asset-import-api';
 import {
+  ProjectResourceImportApplyRequestSchema,
+  ProjectResourceImportApplyResponseSchema,
+  ProjectResourceImportChooseRequestSchema,
+  ProjectResourceImportChooseResponseSchema,
+  ProjectResourceImportPreviewRequestSchema,
+  ProjectResourceImportPreviewResponseSchema,
+  type ProjectResourceImportApplyRequest,
+  type ProjectResourceImportChooseRequest,
+  type ProjectResourceImportPreviewRequest,
+} from '../shared/project-resource-import-api';
+import {
   AssetMetadataCancelRequestSchema,
   AssetMetadataCancelResponseSchema,
   AssetMetadataRequestSchema,
@@ -815,6 +826,32 @@ const pandaStageApi = Object.freeze({
       ) => callback(FlaFrameSequenceProgressSchema.parse(rawProgress));
       ipcRenderer.on(IPC_CHANNELS.FLA_FRAME_SEQUENCE_PROGRESS, listener);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.FLA_FRAME_SEQUENCE_PROGRESS, listener);
+    },
+  }),
+  projectResourceImport: Object.freeze({
+    chooseSource: async (rawRequest: ProjectResourceImportChooseRequest) => {
+      const request = ProjectResourceImportChooseRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.PROJECT_RESOURCE_IMPORT_CHOOSE,
+        request,
+      );
+      return ProjectResourceImportChooseResponseSchema.parse(response);
+    },
+    preview: async (rawRequest: ProjectResourceImportPreviewRequest) => {
+      const request = ProjectResourceImportPreviewRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.PROJECT_RESOURCE_IMPORT_PREVIEW,
+        request,
+      );
+      return ProjectResourceImportPreviewResponseSchema.parse(response);
+    },
+    apply: async (rawRequest: ProjectResourceImportApplyRequest) => {
+      const request = ProjectResourceImportApplyRequestSchema.parse(rawRequest);
+      const response: unknown = await ipcRenderer.invoke(
+        IPC_CHANNELS.PROJECT_RESOURCE_IMPORT_APPLY,
+        request,
+      );
+      return ProjectResourceImportApplyResponseSchema.parse(response);
     },
   }),
 });
