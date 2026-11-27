@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent } from 'react';
 import { Camera } from 'lucide-react';
 import {
   addShotCameraOverride,
@@ -30,7 +30,7 @@ import {
 } from '../../../domain';
 import { ShotCameraModeSchema } from '../../../domain/models/shotCamera';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
-import { shotStore } from '../../stores/shotStore';
+import { resolveSelectedCameraOverride, shotStore } from '../../stores/shotStore';
 import { Button } from '../../ui';
 import { formatTimecode } from '../timeline/timeGeometry';
 import { timelineUiStore } from '../timeline/timelineUiStore';
@@ -114,7 +114,11 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
   onCurveDraft?: (draft: ShotCameraCurveDraft | null) => void;
 }): React.JSX.Element {
   const [error, setError] = useState('');
-  const [selectedOverrideId, setSelectedOverrideId] = useState<string | null>(null);
+  const selectedOverrideId = useSyncExternalStore(
+    shotStore.subscribe,
+    shotStore.getSelectedCameraOverrideId,
+    shotStore.getSelectedCameraOverrideId,
+  );
   const [dragHandles, setDragHandles] = useState<AnimationBezier | undefined>(undefined);
   const [presetId, setPresetId] = useState<CameraMotionPresetId>('push-in');
   const [presetDurationMs, setPresetDurationMs] = useState<number>(DEFAULT_CAMERA_PRESET_DURATION_MS);
@@ -154,11 +158,7 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
       ? 'custom'
       : (key?.interpolationToNext ?? 'linear');
 
-  const activeOverride = overrides.find((override) => time >= override.startMs && time < override.endMs);
-  const selectedOverride =
-    overrides.find((override) => override.id === selectedOverrideId) ??
-    activeOverride ??
-    overrides[0];
+  const selectedOverride = resolveSelectedCameraOverride(shot, selectedOverrideId, time) ?? overrides[0];
   const newOverrideBounds = mode === 'hybrid' ? resolveNewOverrideBounds(shot, time, overrides) : null;
   const targetableLayers = shot.layers.filter((layer) => layer.cameraSpace !== 'screen');
 
@@ -362,19 +362,19 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
               if (!newOverrideBounds) return;
               const id = crypto.randomUUID();
               if (edit((project) => addShotCameraOverride(project, shot.id, { id, ...newOverrideBounds }), '添加相机接管段')) {
-                setSelectedOverrideId(id);
+                shotStore.selectCameraOverride(id);
               }
             }}>新增接管段</Button>
             <Button variant="secondary" disabled={!selectedOverride} onClick={() => {
               if (!selectedOverride) return;
               edit((project) => removeShotCameraOverride(project, shot.id, selectedOverride.id), '删除相机接管段');
-              setSelectedOverrideId(null);
+              shotStore.selectCameraOverride(null);
             }}>删除接管段</Button>
           </div>
           {overrides.length > 0 && selectedOverride && <>
             <label>接管段<select aria-label="接管段" value={selectedOverride.id} onChange={(event) => {
               const nextId = event.currentTarget.value;
-              setSelectedOverrideId(nextId);
+              shotStore.selectCameraOverride(nextId);
               const target = overrides.find((override) => override.id === nextId);
               if (target) timelineUiStore.seek(target.startMs, shot.durationMs);
             }}>
@@ -622,7 +622,7 @@ export function ShotCameraControls({ shot, timeMs, throughCamera, onViewChange, 
               );
               if (ok) {
                 setPresetOverwrite(false);
-                if (newOverrideId) setSelectedOverrideId(newOverrideId);
+                if (newOverrideId) shotStore.selectCameraOverride(newOverrideId);
               }
             }}>应用运镜</Button>
           </div>

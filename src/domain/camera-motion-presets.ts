@@ -561,6 +561,7 @@ export function applyCameraMotionPreset(
             mode: shot.camera!.mode,
             keys: nextKeys,
             ...(nextOverrides?.length ? { overrides: nextOverrides } : {}),
+            ...(shot.camera?.autoFraming ? { autoFraming: shot.camera.autoFraming } : {}),
           },
         }
       : entry),
