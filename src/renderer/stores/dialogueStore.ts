@@ -1,6 +1,9 @@
 import {
+  AutoSubtitleAudioService,
   DialogueService,
+  type ApplyDialogueAudioScheduleResult,
   type DialogueArrangementTiming,
+  type DialogueAudioScheduleRowInput,
   type ArrangeDialogueInput,
   type BindDialogueAudioInput,
   type DialogueTextMatch,
@@ -39,6 +42,8 @@ export type DialogueArrangementPreview =
  * Timeline store into the domain layer.
  */
 export class DialogueStore {
+  private readonly autoSubtitleAudio: AutoSubtitleAudioService;
+
   constructor(
     private readonly editorStore: EditorProjectStore,
     private readonly shotSelection: CurrentShotSelection,
@@ -47,7 +52,9 @@ export class DialogueStore {
     private readonly dialogueSelection: {
       select: (dialogueId: string) => void;
     },
-  ) {}
+  ) {
+    this.autoSubtitleAudio = new AutoSubtitleAudioService(this.service);
+  }
 
   duplicate(dialogueId: string): void {
     const { project, shotId } = this.context();
@@ -111,6 +118,36 @@ export class DialogueStore {
     if (next !== project) {
       this.editorStore.updateProject(next, 'Paste dialogues');
     }
+  }
+
+  /**
+   * Commits a validated batch of timed dialogues + real audio clips (and an
+   * explicitly confirmed shot extension, when needed) in one updateProject
+   * call so the entire batch is a single Undo/Redo command.
+   */
+  applyAudioBatch(input: {
+    startMs?: number;
+    rows: readonly DialogueAudioScheduleRowInput[];
+    extendShotToMs?: number;
+  }): ApplyDialogueAudioScheduleResult {
+    const { project, shotId } = this.context();
+    const startMs =
+      input.startMs ?? this.timelineUi.getSnapshot().currentTimeMs;
+    const result = this.autoSubtitleAudio.apply(project, {
+      shotId,
+      startMs,
+      rows: input.rows,
+      ...(input.extendShotToMs !== undefined
+        ? { extendShotToMs: input.extendShotToMs }
+        : {}),
+    });
+    if (result.project !== project) {
+      this.editorStore.updateProject(result.project, '生成字幕与配音');
+    }
+    if (result.dialogueIds.length > 0) {
+      this.dialogueSelection.select(result.dialogueIds[0]!);
+    }
+    return result;
   }
 
   update(
