@@ -194,9 +194,9 @@ pnpm build
   a planned stage is not proof that a capability has shipped. Retired daily
   plans and handoffs remain available in Git history.
 - `docs/design/` and `docs/handoff/` contain design decisions and historical
-  handoffs; dated stage-specific contracts and status snapshots are not
-  current execution instructions. Use them for relevant engineering context
-  and confirm their claims against current code and the active Issue/PR.
+  handoffs. Past stage-specific contracts and status snapshots do not
+  authorize work on their own. A contract adopted by the active Issue/PR
+  remains binding; reconcile its facts with current code.
 - `docs/test-receipts/` and `docs/evidence/` are historical validation
   records. They are useful evidence but do not automatically define current
   product capability.

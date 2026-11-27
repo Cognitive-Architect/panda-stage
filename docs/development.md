@@ -46,6 +46,12 @@ Core CI, retained manual diagnostics, and the policy for known unrelated
 failures are documented in [Core CI](ci-routing.md). Historical Day/M1
 commands below are local diagnostics, not additional merge gates.
 
+If the development shell inherits `ELECTRON_RUN_AS_NODE=1`, clear it before
+launching Electron or running a manual Electron verifier; otherwise Electron
+can run as Node instead of opening the application window. In PowerShell use
+`Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue`; in Bash
+use `unset ELECTRON_RUN_AS_NODE`.
+
 Run the complete Day 12 checks:
 
 ```powershell
