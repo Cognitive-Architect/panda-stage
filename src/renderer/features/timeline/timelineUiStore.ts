@@ -421,5 +421,5 @@ export const timelineUiStore = new TimelineUiStore();
 
 /** React hook that subscribes to the Timeline UI store. */
 export function useTimelineUi(): TimelineUiState {
-  return useSyncExternalStore(timelineUiStore.subscribe, timelineUiStore.getSnapshot);
+  return useSyncExternalStore(timelineUiStore.subscribe, timelineUiStore.getSnapshot, timelineUiStore.getSnapshot);
 }

@@ -23,11 +23,11 @@ const shot = project.shots[0]!;
 
 describe('Issue #342 Lucide icon pilot', () => {
   it('keeps readable labels while adding decorative Lucide icons to shared chrome', () => {
-    const bar = source('src/renderer/shell/CompactProjectBar.tsx');
+    const bar = source('src/renderer/shell/WorkbenchCommandBar.tsx');
     const history = source('src/renderer/features/editor/HistoryControls.tsx');
     const switcher = source('src/renderer/shell/AdaptiveWorkspaceSwitcher.tsx');
 
-    for (const name of ['Home', 'FolderOpen', 'Play', 'Save', 'X']) {
+    for (const name of ['Play', 'Save', 'Download']) {
       expect(bar).toContain(name);
     }
     expect(bar).not.toContain('MoreHorizontal');
@@ -37,7 +37,8 @@ describe('Issue #342 Lucide icon pilot', () => {
     for (const name of ['Images', 'PanelTop', 'Rows3', 'SlidersHorizontal']) {
       expect(switcher).toContain(name);
     }
-    for (const component of [bar, history, switcher]) {
+    expect(bar).toContain('<DecorativeIcon');
+    for (const component of [history, switcher]) {
       expect(component).toContain('aria-hidden="true"');
       expect(component).toContain('className="ui-icon');
     }

@@ -61,16 +61,16 @@ describe('UI-M1 touch foundation contract', () => {
     expect(styles).not.toContain('.app-shell {');
   });
 
-  it('makes the quick action drawer the first real production consumer', () => {
-    const bar = readSource('src/renderer/shell/CompactProjectBar.tsx');
+  it('keeps the command bar on the shared UI primitives', () => {
+    const bar = readSource('src/renderer/shell/WorkbenchCommandBar.tsx');
 
     expect(bar).toContain("from '../ui'");
-    expect(bar).toContain('<PanelSurface');
+    expect(bar).toContain('<Menu.Content');
     expect(bar).toContain('<IconButton');
-    expect(bar).toContain('variant="primary"');
+    expect(bar).toContain('<Button className="ui-icon-label workbench-export"');
     expect(bar).toContain('variant="secondary"');
-    expect(bar).toContain('data-testid="quick-action-drawer-handle"');
-    expect(bar).toContain('onSaveProject');
+    expect(bar).toContain('data-testid="quick-action-save"');
+    expect(bar).toContain('onSave');
     expect(bar).toContain('disabled={saveDisabled}');
   });
 
@@ -79,7 +79,7 @@ describe('UI-M1 touch foundation contract', () => {
       'src/renderer/ui',
       'src/renderer/styles/tokens.css',
       'src/renderer/styles/primitives.css',
-      'src/renderer/shell/CompactProjectBar.tsx',
+      'src/renderer/shell/WorkbenchCommandBar.tsx',
     ];
 
     expect(changed.join('\n')).not.toMatch(/src\/(domain|history|main|preload|shared|renderer\/stores)\//u);

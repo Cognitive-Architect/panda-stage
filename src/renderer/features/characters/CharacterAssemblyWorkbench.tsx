@@ -2536,7 +2536,7 @@ function AdaptivePartsAssemblyWorkbench({
         title={operationsOpen ? '收起零件操作' : '展开零件操作'}
         type="button"
       >
-        <span className="quick-action-drawer-grip" aria-hidden="true" />
+        <span className="floating-panel-grip" aria-hidden="true" />
       </button>
       <div className="adaptive-parts-assembly-list" id={panelId + '-operations'} inert={!operationsOpen}>
         <nav aria-label="角色操作" className="character-float-left-nav adaptive-parts-left-nav">
@@ -3295,7 +3295,7 @@ function AdaptivePartsAssemblyWorkbench({
           title={inspectorOpen ? '收起属性' : '展开属性'}
           type="button"
         >
-          <span className="quick-action-drawer-grip" aria-hidden="true" />
+          <span className="floating-panel-grip" aria-hidden="true" />
         </button>
         <div className="adaptive-parts-properties-body" id={panelId + '-properties'} inert={!inspectorOpen}>
           {assemblyCharacter?.mode === 'adaptive-parts' ? (

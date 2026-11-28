@@ -91,10 +91,9 @@ import {
   shouldRestoreExportTask,
 } from './exportTaskState';
 import { CanvasWorkspace } from './CanvasWorkspace';
-import {
-  CompactProjectBar,
-  type CompactProjectSaveState,
-} from './CompactProjectBar';
+import { WorkbenchCommandBar, type ProjectSaveState } from './WorkbenchCommandBar';
+import type { ResourceCommands } from './ResourceActivityDock';
+import { canvasViewportStore } from '../stores/canvasViewportStore';
 import { LeftWorkspace } from './LeftWorkspace';
 import { NewProjectDialog } from './NewProjectDialog';
 import { useDialogueSilence } from './useDialogueSilence';
@@ -512,6 +511,7 @@ export function EditorShell({
   const [characterFloatTarget, setCharacterFloatTarget] = useState<HTMLElement | null>(null);
   const [characterFloatMode, setCharacterFloatMode] = useState<FloatingCharacterMode | null>(null);
   const workbench = useRef<WorkbenchControls>(null);
+  const resourceCommands = useRef<ResourceCommands>(null);
   const rightWorkspace = useRef<RightWorkspaceHandle>(null);
   const [panelVisibility, setPanelVisibility] = useState<Partial<Record<WorkbenchPanel, boolean>>>({});
   const updatePanelVisibility = useCallback((panel: WorkbenchPanel, visible: boolean) => {
@@ -856,7 +856,7 @@ export function EditorShell({
     shellState,
     sessionSnapshot,
   );
-  const saveState: CompactProjectSaveState =
+  const saveState: ProjectSaveState =
     saveActivity.phase === 'saving'
       ? 'saving'
       : saveActivity.phase === 'failed' &&
@@ -2914,7 +2914,7 @@ export function EditorShell({
           </div>
           <PendingDialoguePlacementProvider desktopWorkbench>
             <GraphicFrameTargetProvider>
-              <div className="workbench-body" data-testid="editor-body" inert={productPreviewOpen || undefined}>
+              <div className="workbench-body" data-testid="editor-body" inert={productPreviewOpen || newProjectDialogOpen || undefined}>
                 <EditorWorkbench onPanelVisibilityChange={updatePanelVisibility}
                   controls={workbench}
                   canHide={(panel) => {
@@ -2922,37 +2922,35 @@ export function EditorShell({
                     if (panel === 'stage') return !assemblyActive && !characterFloatMode;
                     return true;
                   }}
-                  header={<>
-                    <span className="workbench-project-name" title={projectSnapshot.project.name}>{projectSnapshot.project.name}</span>
-                    <select aria-label="切换镜头" value={currentShotId ?? ''}
-                      disabled={busy || assemblyActive || Boolean(characterFloatMode) || flaCharacterRecoveryRecord.kind !== 'none'}
-                      onChange={(event) => shotStore.select(event.target.value)}>
-                      {projectSnapshot.project.shots.map((shot) => <option key={shot.id} value={shot.id}>{shot.name}</option>)}
-                    </select>
-                    <CompactProjectBar
-                      docked
-                      busy={busy}
-                      closeConfirmOpen={closeConfirmOpen}
-                      exportBusy={exportTaskIsActive(exportTask)}
-                      exportSurfaceOpen={exportSurfaceOpen}
-                      key={`quick-action-drawer:${projectSnapshot.projectRoot}`}
-                      onExportVideo={onExportVideo}
-                      onOpenExportSettings={() => setExportOptionsOpen(true)}
-                      onOpenProductPreview={openProductPreview}
-                      onOpenProjectCenter={openProjectCenter}
-                      onOpenProjectFolder={openProjectFolder}
-                      onRequestCloseProject={requestCloseProject}
-                      onSaveProject={saveProject}
-                      productPreviewOpen={productPreviewOpen}
-                      projectSnapshot={projectSnapshot}
-                      saveState={saveState}
-                      status={status}
-                    />
-                  </>}
+                  header={(windowMenu) => <WorkbenchCommandBar
+                    windowMenu={windowMenu} snapshot={projectSnapshot} shotId={currentShotId}
+                    busy={busy} previewOpen={productPreviewOpen}
+                    modalOpen={closeConfirmOpen || newProjectDialogOpen || exportOptionsOpen}
+                    navigationBlocked={assemblyActive || Boolean(characterFloatMode) || flaCharacterRecoveryRecord.kind !== 'none'}
+                    exportBusy={exportTaskIsActive(exportTask)} exportOpen={exportSurfaceOpen}
+                    saveState={saveState} status={status}
+                    onShotChange={(id) => shotStore.select(id)}
+                    onNew={() => { if (!blockSessionChangeDuringExport()) requestNewProject(); }}
+                    onOpen={() => void openProjectFromChooser()} onSave={() => void saveProject()}
+                    onClose={requestCloseProject} onFolder={() => void openProjectFolder()}
+                    onProjectCenter={openProjectCenter}
+                    onImport={(kind) => {
+                      workbench.current?.show('assets');
+                      resourceCommands.current?.importAssets(kind);
+                    }}
+                    onPreview={openProductPreview} onExport={onExportVideo}
+                    onExportSettings={() => setExportOptionsOpen(true)}
+                    onCanvasView={(mode) => {
+                      workbench.current?.show('stage');
+                      canvasViewportStore.setMode(mode);
+                    }}
+                  />}
                   panels={{
                     assets: (
                       <CharacterFloatHost.Provider value={{ target: characterFloatTarget, setMode: setCharacterFloatMode }}>
                         <LeftWorkspace
+                          commandsRef={resourceCommands}
+                          onPreviewDraft={openDraftPreview}
                           docked
                           drawerOpen
                           onDrawerOpenChange={(open) => { if (!open) workbench.current?.close('assets'); }}
@@ -3038,6 +3036,7 @@ export function EditorShell({
             <ProductPreviewOverlay
               autoPlay
               autoCameraEnabled={autoCameraEnabled}
+              initialRange="shot"
               dialogueSilence={dialogueSilence}
               onAutoCameraChange={setAutoCameraEnabled}
               onClose={closeProductPreview}
@@ -3073,9 +3072,7 @@ export function EditorShell({
           ) : null}
         </div>
       ) : null}
-      {renderProductSurface &&
-        page === 'project-center' &&
-        newProjectDialogOpen ? (
+      {renderProductSurface && newProjectDialogOpen ? (
         <NewProjectDialog
           busy={busy}
           mode={projectTemplateMode?.kind}

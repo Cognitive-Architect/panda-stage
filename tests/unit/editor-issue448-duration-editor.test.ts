@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 
 function source(path: string): string {
   return readFileSync(path, 'utf8').replaceAll('\r\n', '\n');
@@ -17,12 +16,7 @@ describe('Issue #448 timed Inspector comfort and audio duration editing', () => 
         '\n  return (\n    <>\n      <div className="right-inspector-heading">',
       ),
     );
-    const styles = readOrderedStylesheetSource();
-    const issue448Start = styles.lastIndexOf('/* Issue #448 A:');
-    const issue448 = styles.slice(
-      issue448Start,
-      styles.indexOf('/* Issue #454:', issue448Start),
-    );
+    const issue448 = source('src/renderer/styles/features/dialogue/properties/s14-07--properties-spacing-448a.css');
 
     expect(compactPresentations).toContain('dialogue-properties-identity-editor');
     expect(compactPresentations).toContain('dialogue-compact-timing-grid');
@@ -77,12 +71,7 @@ describe('Issue #448 timed Inspector comfort and audio duration editing', () => 
   });
 
   it('raises the selected AudioClip end cap above the subtitle resize quality floor', () => {
-    const styles = readOrderedStylesheetSource();
-    const issue448Start = styles.lastIndexOf('/* Issue #448 A:');
-    const issue448 = styles.slice(
-      issue448Start,
-      styles.indexOf('/* Issue #454:', issue448Start),
-    );
+    const issue448 = source('src/renderer/styles/features/timeline/s14-09--audio-trim-448b.css');
 
     expect(issue448).toMatch(
       /\.timeline-audio-trim-handle\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?width:\s*32px;/u,

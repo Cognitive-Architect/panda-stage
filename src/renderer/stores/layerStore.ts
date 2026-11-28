@@ -682,7 +682,19 @@ export class LayerStore {
     return next;
   }
 
-  reorder(layerId: string, action: LayerOrderAction): Project {
+  setVisible(layerId: string, visible: boolean): void {
+    const { project, shotId } = this.context();
+    const next = this.service.updateLayerAppearance(project, shotId, layerId, { visible });
+    if (next !== project) this.editorStore.updateProject(next, '图层显隐');
+  }
+
+  rename(layerId: string, name: string): void {
+    const { project, shotId } = this.context();
+    const next = this.service.renameContentLayers(project, shotId, new Map([[layerId, name]]));
+    if (next !== project) this.editorStore.updateProject(next, '重命名图层');
+  }
+
+  reorder(layerId: string, action: LayerOrderAction | { toLayerId: string }): Project {
     const { project, shotId } = this.context();
     const next = this.service.reorder(
       project,

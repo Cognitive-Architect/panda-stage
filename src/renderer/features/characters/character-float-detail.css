@@ -167,7 +167,7 @@
   background: transparent;
 }
 
-.character-float-detail .character-float-handle:hover:not(:disabled) .quick-action-drawer-grip {
+.character-float-detail .character-float-handle:hover:not(:disabled) .floating-panel-grip {
   background: color-mix(in srgb, var(--ui-color-selected-border) 65%, var(--ui-color-surface-work));
 }
 

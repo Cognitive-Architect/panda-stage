@@ -134,7 +134,7 @@ describe('Issue #545 P2-B01 shared character foundations', () => {
   it('loads B01 parts exactly once in canonical source order', () => {
     const expected = ['S14', 'S15', 'S16'].flatMap((sliceId) => {
       const slice = manifest.slices.find(({ id }) => id === sliceId)!;
-      return slice.sourceParts!.map(({ targetPath }) => entryImportPath(targetPath));
+      return slice.sourceParts!.filter(({ id }) => id !== 'G005' && id !== 'G121').map(({ targetPath }) => entryImportPath(targetPath));
     });
     const imports = importPaths();
     const start = imports.indexOf(expected[0]!);

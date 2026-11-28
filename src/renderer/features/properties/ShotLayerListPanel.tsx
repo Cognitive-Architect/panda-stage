@@ -1,6 +1,18 @@
-import { useMemo, useState, useSyncExternalStore } from 'react';
+import { useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import * as Menu from '@radix-ui/react-dropdown-menu';
+import { DecorativeIcon, IconButton } from '../../ui';
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  Box,
+  Eye,
+  Image,
+  MoreHorizontal,
+  Film,
+  Layers2,
+  Unlock,
+  UserRound,
   Clock,
   Crosshair,
   EyeOff,
@@ -9,7 +21,7 @@ import {
   Lock,
   Unlink2,
 } from 'lucide-react';
-import { validBatchLayerParentTargets } from '../../../domain';
+import { evaluateAnimationTrackAtTime, findLayerMotionGraphic, resolveLayerDepthSource, validBatchLayerParentTargets } from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import { layerListUiStore, useLayerListUi } from '../../stores/layerListUiStore';
 import { layerStore } from '../../stores/layerStore';
@@ -22,6 +34,16 @@ import {
   parentChainColumnX,
   parentChainRowCenterY,
 } from './parentChainModel';
+
+const LAYER_TYPES = {
+  background: { icon: Image, label: '背景' },
+  control: { icon: Crosshair, label: '控制层' },
+  character: { icon: UserRound, label: '角色' },
+  asset: { icon: Box, label: '道具' },
+  animation: { icon: Layers2, label: '动画' },
+  graphic: { icon: Layers2, label: 'Graphic' },
+  video: { icon: Film, label: '视频' },
+} as const;
 
 export interface ShotLayerListPanelProps {
   /** Called when a user clicks a parent-chain node to jump to the existing parent control. */
@@ -47,11 +69,17 @@ export function ShotLayerListPanel({
   const { parentChainVisible, batchSelectedLayerIds } = useLayerListUi();
   const [batchParentId, setBatchParentId] = useState('');
   const [batchError, setBatchError] = useState('');
+  const [commandError, setCommandError] = useState('');
+  const [menuLayerId, setMenuLayerId] = useState<string | null>(null);
+  const renameFocus = useRef<string | null>(null);
+  const renameInput = useRef<HTMLInputElement>(null);
+  const [rename, setRename] = useState<{ id: string; name: string } | null>(null);
 
   const shot = useMemo(
     () => snapshot?.project.shots.find((candidate) => candidate.id === shotId) ?? null,
     [shotId, snapshot],
   );
+  const dragScope = editorProjectStore.getProjectInstanceId() + ':' + shotId;
 
   const viewModel = useMemo(
     () =>
@@ -77,7 +105,7 @@ export function ShotLayerListPanel({
     return shot.layers.some((layer) => idSet.has(layer.id) && Boolean(layer.parentKeys?.length));
   }, [batchSelectedLayerIds, shot]);
 
-  if (!shot || !viewModel || viewModel.rows.length === 0) return null;
+  if (!snapshot || !shot || !viewModel || viewModel.rows.length === 0) return null;
 
   const effectiveBatchTargetId = batchTargets.some(({ id }) => id === batchParentId)
     ? batchParentId
@@ -91,48 +119,33 @@ export function ShotLayerListPanel({
     }
   };
 
+  const movableRows = viewModel.rows.filter(row => !row.isBackground);
+  const selectedIndex = movableRows.findIndex(row => row.isSelected);
+  const selected = movableRows[selectedIndex];
+  const execute = (command: () => void) => {
+    try {
+      command();
+      setCommandError('');
+    } catch (error) {
+      setCommandError(error instanceof Error ? error.message : '图层操作失败。');
+    }
+  };
+
   return (
     <section
       aria-label="图层列表"
       data-testid="shot-layer-list-panel"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '6px',
-        marginBottom: '8px',
-      }}
+      className="workbench-layer-panel"
     >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '6px',
-          fontSize: '12px',
-        }}
-      >
-        <strong>图层 ({viewModel.rows.length})</strong>
-        <button
-          aria-label="切换父链视图"
-          aria-pressed={parentChainVisible}
-          data-testid="parent-chain-toggle"
-          data-ui-button
-          data-ui-variant="secondary"
-          onClick={() => layerListUiStore.toggleParentChain()}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '4px',
-            padding: '2px 8px',
-            fontSize: '11px',
-          }}
-          title="显示或隐藏当前时刻的父链关系列"
-          type="button"
-        >
-          <GitBranch size={12} aria-hidden="true" />
-          <span>父链</span>
-        </button>
+      <div className="workbench-layer-toolbar">
+        <IconButton variant="secondary" aria-label="上移一层" title="上移一层" icon={<DecorativeIcon icon={ArrowUp} />}
+          disabled={!selected || selected.isLocked || selectedIndex === 0} onClick={() => selected && execute(() => layerStore.reorder(selected.layer.id, 'forward'))} />
+        <IconButton variant="secondary" aria-label="下移一层" title="下移一层" icon={<DecorativeIcon icon={ArrowDown} />}
+          disabled={!selected || selected.isLocked || selectedIndex === movableRows.length - 1} onClick={() => selected && execute(() => layerStore.reorder(selected.layer.id, 'backward'))} />
+        <IconButton variant="secondary" aria-label="切换父链视图" aria-pressed={parentChainVisible} title="父链与景深"
+          data-testid="parent-chain-toggle" icon={<DecorativeIcon icon={GitBranch} />} onClick={() => layerListUiStore.toggleParentChain()} />
       </div>
+      {commandError ? <output role="alert">{commandError}</output> : null}
 
       {batchSelectedLayerIds.length > 0 ? (
         <div
@@ -270,14 +283,7 @@ export function ShotLayerListPanel({
 
       <div
         data-testid="shot-layer-list-scroll"
-        style={{
-          maxHeight: '220px',
-          overflowY: 'auto',
-          display: 'flex',
-          alignItems: 'flex-start',
-          borderRadius: 'var(--ui-radius-small, 6px)',
-          background: 'var(--ui-color-surface-work, #141c18)',
-        }}
+        className="workbench-layer-scroll"
       >
         {parentChainVisible ? (
           <div
@@ -366,85 +372,91 @@ export function ShotLayerListPanel({
           </div>
         ) : null}
 
-        <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+        <div className="workbench-layer-rows">
           {viewModel.rows.map((row) => {
-            const checked = batchSelectedLayerIds.includes(row.layer.id);
-            const batchEligible = !row.isBackground && !row.isLocked;
-            return (
-              <div
-                key={row.layer.id}
-                data-layer-id={row.layer.id}
-                data-selected={row.isSelected ? 'true' : 'false'}
-                data-selected-chain={row.inSelectedChain ? 'true' : 'false'}
-                data-testid={`layer-list-row-${row.layer.id}`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  height: `${viewModel.rowHeight}px`,
-                  padding: '0 6px',
-                  fontSize: '12px',
-                  background: row.isSelected
-                    ? 'var(--ui-color-selected-surface, rgb(65 145 87 / 34%))'
-                    : row.inSelectedChain && parentChainVisible
-                      ? 'rgb(127 199 148 / 10%)'
-                      : 'transparent',
-                  opacity: row.isHidden ? 0.65 : 1,
-                }}
-                title={row.tooltip}
-              >
-                <input
-                  aria-label={`勾选图层 ${row.layer.name}`}
-                  checked={checked}
-                  data-testid={`layer-batch-checkbox-${row.layer.id}`}
-                  disabled={!batchEligible}
-                  onChange={() => layerListUiStore.toggleBatchLayer(row.layer.id)}
-                  style={{ margin: 0, flex: '0 0 auto' }}
-                  type="checkbox"
-                />
-                <button
-                  onClick={() => selectLayerRow(row.layer.id, row.isBackground)}
-                  style={{
-                    flex: '1 1 auto',
-                    minWidth: 0,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    textAlign: 'left',
-                    background: 'none',
-                    border: 'none',
-                    padding: 0,
-                    color: 'inherit',
-                    cursor: 'pointer',
-                    fontWeight: row.isSelected ? 600 : 400,
-                  }}
-                  type="button"
-                >
-                  {row.layer.name}
-                </button>
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '3px',
-                    flex: '0 0 auto',
-                    color: 'var(--ui-color-text-muted, #84958b)',
-                  }}
-                >
-                  {row.isControl ? <Crosshair size={11} aria-label="空控制层" /> : null}
-                  {row.isDynamicBinding ? <Clock size={11} aria-label="动态交接" /> : null}
-                  {row.parentMissing ? (
-                    <AlertTriangle
-                      size={11}
-                      aria-label="父级缺失"
-                      style={{ color: 'var(--ui-color-action-warning, #a36d19)' }}
-                    />
-                  ) : null}
-                  {row.isHidden ? <EyeOff size={11} aria-label="已隐藏" /> : null}
-                  {row.isLocked ? <Lock size={11} aria-label="已锁定" /> : null}
-                </span>
-              </div>
-            );
+            const { layer } = row;
+            const editable = !row.isBackground && !row.isLocked;
+            const index = movableRows.indexOf(row);
+            const type = row.isBackground ? 'background'
+              : findLayerMotionGraphic(snapshot.project, layer) ? 'graphic' : layer.source.kind;
+            const { icon, label } = LAYER_TYPES[type];
+            const depthSource = parentChainVisible ? resolveLayerDepthSource(shot, layer, currentTimeMs) : null;
+            let depthLabel: number | string = layer.depth ?? 0;
+            if (depthSource?.kind === 'dynamic-preserve') depthLabel = '保持';
+            else if (depthSource?.parentLayerName) depthLabel = '继承';
+            else if (layer.depthKeys?.length && parentChainVisible) {
+              const depth = evaluateAnimationTrackAtTime({ keys: layer.depthKeys }, currentTimeMs);
+              depthLabel = Number(depth.toFixed(2));
+            }
+            return <div key={layer.id} className="workbench-layer-row"
+              data-layer-id={layer.id} data-layer-kind={type} data-selected={row.isSelected} data-hidden={row.isHidden}
+              data-testid={"layer-list-row-" + layer.id} title={row.tooltip}
+              onContextMenu={event => { event.preventDefault(); setMenuLayerId(layer.id); }}
+              onDragOver={event => {
+                if (!row.isBackground && event.dataTransfer.types.includes('application/x-panda-layer-order')) event.preventDefault();
+              }}
+              onDrop={event => {
+                const payload = event.dataTransfer.getData('application/x-panda-layer-order');
+                const source = movableRows.find(candidate =>
+                  !candidate.isLocked && payload === JSON.stringify([dragScope, candidate.layer.id]),
+                );
+                if (!source || row.isBackground) return;
+                event.preventDefault();
+                execute(() => layerStore.reorder(source.layer.id, { toLayerId: layer.id }));
+              }}>
+              <input type="checkbox" aria-label={"勾选图层 " + layer.name} checked={batchSelectedLayerIds.includes(layer.id)}
+                data-testid={"layer-batch-checkbox-" + layer.id} disabled={!editable}
+                onChange={() => layerListUiStore.toggleBatchLayer(layer.id)} />
+              {rename?.id === layer.id ? <input className="workbench-layer-name" aria-label="图层名称" ref={renameInput}
+                value={rename.name} onChange={event => setRename({ id: layer.id, name: event.target.value })}
+                onBlur={() => setRename(null)} onKeyDown={event => {
+                  if (event.key === 'Escape') { event.preventDefault(); setRename(null); }
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    execute(() => { layerStore.rename(layer.id, rename.name); setRename(null); });
+                  }
+                }} /> : <button className="workbench-layer-name" aria-pressed={row.isSelected} type="button"
+                title={layer.name + " · " + label} draggable={editable} onDragStart={event => {
+                  event.dataTransfer.setData('application/x-panda-layer-order', JSON.stringify([dragScope, layer.id]));
+                  event.dataTransfer.effectAllowed = 'move';
+                }} onClick={() => selectLayerRow(layer.id, row.isBackground)}>
+                <DecorativeIcon icon={icon} size={14} /> <span>{layer.name}</span>
+              </button>}
+              {parentChainVisible && <span className="workbench-layer-depth" title={row.activeParentName || "无父级"}>{depthLabel}</span>}
+              {row.isDynamicBinding && <Clock size={12} aria-label="动态交接" />}
+              {row.parentMissing && <AlertTriangle size={12} aria-label="父级缺失" />}
+              <IconButton variant="secondary" aria-label={row.isHidden ? "显示图层" : "隐藏图层"} title={row.isHidden ? "显示图层" : "隐藏图层"}
+                icon={<DecorativeIcon icon={row.isHidden ? EyeOff : Eye} />} disabled={row.isLocked || row.isBackground || row.isControl}
+                onClick={() => execute(() => layerStore.setVisible(layer.id, row.isHidden))} />
+              <IconButton variant="secondary" aria-label={row.isLocked ? "解锁图层" : "锁定图层"} title={row.isLocked ? "解锁图层" : "锁定图层"}
+                icon={<DecorativeIcon icon={row.isLocked ? Lock : Unlock} />} disabled={row.isBackground}
+                onClick={() => execute(() => layerStore.setLocked(layer.id, !row.isLocked))} />
+              <Menu.Root open={menuLayerId === layer.id} onOpenChange={open => setMenuLayerId(open ? layer.id : null)}>
+                <Menu.Trigger asChild><IconButton variant="secondary" aria-label={"图层操作 " + layer.name} title="图层操作"
+                  icon={<DecorativeIcon icon={MoreHorizontal} />} /></Menu.Trigger>
+                <Menu.Portal><Menu.Content className="workbench-menu" align="end" onCloseAutoFocus={event => {
+                  if (renameFocus.current !== layer.id) return;
+                  event.preventDefault();
+                  renameFocus.current = null;
+                  window.requestAnimationFrame(() => {
+                    renameInput.current?.focus();
+                    renameInput.current?.select();
+                  });
+                }}>
+                  <Menu.Item disabled={!editable} onSelect={() => {
+                    renameFocus.current = layer.id;
+                    setRename({ id: layer.id, name: layer.name });
+                  }}>重命名</Menu.Item>
+                  <Menu.Item disabled={!editable || index === 0} onSelect={() => execute(() => layerStore.reorder(layer.id, 'forward'))}>上移一层</Menu.Item>
+                  <Menu.Item disabled={!editable || index === movableRows.length - 1} onSelect={() => execute(() => layerStore.reorder(layer.id, 'backward'))}>下移一层</Menu.Item>
+                  <Menu.Item disabled={!editable || index === 0} onSelect={() => execute(() => layerStore.reorder(layer.id, 'front'))}>置顶</Menu.Item>
+                  <Menu.Item disabled={!editable || index === movableRows.length - 1} onSelect={() => execute(() => layerStore.reorder(layer.id, 'back'))}>置底</Menu.Item>
+                  <Menu.Item disabled={row.isBackground} onSelect={() => { selectLayerRow(layer.id, false); onFocusParentBinding?.(layer.id); }}>父级属性</Menu.Item>
+                  <Menu.Separator />
+                  <Menu.Item disabled={!editable} onSelect={() => execute(() => layerStore.deleteLayer(layer.id, timelineUiStore.getSnapshot().currentTimeMs))}>删除图层</Menu.Item>
+                </Menu.Content></Menu.Portal>
+              </Menu.Root>
+            </div>;
           })}
         </div>
       </div>

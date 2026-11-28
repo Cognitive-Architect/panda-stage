@@ -37,24 +37,7 @@
   transform: translateX(-50%);
 }
 
-.editor-layout[data-top-region-layout='overlay']:has(
-    .quick-action-drawer[data-expanded='true']
-  )
-  > .editor-top-region
-  > .recovery-prompt {
-  top: 120px;
-}
-
 .editor-layout[data-top-region-layout='flow'] > .editor-top-region {
   position: relative;
-}
-
-.editor-body > .quick-action-drawer {
-  position: absolute;
-  z-index: 40;
-  top: 0;
-  left: 50%;
-  min-height: 0;
-  transform: translateX(-50%);
 }
 

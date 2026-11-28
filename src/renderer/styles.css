@@ -4,7 +4,6 @@
 @import './styles/shell/layout/s01-02--root-frame.css';
 @import './styles/shell/project-entry/s01-03--project-center-start.css';
 @import './styles/shell/layout/s01-04--editor-grid.css';
-@import './styles/shell/quick-actions/s01-05--legacy-compact-bar.css';
 @import './styles/shell/layout/s01-06--recovery-host-and-body.css';
 @import './styles/shell/right-workspace/s01-07--inspector-and-layer-host.css';
 @import './styles/shell/resources/s01-08--resource-host-base.css';
@@ -85,7 +84,6 @@
 @import './styles/shell/right-workspace/s08-03--portrait-properties-flatten.css';
 @import './styles/features/timeline/s08-04--portrait-track-polish.css';
 @import './styles/compat/retained-task-surfaces/s08-05--portrait-dialogue-flat.css';
-@import './styles/shell/quick-actions/s08-06--portrait-compact-history.css';
 @import './styles/features/shots/s08-07--portrait-shot-detail.css';
 @import './styles/shell/right-workspace/s08-08--portrait-empty-properties.css';
 @import './styles/compat/retained-task-surfaces/s08-09--portrait-authoring.css';
@@ -102,7 +100,6 @@
 @import './styles/shell/resources/s10-01--character-detail-header.css';
 @import './styles/features/characters/workspace/s10-02--landscape-character-workbench.css';
 @import './styles/features/characters/expression/s10-03--landscape-expression-workbench.css';
-@import './styles/shell/quick-actions/s10-04--landscape-compact-history.css';
 @import './styles/shell/resources/s10-05--landscape-rail-polish.css';
 @import './styles/shell/tools/s10-06--tools-drawer.css';
 @import './styles/shell/project-entry/s10-07--recent-maintenance.css';
@@ -135,7 +132,6 @@
 @import './styles/features/dialogue/batch/s14-06--batch-footer-host.css';
 @import './styles/features/dialogue/properties/s14-07--properties-spacing-448a.css';
 @import './styles/features/timeline/s14-09--audio-trim-448b.css';
-@import './styles/shell/quick-actions/s14-10--quick-drawer-454.css';
 @import './styles/shell/layout/s14-11--top-overlay-456-486.css';
 @import './styles/features/dialogue/properties/s14-12--timing-seconds-463.css';
 @import './styles/features/characters/image-picker/s14-14--image-picker-base-492.css';

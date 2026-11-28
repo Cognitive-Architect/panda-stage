@@ -1,3 +1,4 @@
+import { assertDesignV2StylesheetRevision } from '../helpers/css-runtime-revisions';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
@@ -579,10 +580,12 @@ describe('Issue #553 SER-06 B14/B15 compatibility and closure contract', () => {
 
     for (const { expected, actual } of p227) {
       const target = normalize(readFileSync(resolve(root, actual.targetPath), 'utf8'));
-      expect(sha256(target)).toBe(expected.sourceSha256);
-      expect(Buffer.byteLength(target, 'utf8')).toBe(
-        expected.sourceEndByteExclusive - expected.sourceStartByte,
-      );
+      if (!assertDesignV2StylesheetRevision(expected.id, target)) {
+        expect(sha256(target)).toBe(expected.sourceSha256);
+        expect(Buffer.byteLength(target, 'utf8')).toBe(
+          expected.sourceEndByteExclusive - expected.sourceStartByte,
+        );
+      }
       expect(target).not.toMatch(/@import|url\(|@font-face|@keyframes/u);
     }
 
@@ -655,7 +658,9 @@ describe('Issue #553 SER-06 B14/B15 compatibility and closure contract', () => {
       expect(relocation.targetPath).toBe(
         authorizedCanonicalTargetOverrides.get(row.id) ?? row.targetPath,
       );
-      expect(existsSync(resolve(root, relocation.targetPath))).toBe(true);
+      const retiredDrawerStyles = ['G005', 'G077', 'G092', 'G121'].includes(relocation.id);
+      expect(existsSync(resolve(root, relocation.targetPath))).toBe(!retiredDrawerStyles);
+      if (retiredDrawerStyles) expect(importPaths()).not.toContain(entryImportPath(relocation.targetPath));
     }
 
     const evidenceDirectories = [

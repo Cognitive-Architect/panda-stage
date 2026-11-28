@@ -1,7 +1,8 @@
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
 import { ProjectRecoveryPanel } from '../features/recovery/ProjectRecoveryPanel';
 import { ResourceActivityDock } from './ResourceActivityDock';
-import type { ResourceActivity } from './ResourceActivityDock';
+import type { Ref } from 'react';
+import type { ResourceActivity, ResourceCommands } from './ResourceActivityDock';
 import type {
   CreateFlaCharacter,
   FlaCharacterCreateOperationState,
@@ -20,6 +21,8 @@ import type { EditorShellLayoutMode } from './adaptiveEditorShell';
 
 export interface LeftWorkspaceProps {
   projectSnapshot: EditorProjectSnapshot;
+  commandsRef?: Ref<ResourceCommands>;
+  onPreviewDraft?: (project: EditorProjectSnapshot['project']) => void;
   recentRefreshToken: number;
   shellMode?: EditorShellLayoutMode;
   drawerOpen?: boolean;
@@ -59,6 +62,8 @@ export interface LeftWorkspaceProps {
 
 export function LeftWorkspace({
   projectSnapshot,
+  commandsRef,
+  onPreviewDraft,
   recentRefreshToken,
   shellMode,
   drawerOpen,
@@ -85,11 +90,11 @@ export function LeftWorkspace({
 }: LeftWorkspaceProps): React.JSX.Element {
   const projectUtilities = (
     <>
-      <ProjectRecoveryPanel
+      {!docked && <ProjectRecoveryPanel
         onOpenRecentProject={onOpenRecentProject}
         projectSnapshot={projectSnapshot}
         recentRefreshToken={recentRefreshToken}
-      />
+      />}
       <LegacyCompatibilityActivity
         key={`compatibility:${projectSnapshot.projectRoot}`}
         projectRoot={projectSnapshot.projectRoot}
@@ -104,6 +109,8 @@ export function LeftWorkspace({
       data-testid="left-workspace-scroll"
     >
       <ResourceActivityDock
+        commandsRef={commandsRef}
+        onPreviewDraft={onPreviewDraft}
         activeActivity={activeActivity}
         adaptivePartsActionsRef={adaptivePartsActionsRef}
         auxiliaryContent={shellMode === 'landscape' ? undefined : projectUtilities}

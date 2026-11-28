@@ -17,10 +17,7 @@ export interface HistoryControlsProps {
   presentation?: HistoryControlsPresentation;
 }
 
-export function HistoryControls({
-  presentation = 'bottom',
-}: HistoryControlsProps = {}): React.JSX.Element {
-  const compact = presentation === 'compact';
+export function useHistoryCommands(disabled = false) {
   const history = useSyncExternalStore(
     historyStore.subscribe,
     historyStore.getSnapshot,
@@ -30,27 +27,38 @@ export function HistoryControls({
     'Ctrl+Z 撤销；Ctrl+Y 或 Ctrl+Shift+Z 重做。',
   );
   const undo = useCallback(() => {
+    if (disabled) return;
     const label = historyStore.getSnapshot().nextUndoLabel;
     setStatus(
       editorProjectStore.undo()
         ? `已撤销：${label ?? '编辑操作'}`
         : '没有可撤销的操作。',
     );
-  }, []);
+  }, [disabled]);
   const redo = useCallback(() => {
+    if (disabled) return;
     const label = historyStore.getSnapshot().nextRedoLabel;
     setStatus(
       editorProjectStore.redo()
         ? `已重做：${label ?? '编辑操作'}`
         : '没有可重做的操作。',
     );
-  }, []);
+  }, [disabled]);
   useEffect(() => {
     if (history.undoCount === 0 && history.redoCount === 0) {
       setStatus('当前项目尚无可撤销操作。');
     }
   }, [history.redoCount, history.undoCount]);
   useHistoryShortcuts(undo, redo);
+
+  return { history, undo, redo, status };
+}
+
+export function HistoryControls({
+  presentation = 'bottom',
+}: HistoryControlsProps = {}): React.JSX.Element {
+  const compact = presentation === 'compact';
+  const { history, undo, redo, status } = useHistoryCommands();
 
   return (
     <section

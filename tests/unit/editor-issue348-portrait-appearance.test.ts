@@ -78,7 +78,7 @@ describe('Issue #348 portrait Properties Appearance refinement', () => {
     const styles = source('src/renderer/styles.css');
     const issue348Styles = styles.slice(
       styles.indexOf('/* Issue #348:'),
-      styles.indexOf('/* Issue #368:'),
+      styles.indexOf('/* Issue #358:'),
     );
 
     expect(issue348Styles).toContain(

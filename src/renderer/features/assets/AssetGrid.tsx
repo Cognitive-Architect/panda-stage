@@ -23,6 +23,11 @@ export interface AssetGridProps {
   emptyMessage?: string;
   emptyDescription?: string;
   metadataErrors?: Readonly<Record<string, string>>;
+  display?: 'grid' | 'list';
+  selectedItemId?: string | null;
+  onItemSelect?(item: AssetLibraryItem): void;
+  onItemActivate?(item: AssetLibraryItem): void;
+  onItemContext?(item: AssetLibraryItem): void;
 }
 
 export function AssetGrid({
@@ -40,10 +45,17 @@ export function AssetGrid({
   emptyMessage,
   emptyDescription,
   metadataErrors,
+  display,
+  selectedItemId,
+  onItemSelect,
+  onItemActivate,
+  onItemContext,
 }: AssetGridProps): React.JSX.Element {
   if (items.length === 0) {
     return (
       <div className="asset-library-empty">
+        {display ? <strong>{emptyMessage ?? '没有素材'}</strong> : <>
+
         <span aria-hidden="true">＋</span>
         <strong>{emptyMessage ?? '这个分类还没有素材'}</strong>
         <p>
@@ -52,6 +64,7 @@ export function AssetGrid({
               ? '清除搜索或换一个分类试试。'
               : '使用上方导入入口选择文件，或直接拖入 PNG、JPG、MP3、WAV。')}
         </p>
+        </>}
       </div>
     );
   }
@@ -59,6 +72,7 @@ export function AssetGrid({
     <div
       aria-label="素材缩略图网格"
       className="asset-grid"
+      data-display={display}
       data-grid-count={items.length}
     >
       {items.map((item) => item.kind === 'animation' ? (
@@ -67,6 +81,10 @@ export function AssetGrid({
           key={item.id}
           project={project}
           projectRoot={projectRoot}
+          selected={selectedItemId === item.id}
+          onSelect={onItemSelect ? () => onItemSelect(item) : undefined}
+          onActivate={onItemActivate ? () => onItemActivate(item) : undefined}
+          onContext={onItemContext ? () => onItemContext(item) : undefined}
         />
       ) : (
         <AssetCard
@@ -79,10 +97,12 @@ export function AssetGrid({
           onDragEnd={onDragEnd}
           onDragStart={onDragStart}
           onRebuildThumbnail={onRebuildThumbnail}
-          onSelect={onSelect}
+          onSelect={onItemSelect ? () => onItemSelect(item) : onSelect}
+          onActivate={onItemActivate ? () => onItemActivate(item) : undefined}
+          onContext={onItemContext ? () => onItemContext(item) : undefined}
           onThumbnailError={onThumbnailError}
           metadataError={metadataErrors?.[item.entry.asset.id]}
-          selected={selectedAssetId === item.entry.asset.id}
+          selected={onItemSelect ? selectedItemId === item.id : selectedAssetId === item.entry.asset.id}
           thumbnail={thumbnails[item.entry.asset.id] ?? { status: 'loading' }}
         />
       ))}

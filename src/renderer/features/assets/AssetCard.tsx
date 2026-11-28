@@ -99,6 +99,8 @@ export interface AssetCardProps {
   dragging: boolean;
   thumbnail: ThumbnailState;
   onSelect: (assetId: string) => void;
+  onActivate?: () => void;
+  onContext?: () => void;
   onDragStart: (assetId: string) => void;
   onDragEnd: () => void;
   onRebuildThumbnail: (assetId: string) => void;
@@ -115,6 +117,8 @@ export function AssetCard({
   dragging,
   thumbnail,
   onSelect,
+  onActivate,
+  onContext,
   onDragStart,
   onDragEnd,
   onRebuildThumbnail,
@@ -132,8 +136,9 @@ export function AssetCard({
         (thumbnail.status === 'missing' && thumbnail.reason === 'cache')
       ? 'present'
       : 'unknown';
-  const typeLabel =
-    category === 'character'
+  const typeLabel = onActivate && asset.kind === 'video' ? '视频'
+    : onActivate && image && category !== 'character' ? '图片'
+    : category === 'character'
       ? '角色'
       : category === 'background'
         ? '未绑定角色'
@@ -153,7 +158,10 @@ export function AssetCard({
       data-asset-id={asset.id}
       data-category={category}
       data-asset-kind={asset.kind}
+      title={asset.name}
       draggable
+      onDoubleClick={onActivate}
+      onContextMenu={onContext ? event => { event.preventDefault(); onContext(); } : undefined}
       onClick={(event) => {
         if (draggedCards.has(event.currentTarget)) {
           draggedCards.delete(event.currentTarget);

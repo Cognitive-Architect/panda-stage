@@ -40,7 +40,7 @@ export function CharacterFloatPanel({
         title={action}
         type="button"
       >
-        <span aria-hidden="true" className="quick-action-drawer-grip" />
+        <span aria-hidden="true" className="floating-panel-grip" />
       </button>
       <div className="character-float-panel-content" id={id} inert={!open}>
         {children}

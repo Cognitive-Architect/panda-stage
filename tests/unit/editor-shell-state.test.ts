@@ -189,7 +189,7 @@ describe('EditorShell state boundary', () => {
     expect(projectCenter).toContain('data-testid="project-center-screen"');
   });
 
-  it('selects CompactProjectBar for every editor candidate state and never for no-project', () => {
+  it('selects the command bar for every editor candidate state and never for no-project', () => {
     expect(getEditorShellSessionRegion('no-project')).toBe(
       'start-screen',
     );
@@ -202,7 +202,7 @@ describe('EditorShell state boundary', () => {
       'utf8',
     );
     expect(shell.indexOf('<ProjectCenterScreen')).toBeGreaterThan(-1);
-    expect(shell.indexOf('<CompactProjectBar')).toBeGreaterThan(-1);
+    expect(shell.indexOf('<WorkbenchCommandBar')).toBeGreaterThan(-1);
     expect(shell.indexOf('<CanvasWorkspace')).toBeGreaterThan(-1);
     expect(shell).toContain(
       "page === 'project-center'",
@@ -230,7 +230,7 @@ describe('EditorShell state boundary', () => {
 
   it('keeps project state, controller, preview, and create behavior out of the Quick Action Drawer', () => {
     const topBar = readFileSync(
-      'src/renderer/shell/CompactProjectBar.tsx',
+      'src/renderer/shell/WorkbenchCommandBar.tsx',
       'utf8',
     );
 
@@ -246,11 +246,11 @@ describe('EditorShell state boundary', () => {
     expect(topBar).toContain('Play');
     expect(topBar).not.toContain('MoreHorizontal');
     expect(topBar).not.toContain('compact-project-menu');
-    expect(topBar).toContain('打开项目中心');
+    expect(topBar).toContain('项目中心');
     expect(topBar).toContain('打开项目文件夹');
     expect(topBar).toContain('关闭当前项目');
     expect(topBar).toMatch(
-      /data-testid="quick-action-play"[\s\S]*?onOpenProductPreview/u,
+      /onClick=\{onPreview\}[^\n]*data-testid="quick-action-play"/u,
     );
   });
 
@@ -297,7 +297,7 @@ describe('EditorShell state boundary', () => {
       'utf8',
     );
     const topBar = readFileSync(
-      'src/renderer/shell/CompactProjectBar.tsx',
+      'src/renderer/shell/WorkbenchCommandBar.tsx',
       'utf8',
     );
     const dialog = readFileSync(
@@ -306,8 +306,8 @@ describe('EditorShell state boundary', () => {
     );
 
     // The drawer stays presentational: it reports intent, nothing else.
-    expect(topBar).toContain('onRequestCloseProject(): void;');
-    expect(topBar).toContain('onClick={onRequestCloseProject}');
+    expect(topBar).toContain('onClose(): void;');
+    expect(topBar).toContain('onSelect={onClose}');
     expect(topBar).not.toContain('closeProject(');
     expect(topBar).not.toContain('editorProjectStore');
     expect(topBar).toContain('data-testid="quick-action-close"');
@@ -319,7 +319,7 @@ describe('EditorShell state boundary', () => {
     expect(shell).toContain(
       'const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);',
     );
-    expect(shell).toContain('closeConfirmOpen={closeConfirmOpen}');
+    expect(shell).toContain('modalOpen={closeConfirmOpen || newProjectDialogOpen || exportOptionsOpen}');
     expect(shell).toContain('dirty={projectSnapshot.dirty}');
     expect(shell).toContain('projectName={projectSnapshot.project.name}');
     expect(shell).toContain('await session.closeProject()');

@@ -1,5 +1,7 @@
 import {
   useEffect,
+  useImperativeHandle,
+  type Ref,
   useLayoutEffect,
   useRef,
   useState,
@@ -50,6 +52,7 @@ import {
   Plus,
   Smile,
   Upload,
+  Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { DecorativeIcon } from '../ui';
@@ -58,7 +61,13 @@ export type ResourceActivity = 'shots' | 'assets' | 'characters';
 
 export type ResourceActivityPresentation = 'default' | 'landscape';
 
+export interface ResourceCommands {
+  importAssets(kind: 'files' | 'fla'): void;
+}
+
 export interface ResourceActivityDockProps {
+  commandsRef?: Ref<ResourceCommands>;
+  onPreviewDraft?: (project: EditorProjectSnapshot['project']) => void;
   snapshot: EditorProjectSnapshot;
   auxiliaryContent?: ReactNode;
   /** Force the existing resource owner into the landscape drawer contract. */
@@ -149,6 +158,8 @@ export function useNarrowViewport(
 }
 
 export function ResourceActivityDock({
+  commandsRef,
+  onPreviewDraft,
   snapshot,
   auxiliaryContent,
   compact,
@@ -195,6 +206,7 @@ export function ResourceActivityDock({
   const flaCharacterImportCommittingRef = useRef(false);
   const [characterCreateModeSwitchTarget, setCharacterCreateModeSwitchTarget] =
     useState<HTMLDivElement | null>(null);
+  const [showCompatibility, setShowCompatibility] = useState(false);
   const [assetImportRequest, setAssetImportRequest] = useState(0);
   const [assetFlaReviewRequest, setAssetFlaReviewRequest] = useState(0);
   const [assetReviewCloseRequest, setAssetReviewCloseRequest] = useState(0);
@@ -472,6 +484,13 @@ export function ResourceActivityDock({
   const shotEditorPresentation: ShotEditorPresentation =
     hidePortraitShotChrome ? 'portrait' : 'default';
 
+  const startImport = (kind: 'files' | 'fla') => {
+    if (flaCharacterImportCommittingRef.current) return;
+    setShowCompatibility(false);
+    if (kind === 'files') setAssetImportRequest(value => value + 1);
+    else setAssetFlaReviewRequest(value => value + 1);
+  };
+
   const primaryAction =
     activeActivity === 'shots'
       ? shotView === 'create'
@@ -491,7 +510,7 @@ export function ResourceActivityDock({
             }
           : {
               label: '导入素材',
-              onClick: () => setAssetImportRequest((value) => value + 1),
+              onClick: () => startImport('files'),
             }
         : characterView === 'create'
           ? {
@@ -511,15 +530,29 @@ export function ResourceActivityDock({
     ) {
       return;
     }
-    if (narrow && drawerOpen && activity === activeActivity) {
+    if (!docked && narrow && drawerOpen && activity === activeActivity) {
       setDrawerOpen(false);
       return;
     }
     if (activity !== 'characters') setFlaCharacterImportAttempt(null);
+    setShowCompatibility(false);
     setInternalActivity(activity);
     onActiveActivityChange?.(activity);
     setDrawerOpen(true);
   };
+
+  useImperativeHandle(commandsRef, () => ({
+    importAssets(kind) {
+      if (flaCharacterImportCommittingRef.current) return;
+      if (activeActivity !== 'assets' && !confirmLeavingCharacterActivity()) return;
+      if (activeActivity !== 'assets') {
+        setInternalActivity('assets');
+        onActiveActivityChange?.('assets');
+      }
+      setAssetView('browser');
+      startImport(kind);
+    },
+  }));
 
   return (
     <section
@@ -596,7 +629,24 @@ export function ResourceActivityDock({
         data-testid="resource-activity-drawer"
         id="resource-activity-drawer"
       >
-        {!collapseLandscapeCharacterDetailHeader ? (
+        {docked && activeActivity === 'assets' && assetView === 'browser' ? (
+          <div className="workbench-resource-bar">
+            <nav className="workbench-resource-views" aria-label="编辑资源活动" data-testid="resource-activity-tabs">
+              {ACTIVITIES.map(activity => <button type="button" key={activity.id} data-activity={activity.id}
+                aria-pressed={activeActivity === activity.id} onClick={() => selectActivity(activity.id)}>{activity.label}</button>)}
+            </nav>
+            <button type="button" aria-label="导入素材" title="导入素材" data-testid="resource-primary-action" onClick={() => startImport('files')}>
+              <DecorativeIcon icon={Upload} size={15} />
+            </button>
+            <button type="button" aria-label="导入 FLA" title="导入 FLA" data-testid="resource-asset-import-fla" onClick={() => startImport('fla')}>
+              <DecorativeIcon icon={FileArchive} size={15} />
+            </button>
+            {auxiliaryContent && <button type="button" aria-label="兼容工具" title="兼容工具" aria-pressed={showCompatibility}
+              onClick={() => setShowCompatibility(open => !open)}>
+              <DecorativeIcon icon={Wrench} size={15} />
+            </button>}
+          </div>
+        ) : !collapseLandscapeCharacterDetailHeader ? (
           <div className="resource-activity-header">
           <div
             className="resource-activity-heading"
@@ -684,9 +734,7 @@ export function ResourceActivityDock({
                   className="resource-activity-fla-action"
                   data-resource-action="assets-import-fla"
                   data-testid="resource-asset-import-fla"
-                  onClick={() =>
-                    setAssetFlaReviewRequest((value) => value + 1)
-                  }
+                  onClick={() => startImport('fla')}
                   type="button"
                 >
                   <DecorativeIcon icon={FileArchive} size={18} />
@@ -699,9 +747,7 @@ export function ResourceActivityDock({
                   className="resource-activity-fla-action"
                   data-resource-action="assets-import-fla"
                   data-testid="resource-asset-import-fla"
-                  onClick={() =>
-                    setAssetFlaReviewRequest((value) => value + 1)
-                  }
+                  onClick={() => startImport('fla')}
                   type="button"
                 >
                   <DecorativeIcon icon={FileArchive} size={18} />
@@ -773,21 +819,12 @@ export function ResourceActivityDock({
             data-testid="resource-activity-panel"
             id="resource-activity-panel"
           >
-            {activeActivity === 'shots' ? (
-              <ShotManager
-                hideHeading={hideLocalActivityTabs}
-                onViewChange={setShotView}
-                presentation={
-                  landscapePresentation ? 'landscape' : 'default'
-                }
-                shotEditorPresentation={shotEditorPresentation}
-                snapshot={snapshot}
-                view={shotView}
-              />
-            ) : activeActivity === 'assets' ? (
+            {(docked || activeActivity === 'assets') && (
+              <div className={docked ? 'workbench-asset-owner' : undefined} hidden={activeActivity !== 'assets' || showCompatibility}>
               <AssetLibrary
                 closeRequestToken={assetReviewCloseRequest}
                 compactImport={docked}
+                onPreviewDraft={onPreviewDraft}
                 flaReviewRequestToken={assetFlaReviewRequest}
                 hideHeading={hideLocalActivityTabs}
                 importRequestToken={assetImportRequest}
@@ -808,7 +845,20 @@ export function ResourceActivityDock({
                   !docked && !hidePortraitAssetsChrome && !landscapePresentation
                 }
               />
-            ) : (
+              </div>
+            )}
+            {activeActivity === 'shots' ? (
+              <ShotManager
+                hideHeading={hideLocalActivityTabs}
+                onViewChange={setShotView}
+                presentation={
+                  landscapePresentation ? 'landscape' : 'default'
+                }
+                shotEditorPresentation={shotEditorPresentation}
+                snapshot={snapshot}
+                view={shotView}
+              />
+            ) : activeActivity === 'characters' ? (
               <CharacterManager
                 floatEnabled={drawerOpen}
                 adaptivePartsActionsRef={adaptivePartsActionsRef}
@@ -847,10 +897,10 @@ export function ResourceActivityDock({
                 }
                 onCloseDrawer={() => setDrawerOpen(false)}
               />
-            )}
+            ) : null}
           </div>
           {!landscapePresentation && auxiliaryContent ? (
-            <div className="resource-activity-auxiliary">
+            <div className="resource-activity-auxiliary" hidden={docked && (activeActivity !== 'assets' || !showCompatibility)}>
               {auxiliaryContent}
             </div>
           ) : null}

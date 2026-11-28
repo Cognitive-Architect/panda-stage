@@ -122,14 +122,6 @@
     white-space: nowrap;
   }
 
-  .compact-project-path {
-    max-width: min(25vw, 280px);
-  }
-
-  .compact-project-feedback {
-    max-width: min(18vw, 180px);
-  }
-
   .recent-projects-list li {
     align-items: flex-start;
   }
@@ -262,29 +254,6 @@
   .bottom-workspace > .history-controls > output {
     grid-area: status;
     text-align: left;
-  }
-
-  .compact-project-bar {
-    gap: 6px;
-  }
-
-  .compact-project-center-button,
-  .compact-project-controls button {
-    min-height: 44px;
-    padding: 6px 8px;
-  }
-
-  .compact-project-path,
-  .compact-project-feedback {
-    display: none;
-  }
-
-  .compact-project-name {
-    max-width: 28vw;
-  }
-
-  .compact-project-save-state {
-    max-width: 112px;
   }
 
   .app-header,

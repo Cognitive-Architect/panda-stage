@@ -51,7 +51,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
 
     expect(shell).toContain("page === 'project-center'");
     expect(shell).toContain('<ProjectCenterScreen');
-    expect(shell).toContain('<CompactProjectBar');
+    expect(shell).toContain('<WorkbenchCommandBar');
     expect(shell).toContain('<CanvasWorkspace');
     expect(shell).not.toContain('CurrentNoProjectLegacySurface');
     expect(leftWorkspace).toContain('<ProjectRecoveryPanel');
@@ -103,7 +103,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
   it('locks the Stage 1B product preview selectors into one owner', () => {
     const shell = readSource('renderer/shell/EditorShell.tsx');
     const overlay = readSource('renderer/shell/ProductPreviewOverlay.tsx');
-    const topBar = readSource('renderer/shell/CompactProjectBar.tsx');
+    const topBar = readSource('renderer/shell/WorkbenchCommandBar.tsx');
     const styles = readOrderedStylesheetSource();
 
     for (const selector of [
@@ -134,7 +134,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
   it('locks the Stage 1B close confirmation selectors into one owner', () => {
     const shell = readSource('renderer/shell/EditorShell.tsx');
     const dialog = readSource('renderer/shell/CloseConfirmDialog.tsx');
-    const topBar = readSource('renderer/shell/CompactProjectBar.tsx');
+    const topBar = readSource('renderer/shell/WorkbenchCommandBar.tsx');
     const styles = readOrderedStylesheetSource();
 
     for (const selector of [
@@ -268,27 +268,27 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     );
   });
 
-  it('locks the quick action drawer selectors and removes the old editor panel', () => {
+  it('locks the command bar selectors and removes the old editor panel', () => {
     const shell = readSource('renderer/shell/EditorShell.tsx');
-    const topBar = readSource('renderer/shell/CompactProjectBar.tsx');
+    const topBar = readSource('renderer/shell/WorkbenchCommandBar.tsx');
     const panel = readSource(
       'renderer/features/recovery/ProjectRecoveryPanel.tsx',
     );
-    expect(shell).toContain('<CompactProjectBar');
+    expect(shell).toContain('<WorkbenchCommandBar');
     expect(shell).not.toContain('<EditorTopBar');
-    expect(topBar).toContain('data-testid="quick-action-drawer"');
-    expect(topBar).toContain('className="quick-action-drawer"');
+    expect(topBar).toContain('data-testid="workbench-command-bar"');
+    expect(topBar).toContain('className="workbench-command-bar"');
     expect(topBar).not.toContain('className="recovery-panel"');
     expect(topBar).not.toContain('className="recovery-open-row"');
-    expect(topBar).toContain('data-testid="project-save-state"');
-    expect(topBar).toContain('data-testid="quick-action-drawer-handle"');
+    expect(topBar).toContain('data-save-state={saveState}');
+    expect(topBar).toContain('testId="workbench-file-menu"');
     for (const action of [
       'quick-action-home',
       'quick-action-folder',
       'quick-action-save',
       'quick-action-play',
       'quick-action-export',
-      'quick-action-history',
+      'history-controls',
       'quick-action-close',
     ]) {
       expect(topBar).toContain(`data-testid="${action}"`);
@@ -301,11 +301,11 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     expect(topBar).toContain('保存中');
     expect(topBar).toContain('保存失败');
     expect(topBar).not.toContain('data-testid="product-preview-open"');
-    expect(topBar).toContain('aria-pressed={productPreviewOpen}');
+    expect(topBar).toContain('aria-pressed={previewOpen}');
     expect(topBar).not.toContain('product-preview-placeholder');
     expect(topBar).toContain('data-testid="quick-action-close"');
     expect(topBar).toMatch(
-      /data-testid="quick-action-close"[\s\S]*?disabled=\{busy \|\| closeConfirmOpen\}/u,
+      /disabled=\{navigationDisabled\} onSelect=\{onClose\} data-testid="quick-action-close"/u,
     );
     expect(panel).not.toContain('id="recovery-heading"');
     expect(panel).not.toContain('className="recovery-open-row"');
@@ -324,7 +324,7 @@ describe('Phase 0A DOM selector contract (existing whitelisted selectors)', () =
     const panel = readSource(
       'renderer/features/recovery/ProjectRecoveryPanel.tsx',
     );
-    const topBar = readSource('renderer/shell/CompactProjectBar.tsx');
+    const topBar = readSource('renderer/shell/WorkbenchCommandBar.tsx');
 
     expect(banner).toContain('className="recovery-prompt"');
     expect(banner).toContain(

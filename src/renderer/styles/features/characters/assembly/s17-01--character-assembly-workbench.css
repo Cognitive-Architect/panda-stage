@@ -1801,7 +1801,7 @@
   pointer-events: auto;
 }
 
-.adaptive-parts-float-handle .quick-action-drawer-grip {
+.adaptive-parts-float-handle .floating-panel-grip {
   width: 5px;
   height: 32px;
   border-color: color-mix(in srgb, var(--ui-color-selected-border) 40%, transparent);
@@ -1809,7 +1809,7 @@
   box-shadow: none;
 }
 
-.adaptive-parts-float-handle:hover .quick-action-drawer-grip {
+.adaptive-parts-float-handle:hover .floating-panel-grip {
   background: color-mix(in srgb, var(--ui-color-selected-border) 65%, var(--ui-color-surface-work));
 }
 
@@ -2850,20 +2850,6 @@
     padding-right: 7px;
     padding-left: 7px;
     font-size: 10px;
-  }
-}
-
-@media (max-width: 1000px) {
-  .editor-body[data-shell-mode='landscape']:has(.character-detail-navigation-detail)
-    > .quick-action-drawer[data-expanded='false'] {
-    pointer-events: none;
-  }
-
-  .editor-body[data-shell-mode='landscape']:has(.character-detail-navigation-detail)
-    > .quick-action-drawer[data-expanded='false']
-    > .quick-action-drawer-handle {
-    justify-self: end;
-    pointer-events: auto;
   }
 }
 

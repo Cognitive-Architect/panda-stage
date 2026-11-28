@@ -86,7 +86,7 @@ describe('Issue #352 Timeline State B selected untimed subtitle', () => {
     const styles = source('src/renderer/styles.css');
     const issue352 = styles.slice(
       styles.indexOf('/* Issue #352:'),
-      styles.indexOf('/* Issue #368:'),
+      styles.indexOf('/* Issue #358:'),
     );
     const portraitScope =
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']";

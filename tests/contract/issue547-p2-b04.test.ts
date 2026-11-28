@@ -307,7 +307,7 @@ describe('Issue #547 P2-B04 dialogue workspace and batch relocation', () => {
     );
 
     const s14 = manifest.slices.find(({ id }) => id === 'S14')!;
-    const s14Paths = s14.sourceParts!.map(({ targetPath }) => entryImportPath(targetPath));
+    const s14Paths = s14.sourceParts!.filter(({ id }) => id !== 'G121').map(({ targetPath }) => entryImportPath(targetPath));
     const s14Start = imports.indexOf(s14Paths[0]!);
     expect(imports.slice(s14Start, s14Start + s14Paths.length)).toEqual(s14Paths);
 

@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { createHash } = require('node:crypto');
 const path = require('node:path');
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, nativeImage } = require('electron');
 
 const root = path.resolve(__dirname, '..');
 const acceptance = path.resolve(process.env.PANDA_R01_ACCEPTANCE_ROOT ?? 'D:/PandaStage-Acceptance/reshell-r01-1421-1422');
@@ -17,14 +17,14 @@ fs.mkdirSync(projectRoot, { recursive: true });
 fs.mkdirSync(profile, { recursive: true });
 app.setPath('userData', profile);
 process.env.VITE_DEV_SERVER_URL = '';
-const { LayerMotionService, LayerService, migrateProject, ProjectSchema } = require(path.join(root, 'dist-electron/domain/index.js'));
+const { LayerMotionService, LayerService, migrateProject, ProjectSchema, ShotService } = require(path.join(root, 'dist-electron/domain/index.js'));
 const example = migrateProject(require(path.join(root, 'demo-project/project-v1.example.json')));
-const regression = ['dialogue-drop', 'curve-visibility', 'tools-visibility', 'inspector-focus'].includes(phase);
+const regression = ['commands', 'dialogue-drop', 'curve-visibility', 'tools-visibility', 'inspector-focus'].includes(phase);
 const pandaLayerId = '60000000-0000-4000-8000-000000000002';
 const pendingId = '80000000-0000-4000-8000-000000000002';
 let project = ProjectSchema.parse({
   ...example,
-  shots: regression ? example.shots.map((shot, i) => i === 0 ? {
+  shots: regression && phase !== 'commands' ? example.shots.map((shot, i) => i === 0 ? {
     ...shot,
     layers: [...shot.layers, { ...shot.layers.find(layer => layer.id === pandaLayerId), id: '60000000-0000-4000-8000-000000000003', name: 'Parent candidate', zIndex: 2 }],
     dialogues: [...shot.dialogues, { ...shot.dialogues[0], id: pendingId, startMs: 0, endMs: 0, audioClipId: undefined, text: 'R01 pending subtitle' }],
@@ -34,6 +34,11 @@ let project = ProjectSchema.parse({
     sha256: createHash('sha256').update(fs.readFileSync(path.join(root, 'demo-project', asset.relativePath))).digest('hex'),
   })),
 });
+if (phase === 'commands') {
+  const shots = new ShotService();
+  project = shots.duplicate(project, project.shots[0].id);
+  project = shots.rename(project, project.shots[1].id, 'Command fixture');
+}
 let curveLayerId;
 let curveFrameSvg;
 if (phase === 'curve-visibility' || phase === 'tools-visibility') {
@@ -66,6 +71,14 @@ fs.writeFileSync(path.join(projectRoot, 'project.json'), JSON.stringify(project)
 fs.cpSync(path.join(root, 'demo-project/assets'), path.join(projectRoot, 'assets'), { recursive: true });
 if (curveFrameSvg) fs.writeFileSync(path.join(projectRoot, 'assets/r01-curve-frame.svg'), curveFrameSvg);
 const chooserCalls = [];
+let cancelProjectChooser = false;
+const importedFile = path.join(acceptance, 'R02 imported.png');
+const exportFile = path.join(acceptance, 'R02 export.mp4');
+if (phase === 'commands') {
+  const source = path.join(root, 'demo-project', project.assets.find(asset => asset.name === 'Bamboo background').relativePath);
+  fs.writeFileSync(importedFile, nativeImage.createFromPath(source).resize({ width: 64 }).toPNG());
+  dialog.showSaveDialog = async () => ({ canceled: false, filePath: exportFile });
+}
 const showMessageBox = dialog.showMessageBox;
 dialog.showMessageBox = async (...args) => {
   const options = args.at(-1);
@@ -76,8 +89,10 @@ dialog.showOpenDialog = async (...args) => {
   const options = args.at(-1);
   chooserCalls.push(options);
   return options.properties?.includes('openDirectory')
-    ? { canceled: false, filePaths: [projectRoot] }
-    : { canceled: true, filePaths: [] };
+    ? { canceled: cancelProjectChooser, filePaths: cancelProjectChooser ? [] : [projectRoot] }
+    : phase === 'commands' && options.properties?.includes('multiSelections')
+      ? { canceled: false, filePaths: [importedFile] }
+      : { canceled: true, filePaths: [] };
 };
 require(path.join(root, 'dist-electron/main/index.js'));
 const delay = (ms = 100) => new Promise(resolve => setTimeout(resolve, ms));
@@ -242,6 +257,192 @@ async function run() {
   assert.equal(original, 'ready', 'production canvas preload reads the real background');
   const panels = await js(() => [...document.querySelectorAll('.dv-tab')].map(el => el.textContent.trim()));
   console.log('panels:', JSON.stringify(panels));
+
+  if (phase === 'commands') {
+    const file = '[data-testid="workbench-file-menu"]';
+    const row = id => '[data-testid="layer-list-row-' + id + '"]';
+    const rows = () => js(() => [...document.querySelectorAll('.workbench-layer-row[data-layer-id]')].map(node => node.dataset.layerId));
+    const select = async (label, text) => {
+      await js((name, value) => {
+        const node = document.querySelector('select[aria-label="' + name + '"]');
+        node.value = [...node.options].find(option => option.text === value).value;
+        node.dispatchEvent(new Event('change', { bubbles: true }));
+      }, label, text);
+      await delay(150);
+    };
+    const clickText = async (selector, text) => {
+      const point = await waitFor((sel, value) => {
+        const el = [...document.querySelectorAll(sel)].find(node => node.textContent.trim() === value && node.getClientRects().length);
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        return { x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2) };
+      }, selector, text);
+      for (const type of ['mouseMove', 'mouseDown', 'mouseUp']) win.webContents.sendInputEvent({ type, ...point, button: 'left', clickCount: 1 });
+      await delay(180);
+    };
+    await waitFor(() => document.querySelector('.konvajs-content canvas')?.width > 100);
+    await delay(600);
+    await screenshot('opening.png');
+    const originalShot = (await editingState()).shot;
+    await select('切换镜头', 'Command fixture');
+    assert.notEqual((await editingState()).shot, originalShot);
+    await select('切换镜头', 'Opening');
+    assert.equal((await editingState()).shot, originalShot);
+
+    await click(file);
+    await clickText('[role="menuitem"]', '新建项目…');
+    await waitFor(() => document.querySelector('[data-testid="new-project-dialog"]'));
+    await click('[data-testid="new-project-cancel"]');
+    await click(file);
+    cancelProjectChooser = true;
+    const openCount = chooserCalls.length;
+    await clickText('[role="menuitem"]', '打开项目…');
+    assert.equal(chooserCalls.length, openCount + 1);
+    assert.equal((await editingState()).shot, originalShot);
+    cancelProjectChooser = false;
+    await click(file);
+    await click('[data-testid="quick-action-home"]');
+    await waitFor(() => document.querySelector('[data-testid="project-center-screen"]'));
+    await click('[data-testid="return-to-editor"]');
+    await waitFor(() => document.querySelector('[data-testid="workbench-command-bar"]').getBoundingClientRect().height);
+    await click('[data-testid="quick-action-play"]');
+    await waitFor(() => document.querySelector('[data-testid="product-preview-overlay"]'));
+    await pressKey('Escape');
+    await waitFor(() => !document.querySelector('[data-testid="product-preview-overlay"]'));
+    await click(file);
+    const previousChoosers = chooserCalls.length;
+    await clickText('[role="menuitem"]', '导入 FLA / XFL…');
+    assert.equal(chooserCalls.length, previousChoosers + 1);
+    assert(chooserCalls.at(-1).filters.some(filter => filter.extensions.includes('fla')));
+
+    const baseline = await editingState();
+    await clickText('nav[aria-label="素材分类"] button', '音频');
+    assert.equal(await js(() => document.querySelector('.asset-grid')?.dataset.display), 'list');
+    assert.deepEqual(await js(() => [...document.querySelectorAll('.asset-grid [data-asset-kind]')].map(node => node.dataset.assetKind)), ['audio']);
+    await click('[aria-label="切换素材视图"]');
+    assert.equal(await js(() => document.querySelector('.asset-grid')?.dataset.display), 'grid');
+    await clickText('nav[aria-label="素材分类"] button', '角色');
+    assert.equal(await js(() => document.querySelector('.asset-grid')?.dataset.display), 'grid');
+    await click('[placeholder="搜索素材"]');
+    for (const type of ['char']) win.webContents.sendInputEvent({ type, keyCode: 'n' });
+    await waitFor(() => document.querySelector('[placeholder="搜索素材"]').value === 'n');
+    assert.deepEqual(await editingState(), baseline, 'asset browsing adds no revision or history');
+    await click('[title="清除搜索"]');
+
+    const asset = project.assets.find(candidate => candidate.name === 'Panda neutral');
+    await click('[data-asset-id="' + asset.id + '"]');
+    await clickText('.workbench-asset-footer button', '放入镜头');
+    await waitFor(() => document.querySelector('[data-testid="history-controls"]').dataset.undoCount === '1');
+    const created = (await rows()).find(id => !project.shots[0].layers.some(layer => layer.id === id));
+    assert(created, 'placement creates a formal content layer');
+    const prior = await rows();
+    const from = await pointInside(row(created) + ' > button.workbench-layer-name');
+    const to = await pointInside(row(pandaLayerId) + ' > button.workbench-layer-name');
+    await dragDockTab(from.x, from.y, to.x, to.y);
+    const reordered = await rows();
+    assert.notDeepEqual(reordered, prior, 'drag changes formal row order');
+    assert.equal((await editingState()).undo, '2', 'one reorder creates one undo step');
+    await click('[aria-label="撤销"]');
+    assert.deepEqual(await rows(), prior);
+    await click('[aria-label="重做"]');
+    assert.deepEqual(await rows(), reordered);
+    await click(row(created) + ' [aria-label="隐藏图层"]');
+    assert.equal(await js(sel => document.querySelector(sel).dataset.hidden, row(created)), 'true');
+    const renameButton = row(created) + ' [aria-label^="图层操作"]';
+    await click(renameButton);
+    await clickText('[role="menuitem"]', '重命名');
+    const field = row(created) + ' input[aria-label="图层名称"]';
+    await waitFor(sel => document.activeElement === document.querySelector(sel), field);
+    await js(sel => document.querySelector(sel).select(), field);
+    const renamed = 'R02LongLayerNamePreservesItsFullTitle';
+    for (const keyCode of renamed) win.webContents.sendInputEvent({ type: 'char', keyCode });
+    await pressKey('Enter');
+    await waitFor((sel, name) => document.querySelector(sel + ' .workbench-layer-name')?.textContent.trim() === name, row(created), renamed);
+
+    await click(row(created) + ' [aria-label="锁定图层"]');
+    assert.equal(await js(sel => document.querySelector(sel + ' [aria-label="显示图层"]').disabled, row(created)), true);
+    assert.equal(await js(() => document.querySelector('[data-testid="layer-list-row-60000000-0000-4000-8000-000000000001"] [aria-label="锁定图层"]').disabled), true);
+
+    await click(row(pandaLayerId) + ' > button.workbench-layer-name');
+    await clickText('nav[aria-label="素材分类"] button', '动作');
+    const preset = '[data-testid="preset-shake"]';
+    await waitFor((selector) => {
+      const button = document.querySelector(selector);
+      if (!button) return false;
+      button.scrollIntoView({ block: 'center', inline: 'nearest' });
+      const bounds = button.getBoundingClientRect();
+      return button.contains(document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2));
+    }, preset);
+    await screenshot('action-list.png');
+    await click(preset);
+    await waitFor(() => document.querySelector('[data-testid="preset-shake"]').getAttribute('aria-pressed') === 'true');
+    const applyPreset = '.action-preset-panel .workbench-asset-footer button:last-child';
+    await waitFor((selector) => {
+      const button = document.querySelector(selector);
+      if (!button || button.disabled) return false;
+      button.scrollIntoView({ block: 'nearest' });
+      const bounds = button.getBoundingClientRect();
+      return button.contains(document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2));
+    }, applyPreset);
+    await delay(100);
+    await click(applyPreset);
+    await waitFor(() => Boolean(document.querySelector('.preset-parameter-form')));
+    const beforeAction = Number((await editingState()).undo);
+    await click('.preset-parameter-form button[type="submit"]');
+    await waitFor(count => Number(document.querySelector('[data-testid="history-controls"]').dataset.undoCount) === count + 1, beforeAction);
+    await clickText('nav[aria-label="素材分类"] button', '角色');
+    console.log('R02 preview, asset placement, reorder, rename, lock, and preset application passed');
+
+    const chooserCount = chooserCalls.length;
+    await click(file);
+    await clickText('[role="menuitem"]', '导入素材…');
+    await waitFor(() => !document.querySelector('[role="menu"]'));
+    assert.equal(chooserCalls.length, chooserCount + 1, 'File import uses the production native chooser');
+    await clickText('nav[aria-label="素材分类"] button', '道具');
+    await waitFor(() => [...document.querySelectorAll('.asset-card-name')].some(node => node.textContent.includes('R02 imported')));
+    console.log('R02 native asset import returned a formal library item');
+    await click(row(pandaLayerId) + ' [aria-label="隐藏图层"]');
+    await waitFor(() => document.querySelector('[data-testid="quick-action-save"]').dataset.saveState === 'dirty');
+    await click(file);
+    await click('[data-testid="quick-action-close"]');
+    await waitFor(() => document.querySelector('[data-testid="close-confirm-dialog"]'));
+    await click('[data-testid="close-confirm-cancel"]');
+    await click(row(pandaLayerId) + ' [aria-label="显示图层"]');
+    await click('[data-testid="quick-action-save"]');
+    await waitFor(() => document.querySelector('[data-testid="quick-action-save"]').dataset.saveState === 'saved');
+    const persisted = JSON.parse(fs.readFileSync(path.join(projectRoot, 'project.json'), 'utf8'));
+    assert.equal(persisted.shots[0].layers.find(layer => layer.id === created).locked, true);
+    assert(persisted.assets.some(asset => asset.name.includes('R02 imported')));
+    await click(file);
+    await click('[data-testid="quick-action-export-settings"]');
+    await waitFor(() => document.querySelector('[data-testid="export-options-dialog"]').open);
+    await pressKey('Escape');
+    await waitFor(() => !document.querySelector('[data-testid="export-options-dialog"]'));
+    await click('[data-testid="quick-action-export"]');
+    let exportStatus;
+    for (let i = 0; i < 450; i++) {
+      exportStatus = await js(() => document.querySelector('[data-testid="export-task-surface"]')?.dataset.taskStatus);
+      if (['completed', 'failed', 'cancelled'].includes(exportStatus)) break;
+      await delay();
+    }
+    assert.equal(exportStatus, 'completed', await js(() => document.querySelector('[data-testid="export-task-surface"]')?.innerText ?? 'No export task'));
+    assert(fs.statSync(exportFile).size > 64, 'the production quick export writes the MP4');
+    await screenshot('commands.png');
+    win.setSize(930, 700);
+    await delay(300);
+    assert.equal(await js(() => {
+      const bar = document.querySelector('[data-testid="workbench-command-bar"]');
+      return bar.getBoundingClientRect().right >= bar.querySelector('[data-testid="quick-action-export"]').getBoundingClientRect().right;
+    }), true, 'narrow workbench keeps export inside the command bar');
+    assert(await js((sel, name) => {
+      const node = document.querySelector(sel + ' .workbench-layer-name');
+      const text = node.querySelector('span:last-child');
+      return node.title.startsWith(name) && text.scrollWidth > text.clientWidth;
+    }, row(created), renamed), 'long layer names truncate with the full name available');
+    await screenshot('narrow.png');
+    console.log('R02 Windows commands, library placement and import, reorder, history, visibility, lock, guarded close and persisted save passed');
+    return;
+  }
   if (phase === 'dialogue-drop') {
     await click('[data-testid="right-activity-rail-subtitles"]');
     const source = '[data-testid="dialogue-untimed-select"]';
@@ -355,8 +556,7 @@ async function run() {
     });
     await waitFor(() => document.querySelector('[data-testid="rich-easing-section"]')?.dataset.richEasingDraft === 'active');
     await visibleTab('属性检查器');
-    await click('[data-testid="right-inspector-layer-section"] > summary');
-    await click('[data-testid="layer-order-controls"] [role="switch"]');
+    await click('[data-testid="layer-list-row-' + curveLayerId + '"] [aria-label="锁定图层"]');
     await click('[aria-label="撤销"]');
     await visibleTab('缓动曲线');
     assert.equal(await stageX(), laterFormal, 'a hidden draft invalidated by a project revision cannot resume');
@@ -508,8 +708,7 @@ async function run() {
   await waitFor(() => document.querySelector('[data-testid="right-inspector"]')?.dataset.selectedLayerId);
   const cleanState = await editingState();
   assert.equal(cleanState.dirty, 'saved');
-  await click('[data-testid="right-inspector-layer-section"] > summary');
-  await click('[data-testid="layer-order-controls"] [role="switch"]');
+  await click('[data-testid="layer-list-row-60000000-0000-4000-8000-000000000002"] [aria-label="锁定图层"]');
   assert.equal(await js(() => document.querySelectorAll('[data-testid="shot-layer-list-panel"]').length), 1);
   await waitFor(() => document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '1');
   const edited = await editingState();
@@ -553,6 +752,7 @@ async function run() {
   assert(await js(() => window.r01Canvas === document.querySelector('.konvajs-content')));
   assert.equal(await shotClock(), time);
   assert.deepEqual(await editingState(), edited, 'layout operations retain edit and history');
+  await click('[data-testid="workbench-file-menu"]');
   await click('[data-testid="quick-action-close"]');
   await waitFor(() => document.querySelector('[data-testid="close-confirm-dialog"]'));
   await click('[data-testid="close-confirm-cancel"]');

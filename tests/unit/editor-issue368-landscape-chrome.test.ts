@@ -1,11 +1,9 @@
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { readOrderedStylesheetSource } from '../helpers/read-stylesheet-source';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { migrateProject } from '../../src/domain';
-import { CompactProjectBar } from '../../src/renderer/shell/CompactProjectBar';
+import { renderWorkbenchCommands } from '../helpers/render-workbench-commands';
 import type { EditorProjectSnapshot } from '../../src/renderer/stores/EditorProjectStore';
 
 function source(path: string): string {
@@ -25,31 +23,16 @@ function renderBar(
   status = 'Ready',
   saveState: 'saved' | 'dirty' | 'saving' | 'failed' = 'saved',
 ): string {
-  return renderToStaticMarkup(
-    createElement(CompactProjectBar, {
-      projectSnapshot: snapshot,
-      saveState,
-      status,
-      busy: false,
-      productPreviewOpen: false,
-      closeConfirmOpen: false,
-      onOpenProjectCenter: vi.fn(),
-      onOpenProjectFolder: vi.fn(async () => undefined),
-      onSaveProject: vi.fn(async () => undefined),
-      onOpenProductPreview: vi.fn(),
-      onRequestCloseProject: vi.fn(),
-      presentation: 'landscape',
-    }),
-  );
+  return renderWorkbenchCommands({ ...snapshot, dirty: saveState !== 'saved' }, { saveState, status });
 }
 
 describe('Issue #368 landscape editor chrome', () => {
   it('keeps the top drawer compact, ordered, and free of persistent project chrome', () => {
     const markup = renderBar();
 
-    expect(markup).toContain('data-testid="quick-action-drawer"');
-    expect(markup).toContain('data-expanded="false"');
-    expect(markup).toContain('data-history-presentation="compact"');
+    expect(markup).toContain('data-testid="workbench-command-bar"');
+    expect(markup).toContain('data-testid="workbench-file-menu"');
+    expect(markup).toContain('data-testid="history-controls"');
     expect(markup).not.toContain('active-project-path');
     expect(markup).not.toContain('compact-project-name');
     expect(markup).not.toContain(snapshot.projectRoot);
@@ -57,14 +40,7 @@ describe('Issue #368 landscape editor chrome', () => {
     expect(markup).not.toContain('data-testid="project-save-state"');
     expect(markup).not.toContain('data-testid="project-save-state"');
 
-    const actionIds = [
-      'quick-action-home',
-      'quick-action-folder',
-      'quick-action-save',
-      'quick-action-play',
-      'quick-action-history',
-      'quick-action-close',
-    ];
+    const actionIds = ['workbench-file-menu', 'history-controls', 'quick-action-play', 'quick-action-save', 'quick-action-export'];
     let previousIndex = -1;
     for (const id of actionIds) {
       const index = markup.indexOf(`data-testid="${id}"`);
@@ -72,8 +48,8 @@ describe('Issue #368 landscape editor chrome', () => {
       previousIndex = index;
     }
 
-    const bar = source('src/renderer/shell/CompactProjectBar.tsx');
-    expect(bar).toContain('<HistoryControls presentation="compact" />');
+    const bar = source('src/renderer/shell/WorkbenchCommandBar.tsx');
+    expect(bar).toContain('useHistoryCommands(blocked)');
     expect(bar).toContain('data-testid="quick-action-home"');
     expect(bar).not.toContain('MoreHorizontal');
   });
@@ -86,11 +62,11 @@ describe('Issue #368 landscape editor chrome', () => {
 
     expect(quietMarkup).not.toContain('data-testid="editor-action-status"');
     expect(dirtyMarkup).not.toContain('data-testid="project-save-state"');
-    expect(dirtyMarkup).not.toContain('有未保存更改');
-    expect(savingMarkup).toContain('data-testid="project-save-state"');
+    expect(dirtyMarkup).toContain('aria-label="保存项目（有未保存更改）"');
+    expect(savingMarkup).toContain('data-save-state="saving"');
     expect(savingMarkup).toContain('保存中');
     expect(actionableMarkup).toContain('data-testid="editor-action-status"');
-    expect(actionableMarkup).toContain('data-testid="project-save-state"');
+    expect(actionableMarkup).toContain('data-save-state="failed"');
     expect(actionableMarkup).toContain('保存失败');
     expect(actionableMarkup).toContain('Actionable save failure');
   });
@@ -115,13 +91,12 @@ describe('Issue #368 landscape editor chrome', () => {
     expect(inspector).toContain('className="inspector-rail-icon"');
     expect(inspector).toContain('className="inspector-rail-label"');
     expect(inspector).toContain('className="inspector-rail-chevron"');
-    expect(styles).toContain('Issue #368');
     expect(styles).toContain('Issue #417');
     expect(styles).toContain('align-content: center;');
     expect(styles).toContain('writing-mode: horizontal-tb;');
     expect(styles).toContain('background: rgb(45 104 62 / 28%);');
     expect(styles).toContain('min-width: 44px;');
-    expect(styles).toContain(".history-controls[data-history-presentation='compact']");
+    expect(source('src/renderer/styles/shell/layout/editor-workbench.css')).toContain('.workbench-command-history');
   });
 
   it('uses the top project bar as the workbench History owner', () => {
@@ -129,7 +104,7 @@ describe('Issue #368 landscape editor chrome', () => {
     const bottom = source('src/renderer/shell/BottomWorkspace.tsx');
 
     expect(shell).toContain('showHeading={false}');
-    expect(shell).toContain('<CompactProjectBar');
+    expect(shell).toContain('<WorkbenchCommandBar');
     expect(shell).not.toContain('<BottomWorkspace');
     expect(shell).not.toContain('showHistoryControls={!isPortrait}');
     expect(bottom).toContain("showHistoryControls = presentation !== 'landscape'");

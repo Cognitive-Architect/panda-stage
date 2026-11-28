@@ -90,6 +90,7 @@ export interface ProductPreviewOverlayProps {
   shotId: string | null;
   /** Starts the existing preview transport immediately when the overlay mounts. */
   autoPlay?: boolean;
+  initialRange?: ProductPreviewRange;
   /** Session-only Camera mode shared with the persistent editor rail. */
   autoCameraEnabled: boolean;
   onAutoCameraChange(enabled: boolean): void;
@@ -111,6 +112,7 @@ export function ProductPreviewOverlay({
   layerEffectPreview,
   shotId,
   autoPlay = false,
+  initialRange = 'project',
   autoCameraEnabled,
   onAutoCameraChange,
   surfaceActive,
@@ -123,7 +125,7 @@ export function ProductPreviewOverlay({
     () => resolveProductPreviewShot(project, shotId),
     [project, shotId],
   );
-  const [range, setRange] = useState<ProductPreviewRange>('project');
+  const [range, setRange] = useState<ProductPreviewRange>(initialRange);
   // Playback position and transport flag: the ONLY temporal state in the app
   // that belongs to the preview. Both die with the overlay.
   const [timeMs, setTimeMs] = useState(0);

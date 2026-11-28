@@ -35,7 +35,7 @@ describe('Issue #338 portrait Properties refinement', () => {
     expect(inspector).toContain('aria-label="关闭属性"');
     expect(inspector).not.toContain('inspector-drawer-close');
     expect(inspector).toContain(
-      'showLockControl={!compact && !landscapePresentation}',
+      'showLockControl={!layerListDocked && !compact && !landscapePresentation}',
     );
     expect(inspector).toContain(
       'showLockControl={Boolean(compact) || landscapePresentation}',
@@ -50,11 +50,8 @@ describe('Issue #338 portrait Properties refinement', () => {
   });
 
   it('scopes the flattened hierarchy and touch controls to Cloud Touch portrait', () => {
-    const styles = source('src/renderer/styles.css');
-    const issue338Styles = styles.slice(
-      styles.lastIndexOf('/* Issue #338:'),
-      styles.indexOf('/* Issue #368:'),
-    );
+    const styles = source('src/renderer/styles/shell/right-workspace/s08-03--portrait-properties-flatten.css');
+    const issue338Styles = styles.slice(styles.indexOf('/* Issue #338:'));
 
     expect(issue338Styles).toContain(
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']",

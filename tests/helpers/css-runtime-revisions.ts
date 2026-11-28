@@ -4,6 +4,11 @@ import { expect } from 'vitest';
 // Issue #1427 approves new runtime bytes for these visual stylesheet owners.
 // The split manifest and its historical receipts retain their original hashes.
 const designV2Revisions: Record<string, { sha: string; length: number }> = {
+  // Issues #1432–#1434 retire the replaced drawer and layout selectors.
+  G049: { sha: '8209abc1be91eaece924cf0a8fd4af542a5e53e7361e228d8735cb2e6c2c4aed', length: 6882 },
+  G056: { sha: '60a62e8f85c6af7a39a844cf265c5fcbee2be826c3393a5e8c5b2836d0a69fa8', length: 7320 },
+  G122: { sha: '850d61a12fd8ba9fbb7b7b9b05c74594692712ab5cf7574f57e5c1e44056720a', length: 1148 },
+  // Issue #1427 retains these approved design token revisions.
   G001: { sha: '890146dc15d36c3913ac573462afc2f9acbf88b5833923cfe879041bf3597011', length: 461 },
   G002: { sha: '005126f042474c2dfeb1d96ed1ff4825180d353440f28da9fa35830a9c945444', length: 234 },
   G018: { sha: '86fc1684daba75f4aec2bc4f187ceff8238f97c6289fa5e2df76b91bd1f5eedc', length: 9202 },

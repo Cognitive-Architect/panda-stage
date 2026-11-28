@@ -48,6 +48,7 @@ export interface LayerOrderControlsProps {
   compact?: boolean;
   backgroundLayerSelected?: boolean;
   showLockControl?: boolean;
+  organizationDocked?: boolean;
   presentation?: 'portrait' | 'landscape';
 }
 
@@ -118,6 +119,7 @@ export function LayerOrderControls({
   compact = false,
   backgroundLayerSelected,
   showLockControl = false,
+  organizationDocked = false,
   presentation = 'portrait',
 }: LayerOrderControlsProps = {}): React.JSX.Element {
   const snapshot = useSyncExternalStore(
@@ -250,6 +252,13 @@ export function LayerOrderControls({
     orderedContent.length,
     isBackgroundLayer,
   );
+
+  if (organizationDocked) {
+    return <section className="layer-order-controls">
+      {clipboardActions}
+      <output data-testid="layer-order-status">{status}</output>
+    </section>;
+  }
 
   if (compact) {
     return (

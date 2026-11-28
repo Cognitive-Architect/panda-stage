@@ -149,7 +149,8 @@ describe('EditorShell Stage 2-B composition contract', () => {
     expect(count(dock, /<CharacterManager/gu)).toBe(1);
     expect(dock).toContain("useState<ResourceActivity>(docked ? 'assets' : 'shots')");
     expect(dock).not.toContain('display: none');
-    expect(dock).not.toContain('hidden');
+    expect(dock).toContain("hidden={activeActivity !== 'assets' || showCompatibility}");
+    expect(dock.match(/<AssetLibrary[\s\n]/gu)).toHaveLength(1);
     expect(panel.match(/<RecentProjectsPanel/gu)).toHaveLength(1);
     expect(panel).not.toMatch(/<(?:ShotManager|AssetLibrary|CharacterManager|CanvasStage)/u);
   });

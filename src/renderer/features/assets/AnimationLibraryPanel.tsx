@@ -249,12 +249,17 @@ export interface AnimationLibraryCardProps {
   animation: ProjectAnimationDefinition;
   project: Project;
   projectRoot: string;
+  selected?: boolean;
+  onSelect?(): void;
+  onActivate?(): void;
+  onContext?(): void;
 }
 
 export function AnimationLibraryCard({
   animation,
   project,
   projectRoot,
+  selected, onSelect, onActivate, onContext,
 }: AnimationLibraryCardProps): React.JSX.Element {
   const [cover, setCover] = useState<AnimationCoverState>({ url: null, error: false, loading: false });
   const [open, setOpen] = useState(false);
@@ -432,7 +437,9 @@ export function AnimationLibraryCard({
       <article
         aria-haspopup="dialog"
         aria-label={`${animation.name}，${animation.frames.length} 帧，${formatDuration(animation.durationMs)}，打开预览`}
-        className="asset-card animation-library-card"
+        className={"asset-card animation-library-card" + (selected ? " asset-card-selected" : "")}
+        onDoubleClick={onActivate}
+        onContextMenu={onContext ? event => { event.preventDefault(); onContext(); } : undefined}
         data-animation-id={animation.id}
         data-asset-kind="animation"
         data-category="animation"
@@ -443,7 +450,8 @@ export function AnimationLibraryCard({
             draggedCardRef.current = false;
             return;
           }
-          openPreview();
+          if (onSelect) onSelect();
+          else openPreview();
         }}
         onDragStart={(event) => {
           draggedCardRef.current = true;
@@ -525,6 +533,7 @@ export function AnimationLibraryCard({
           <span className="asset-card-context">{animation.frames.length} 帧 · {formatDuration(animation.durationMs)}</span>
         </span>
       </article>
+      {selected && onSelect && <button type="button" className="workbench-animation-preview" onClick={openPreview}>预览动画</button>}
       {dialog && typeof document !== 'undefined' ? createPortal(dialog, document.body) : null}
     </>
   );

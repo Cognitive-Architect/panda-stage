@@ -10,7 +10,7 @@ function source(path: string): string {
 describe('Issue #486 recovery overlay contract', () => {
   const shell = source('src/renderer/shell/EditorShell.tsx');
   const banner = source('src/renderer/shell/RecoveryCandidateBanner.tsx');
-  const drawer = source('src/renderer/shell/CompactProjectBar.tsx');
+  const drawer = source('src/renderer/shell/WorkbenchCommandBar.tsx');
   const styles = source('src/renderer/styles.css');
 
   it('makes the dedicated Recovery Card the only recovery announcement owner', () => {
@@ -19,7 +19,7 @@ describe('Issue #486 recovery overlay contract', () => {
       "setStatus(nextSession.recoveryCandidate ? '' : cleanStatus);",
     );
     expect(banner).toContain('role="alert"');
-    expect(drawer).toContain('statusText');
+    expect(drawer).toContain('feedback');
     expect(drawer).toContain('data-testid="editor-action-status"');
   });
 
@@ -41,10 +41,8 @@ describe('Issue #486 recovery overlay contract', () => {
     );
   });
 
-  it('offsets the floating card only when the Quick Action Drawer is expanded', () => {
-    expect(styles).toMatch(
-      /\.editor-layout\[data-top-region-layout='overlay'\]:has\([\s\S]*?quick-action-drawer\[data-expanded='true'\][\s\S]*?\.recovery-prompt\s*\{[\s\S]*?top:\s*120px;/u,
-    );
+  it('keeps the recovery card visible and actionable from the flow region', () => {
+    expect(styles).not.toContain('.quick-action-drawer');
     expect(styles).toContain('transform: translateX(-50%);');
     expect(styles).toContain('display: flex;');
     expect(styles).toContain("content: '·';");

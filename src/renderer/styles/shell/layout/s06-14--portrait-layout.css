@@ -228,16 +228,6 @@
 
 /* Issue #327: Cloud Touch portrait uses hierarchy and selected state instead
    of stacking a project card, a switcher card, and four item cards. */
-.editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
-  .compact-project-bar {
-  height: 56px;
-  max-height: 56px;
-  padding: 6px 0;
-  border: 0;
-  border-bottom: 1px solid var(--ui-color-separator);
-  border-radius: 0;
-  background: transparent;
-}
 
 .editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']
   .editor-portrait-workspace-switcher {

@@ -19,7 +19,8 @@ export function resolveHistoryShortcut(
     event.defaultPrevented ||
     event.altKey ||
     (!event.ctrlKey && !event.metaKey) ||
-    isEditableKeyboardTarget(event.target)
+    isEditableKeyboardTarget(event.target) ||
+    (typeof Element !== 'undefined' && event.target instanceof Element && event.target.closest('[role="menu"], [aria-modal="true"]'))
   ) {
     return null;
   }

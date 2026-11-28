@@ -38,7 +38,7 @@ describe('Issue #467 Wave 1 subtitle and feedback cleanup', () => {
     expect(sheet).toContain('<GripVertical size={14} />');
     expect(styles).toContain('.dialogue-sheet-right-workspace .dialogue-untimed-action-strip');
     expect(styles).toContain('.dialogue-untimed-action-info');
-    expect(styles).toContain('.quick-action-drawer-rest-state');
+    expect(source('src/renderer/styles/shell/layout/editor-workbench.css')).toContain('.workbench-command-feedback');
     expect(styles).toContain('grid-template-columns: minmax(0, 1fr) auto;');
     expect(styles).toContain('justify-content: flex-end;');
     expect(styles).toContain('font-size: 12px;');
@@ -77,13 +77,13 @@ describe('Issue #467 Wave 1 subtitle and feedback cleanup', () => {
   });
 
   it('exposes save state outside the collapsed drawer and leaves defaults text-only', () => {
-    const drawer = source('src/renderer/shell/CompactProjectBar.tsx');
+    const drawer = source('src/renderer/shell/WorkbenchCommandBar.tsx');
     const layout = source('src/shared/preview/subtitle-layout.ts');
     const project = source('src/main/services/ProjectService.ts');
     const migration = source('src/domain/migrations/index.ts');
 
-    expect(drawer).toContain('project-save-state-rest');
-    expect(drawer).toContain('saveStateLabel');
+    expect(drawer).toContain('data-save-state={saveState}');
+    expect(drawer).toContain('saveTitle');
     expect(layout).toContain("DEFAULT_BACKGROUND_COLOR = '#0a141100'");
     expect(project).toContain("backgroundColor: '#0a141100'");
     expect(migration).toContain("backgroundColor: '#0a141100'");

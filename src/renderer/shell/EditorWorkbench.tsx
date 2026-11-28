@@ -104,7 +104,7 @@ interface EditorWorkbenchProps {
   controls: { current: WorkbenchControls | null };
   canHide(panel: WorkbenchPanel): boolean;
   onPanelVisibilityChange(panel: WorkbenchPanel, visible: boolean): void;
-  header: ReactNode;
+  header(windowMenu: ReactNode): ReactNode;
   panels: Record<WorkbenchPanel, ReactNode>;
 }
 
@@ -186,7 +186,7 @@ export function EditorWorkbench({ controls, canHide, onPanelVisibilityChange, he
 
   return (
     <>
-      <div className="workbench-toolbar">
+      {header(
         <Menu.Root>
           <Menu.Trigger asChild>
             <Button ref={windowMenu} variant="secondary" data-testid="workbench-window-menu">窗口</Button>
@@ -209,8 +209,7 @@ export function EditorWorkbench({ controls, canHide, onPanelVisibilityChange, he
             </Menu.Content>
           </Menu.Portal>
         </Menu.Root>
-        {header}
-      </div>
+      )}
       <PanelContext.Provider value={mounts}>
         <PanelHideContext.Provider value={canHide}>
           <div className="workbench-dock" data-testid="workbench-dock">

@@ -1902,7 +1902,7 @@ export class LayerService {
     project: Project,
     shotId: string,
     layerId: string,
-    action: LayerOrderAction,
+    action: LayerOrderAction | { toLayerId: string },
   ): Project {
     const shot = this.shot(project, shotId);
     const layerIndex = this.layerIndex(shot, layerId);
@@ -1916,14 +1916,16 @@ export class LayerService {
       (candidate) => candidate.id === layer.id,
     );
     const targetIndex =
-      action === 'front'
+      typeof action === 'object'
+        ? ordered.findIndex(candidate => candidate.id === action.toLayerId)
+        : action === 'front'
         ? ordered.length - 1
         : action === 'back'
           ? 0
           : action === 'forward'
             ? Math.min(ordered.length - 1, currentIndex + 1)
             : Math.max(0, currentIndex - 1);
-    if (targetIndex === currentIndex) return project;
+    if (targetIndex < 0 || targetIndex === currentIndex) return project;
     ordered.splice(currentIndex, 1);
     ordered.splice(targetIndex, 0, layer);
     return this.replaceShot(project, {
@@ -1969,7 +1971,7 @@ export class LayerService {
     });
   }
 
-  updateLayerAppearance(project: Project, shotId: string, layerId: string, changes: Partial<Pick<Layer, 'opacity' | 'flipX'>>): Project {
+  updateLayerAppearance(project: Project, shotId: string, layerId: string, changes: Partial<Pick<Layer, 'opacity' | 'flipX' | 'visible'>>): Project {
     const shot = this.shot(project, shotId);
     const layer = shot.layers[this.layerIndex(shot, layerId)]!;
     this.assertEditable(shot, layer);

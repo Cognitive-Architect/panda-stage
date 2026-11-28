@@ -141,7 +141,7 @@ describe('Issue #641 feedback hierarchy', () => {
   it('records a general feedback contract without changing the project save owner', () => {
     const design = readFileSync('DESIGN.md', 'utf8');
     const agents = readFileSync('AGENTS.md', 'utf8');
-    const saveOwner = readFileSync('src/renderer/shell/CompactProjectBar.tsx', 'utf8');
+    const saveOwner = readFileSync('src/renderer/shell/WorkbenchCommandBar.tsx', 'utf8');
     for (const phrase of ['结果已经在界面可见', '极短的素材准备 / 加载', '真正需要等待的长任务', '失败、部分成功、未知结果、资源冲突、恢复']) {
       expect(design).toContain(phrase);
     }

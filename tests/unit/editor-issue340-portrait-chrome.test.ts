@@ -1,8 +1,6 @@
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { migrateProject } from '../../src/domain';
-import { CompactProjectBar } from '../../src/renderer/shell/CompactProjectBar';
+import { renderWorkbenchCommands } from '../helpers/render-workbench-commands';
 import type { EditorProjectSnapshot } from '../../src/renderer/stores/EditorProjectStore';
 import exampleProject from '../../demo-project/project-v1.example.json';
 import { readFileSync } from 'node:fs';
@@ -24,22 +22,7 @@ function renderBar(
   status = '项目已打开，暂无未保存更改。',
   saveState: 'saved' | 'dirty' | 'saving' | 'failed' = 'saved',
 ): string {
-  return renderToStaticMarkup(
-    createElement(CompactProjectBar, {
-      busy: false,
-      closeConfirmOpen: false,
-      onOpenProductPreview: () => undefined,
-      onOpenProjectCenter: () => undefined,
-      onOpenProjectFolder: async () => undefined,
-      onRequestCloseProject: () => undefined,
-      onSaveProject: async () => undefined,
-      presentation: 'portrait',
-      productPreviewOpen: false,
-      projectSnapshot: { ...snapshot, dirty: saveState !== 'saved' },
-      saveState,
-      status,
-    }),
-  );
+  return renderWorkbenchCommands({ ...snapshot, dirty: saveState !== 'saved' }, { saveState, status });
 }
 
 describe('Issue #340 Cloud Touch portrait chrome', () => {
@@ -62,11 +45,11 @@ describe('Issue #340 Cloud Touch portrait chrome', () => {
     expect(shell).toContain('stage: <div className="workbench-stage');
     expect(shell).not.toContain('showToolbar={canvasToolbarVisible}');
     expect(shell).toContain('<CanvasWorkspace');
-    expect(shell).not.toContain('canvasViewportStore');
+    expect(shell).toContain('canvasViewportStore.setMode(mode)');
   });
 
   it('renders one HistoryControls presentation per layout and preserves shortcuts', () => {
-    const bar = source('src/renderer/shell/CompactProjectBar.tsx');
+    const bar = source('src/renderer/shell/WorkbenchCommandBar.tsx');
     const bottom = source('src/renderer/shell/BottomWorkspace.tsx');
     const history = source('src/renderer/features/editor/HistoryControls.tsx');
     const shell = source('src/renderer/shell/EditorShell.tsx');
@@ -74,7 +57,7 @@ describe('Issue #340 Cloud Touch portrait chrome', () => {
       'src/renderer/features/editor/useHistoryShortcuts.ts',
     );
 
-    expect(bar).toContain('<HistoryControls presentation="compact" />');
+    expect(bar).toContain('useHistoryCommands(blocked)');
     expect(bottom).toContain(
       '<HistoryControls presentation="bottom" />',
     );
@@ -82,7 +65,7 @@ describe('Issue #340 Cloud Touch portrait chrome', () => {
     expect(bottom).toContain(
       '{showHistoryControls ? <HistoryControls presentation="bottom" /> : null}',
     );
-    expect(shell).toContain('<CompactProjectBar');
+    expect(shell).toContain('<WorkbenchCommandBar');
     expect(shell).not.toContain('<BottomWorkspace');
     expect(history).toContain('presentation?: HistoryControlsPresentation');
     expect(history).toContain('useHistoryShortcuts(undo, redo)');
@@ -94,39 +77,36 @@ describe('Issue #340 Cloud Touch portrait chrome', () => {
   });
 
   it('keeps the portrait drawer quiet while retaining actions and meaningful feedback', () => {
-    const bar = source('src/renderer/shell/CompactProjectBar.tsx');
+    const bar = source('src/renderer/shell/WorkbenchCommandBar.tsx');
     const markup = renderBar();
     const failedMarkup = renderBar('保存失败：磁盘不可用。', 'failed');
 
-    expect(markup).toContain('data-presentation="portrait"');
-    expect(markup).toContain('data-testid="quick-action-drawer-handle"');
-    expect(markup).toContain('data-expanded="false"');
-    expect(markup).toContain('data-history-presentation="compact"');
+    expect(markup).toContain('data-testid="workbench-command-bar"');
+    expect(markup).toContain('data-testid="workbench-file-menu"');
+    expect(markup).not.toContain('data-testid="editor-action-status"');
+    expect(markup).toContain('data-testid="history-controls"');
     expect(markup).not.toContain('data-testid="project-save-state"');
     expect(markup).not.toContain(snapshot.projectRoot);
     expect(markup).not.toContain('data-testid="project-save-state"');
-    expect(failedMarkup).toContain('data-testid="project-save-state"');
+    expect(failedMarkup).toContain('data-save-state="failed"');
     expect(failedMarkup).toContain('data-testid="editor-action-status"');
     expect(failedMarkup).toContain('保存失败：磁盘不可用。');
     expect(bar).toContain('data-testid="quick-action-home"');
     expect(bar).toContain('data-testid="quick-action-folder"');
-    expect(bar).toContain('onOpenProjectCenter');
-    expect(bar).toContain('onOpenProjectFolder');
+    expect(bar).toContain('onProjectCenter');
+    expect(bar).toContain('onFolder');
   });
 
-  it('scopes the header relocation and quiet state to Cloud Touch portrait', () => {
-    const styles = readOrderedStylesheetSource();
-    expect(styles).toContain('.quick-action-drawer');
-    expect(styles).toContain(
-      "  .history-controls[data-history-presentation='compact']",
-    );
-    expect(styles).toContain('clip: rect(0 0 0 0);');
-    expect(styles).toContain('quick-action-drawer-handle');
+  it('uses the compact command row and narrow workbench treatment', () => {
+    const styles = source('src/renderer/styles/shell/layout/editor-workbench.css');
+    expect(styles).toContain('.workbench-command-row');
+    expect(styles).toContain('@media (max-width: 520px)');
+    expect(readOrderedStylesheetSource()).not.toContain('.quick-action-drawer');
   });
 
   it('does not add project or history mutation ownership to the presentation seam', () => {
     const shell = source('src/renderer/shell/EditorShell.tsx');
-    const bar = source('src/renderer/shell/CompactProjectBar.tsx');
+    const bar = source('src/renderer/shell/WorkbenchCommandBar.tsx');
     const canvas = source('src/renderer/features/canvas/CanvasStage.tsx');
 
     expect(bar).not.toContain('updateProject');

@@ -689,7 +689,7 @@ export function RightInspector({
         backgroundLayerSelected={selection.state === 'background'}
         compact={compact}
         showResetTransform={Boolean(compact) || landscapePresentation}
-        showLockControl={!compact && !landscapePresentation}
+        showLockControl={!layerListDocked && !compact && !landscapePresentation}
       />
       {parentControl}
       {snapshot && currentShot && selection.layer ? (
@@ -704,6 +704,7 @@ export function RightInspector({
     <>
       {!layerListDocked && <ShotLayerListPanel onFocusParentBinding={focusLayerParentBinding} />}
       <LayerOrderControls
+        organizationDocked={layerListDocked}
         backgroundLayerSelected={selection.state === 'background'}
         showLockControl={Boolean(compact) || landscapePresentation}
       />

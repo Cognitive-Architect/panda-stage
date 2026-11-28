@@ -11,7 +11,7 @@ describe('Issue 102 Task 4 responsive contract', () => {
     const styles = readOrderedStylesheetSource();
 
     expect(styles).toContain('.task4-hit-target');
-    expect(styles).toContain('max-width: min(320px, calc(100vw - 24px));');
+    expect(styles).toContain('@media (max-width: 520px)');
     expect(styles).toContain('@media (max-width: 1100px)');
     expect(styles).toMatch(
       /@media\s*\(max-width:\s*1100px\)[\s\S]*?\.editor-body\s*\{[\s\S]*?grid-template-columns:\s*minmax\(52px,\s*56px\)\s*minmax\(0,\s*1fr\)\s*minmax\(52px,\s*56px\);/u,
@@ -26,7 +26,7 @@ describe('Issue 102 Task 4 responsive contract', () => {
       readSource('src/renderer/shell/StartScreen.tsx'),
       readSource('src/renderer/features/welcome/RecentProjectsPanel.tsx'),
       readSource('src/renderer/shell/RecoveryCandidateBanner.tsx'),
-      readSource('src/renderer/shell/CompactProjectBar.tsx'),
+      readSource('src/renderer/shell/WorkbenchCommandBar.tsx'),
       readSource('src/renderer/shell/NewProjectDialog.tsx'),
       readSource('src/renderer/shell/CloseConfirmDialog.tsx'),
       readSource('src/renderer/shell/ProductPreviewOverlay.tsx'),

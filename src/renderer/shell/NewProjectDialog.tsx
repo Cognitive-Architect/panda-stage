@@ -112,6 +112,7 @@ export function NewProjectDialog({
             aria-describedby={
               showProjectNameValidation ? 'new-project-name-error' : undefined
             }
+            autoFocus
             data-testid="new-project-name"
             disabled={busy}
             onBlur={onProjectNameBlur}

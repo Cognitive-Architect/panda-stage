@@ -35,7 +35,7 @@ const MODEL_PATH = 'src/renderer/shell/productPreviewModel.ts';
 const AUDIO_PATH = 'src/renderer/shell/productPreviewAudio.ts';
 const IMAGES_PATH = 'src/renderer/shell/productPreviewImages.ts';
 const SHELL_PATH = 'src/renderer/shell/EditorShell.tsx';
-const TOP_BAR_PATH = 'src/renderer/shell/CompactProjectBar.tsx';
+const TOP_BAR_PATH = 'src/renderer/shell/WorkbenchCommandBar.tsx';
 
 function readSource(path: string): string {
   if (path === 'src/renderer/styles.css') return readOrderedStylesheetSource();
@@ -523,7 +523,7 @@ describe('product preview overlay contract', () => {
 
     expect(overlay).toContain('const [timeMs, setTimeMs] = useState(0)');
     expect(overlay).toContain(
-      'const [range, setRange] = useState<ProductPreviewRange>(\'project\')',
+      'const [range, setRange] = useState<ProductPreviewRange>(initialRange)',
     );
     expect(overlay).toContain('durationMs: projectDurationMs(project)');
     expect(overlay).toContain('mapProjectTime(');
@@ -832,14 +832,14 @@ describe('product preview overlay contract', () => {
     expect(shell).not.toContain("display: 'none'");
   });
 
-  it('keeps a real preview entry in the quick action drawer', () => {
+  it('keeps a real preview entry in the command bar', () => {
     const topBar = readSource(TOP_BAR_PATH);
 
     expect(topBar).not.toContain('product-preview-placeholder');
     expect(topBar).not.toContain('产品预览（后续阶段启用）');
     expect(topBar).toContain('data-testid="quick-action-play"');
-    expect(topBar).toContain('aria-pressed={productPreviewOpen}');
-    expect(topBar).toContain('disabled={busy || productPreviewOpen}');
-    expect(topBar).toContain('onOpenProductPreview');
+    expect(topBar).toContain('aria-pressed={previewOpen}');
+    expect(topBar).toContain('disabled={previewDisabled}');
+    expect(topBar).toContain('onClick={onPreview}');
   });
 });

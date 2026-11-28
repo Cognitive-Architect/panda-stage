@@ -38,7 +38,6 @@ describe('Issue #327 portrait shell and Shot header cleanup', () => {
     const scope =
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']";
 
-    expect(styles).toContain(`${scope}\n  .compact-project-bar`);
     expect(styles).toContain(`${scope}\n  .editor-portrait-workspace-switcher`);
     expect(styles).toContain(
       `${scope}\n  .resource-activity-dock[data-active-activity='shots']`,

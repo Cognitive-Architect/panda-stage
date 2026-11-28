@@ -1,3 +1,10 @@
+import { PROJECT_HEIGHT, PROJECT_WIDTH } from '../../../domain';
+import * as Menu from '@radix-ui/react-dropdown-menu';
+import { ActionPresetPanel } from '../actions/ActionPresetPanel';
+import { layerStore } from '../../stores/layerStore';
+import { audioClipStore } from '../../stores/audioClipStore';
+import { shotStore } from '../../stores/shotStore';
+import { timelineUiStore } from '../timeline/timelineUiStore';
 import {
   useCallback,
   useEffect,
@@ -19,6 +26,7 @@ import {
   ASSET_LIBRARY_FILTERS,
   assetLibraryFilterCounts,
   filterAssetLibraryItems,
+  type AssetLibraryItem,
   selectAssetLibraryItems,
   selectAssetLibraryEntries,
   type AssetLibraryFilter,
@@ -51,7 +59,7 @@ import { applyAssetImportResponse } from './applyAssetImportResponse';
 import { applyFlaFrameSequenceCommitResponse } from './applyFlaFrameSequenceCommitResponse';
 import { applyFlaStaticSnapshotCommitResponse } from './applyFlaStaticSnapshotCommitResponse';
 import { FlaCompatibilityReviewSession } from '../../fla-import/FlaCompatibilityReviewSession';
-import { DecorativeIcon } from '../../ui';
+import { Button, DecorativeIcon } from '../../ui';
 import {
   FlaInspectionLifecycle,
   isFlaInspectionUserCancelled,
@@ -69,6 +77,13 @@ export type AssetLibraryPresentation = 'default' | 'portrait' | 'landscape';
 const DEFAULT_ASSET_LIBRARY_STATUS =
   '打开项目后即可分类浏览、拖动和安全删除素材。';
 
+const WORKBENCH_CATEGORIES = [
+  { id: 'character', label: '角色' }, { id: 'prop', label: '道具' },
+  { id: 'scenery', label: '背景' }, { id: 'audio', label: '音频' },
+  { id: 'actions', label: '动作' },
+] as const;
+type WorkbenchAssetFilter = (typeof WORKBENCH_CATEGORIES)[number]['id'] | 'all' | 'animation';
+
 export interface AssetLibraryProps {
   snapshot: EditorProjectSnapshot | null;
   view?: AssetWorkspaceView;
@@ -77,6 +92,7 @@ export interface AssetLibraryProps {
   importRequestToken?: number;
   flaReviewRequestToken?: number;
   closeRequestToken?: number;
+  onPreviewDraft?: (project: EditorProjectSnapshot['project']) => void;
   hideHeading?: boolean;
   showFlaAction?: boolean;
   compactImport?: boolean;
@@ -95,6 +111,7 @@ export function AssetLibrary({
   importRequestToken,
   flaReviewRequestToken,
   closeRequestToken,
+  onPreviewDraft,
   hideHeading = false,
   showFlaAction = true,
   compactImport = false,
@@ -118,6 +135,10 @@ export function AssetLibrary({
   const [category, setCategory] = useState<AssetLibraryFilter>(() =>
     hideHeading ? 'all' : 'background',
   );
+  const [workbenchCategory, setWorkbenchCategory] = useState<WorkbenchAssetFilter>('character');
+  const [viewOverride, setViewOverride] = useState<'grid' | 'list' | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [itemMenuOpen, setItemMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [usageFilter, setUsageFilter] =
     useState<AssetLibraryUsageFilter>('all');
@@ -132,7 +153,7 @@ export function AssetLibrary({
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(
-    hideHeading ? '' : DEFAULT_ASSET_LIBRARY_STATUS,
+    hideHeading || compactImport ? '' : DEFAULT_ASSET_LIBRARY_STATUS,
   );
   const [authoritativeReferences, setAuthoritativeReferences] =
     useState<readonly { label: string; path: string }[]>([]);
@@ -232,13 +253,29 @@ export function AssetLibrary({
   const entries = useMemo(
     () =>
       snapshot
-        ? selectAssetLibraryEntries(snapshot.project, category)
+        ? selectAssetLibraryEntries(snapshot.project, compactImport ? 'all' : category)
         : [],
-    [category, snapshot],
+    [category, compactImport, snapshot],
   );
   const items = useMemo(
-    () => snapshot ? selectAssetLibraryItems(snapshot.project, category) : [],
-    [category, snapshot],
+    () => {
+      if (!snapshot) return [];
+      const source = selectAssetLibraryItems(snapshot.project, compactImport ? 'all' : category);
+      if (!compactImport || workbenchCategory === 'all') return source;
+      const backgroundIds = new Set(snapshot.project.shots.flatMap(shot => {
+        const background = shot.layers.find(layer => layer.id === shot.backgroundLayerId)?.source;
+        return background?.kind === 'asset' ? [background.assetId] : [];
+      }));
+      return source.filter(item => {
+        if (item.kind === 'animation') return workbenchCategory === 'animation';
+        const { asset, category: kind } = item.entry;
+        if (asset.kind === 'audio') return workbenchCategory === 'audio';
+        if (kind === 'character' || (asset.kind === 'image' && asset.usage === 'character')) return workbenchCategory === 'character';
+        if ((asset.kind === 'image' && asset.usage === 'background') || backgroundIds.has(asset.id)) return workbenchCategory === 'scenery';
+        return workbenchCategory === 'prop';
+      });
+    },
+    [category, compactImport, snapshot, workbenchCategory],
   );
   const counts = useMemo(
     () =>
@@ -293,7 +330,7 @@ export function AssetLibrary({
     },
     [snapshot],
   );
-  const isPortraitBrowser = hideHeading && view === 'browser';
+  const isPortraitBrowser = (hideHeading || compactImport) && view === 'browser';
   const totalPages = isPortraitBrowser
     ? assetLibraryPageCount(visibleItems.length)
     : 1;
@@ -390,6 +427,17 @@ export function AssetLibrary({
     if ((nextCategory === 'audio' || nextCategory === 'animation') && usageFilter !== 'all') {
       setUsageFilter('all');
     }
+    setUsageFilterMenuOpen(false);
+    setPage(1);
+  };
+
+  const chooseWorkbenchCategory = (next: WorkbenchAssetFilter) => {
+    if (!clearSelectedAsset()) return;
+    setSelectedItemId(null);
+    setWorkbenchCategory(next);
+    setViewOverride(null);
+    setCategory(next === 'audio' || next === 'animation' ? next : 'all');
+    setUsageFilter('all');
     setUsageFilterMenuOpen(false);
     setPage(1);
   };
@@ -600,6 +648,42 @@ export function AssetLibrary({
     else onViewChange('browser');
   };
 
+  const playheadAtStart = useSyncExternalStore(
+    timelineUiStore.subscribe,
+    () => !compactImport || timelineUiStore.getSnapshot().currentTimeMs === 0,
+    () => true,
+  );
+
+  const display = viewOverride ?? (workbenchCategory === 'audio' || workbenchCategory === 'actions' ? 'list' : 'grid');
+  const currentItem = visibleItems.find(item => item.id === selectedItemId);
+  const placementReason = (item: AssetLibraryItem, atStart = playheadAtStart): string | undefined => {
+    if (!shotStore.getCurrentShotId()) return '请先选择镜头';
+    if (item.kind === 'asset' && item.entry.asset.kind === 'video') return '视频可在素材详情中查看';
+    if (item.kind === 'asset' && item.entry.asset.kind === 'image' && !atStart) return '请先将播放头移到镜头开头';
+    return undefined;
+  };
+  const activateItem = (item: AssetLibraryItem) => {
+    if (busy || !snapshot) return;
+    const currentTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
+    const disabledReason = placementReason(item, currentTimeMs === 0);
+    if (disabledReason) { setStatus(disabledReason); return; }
+    try {
+      if (item.kind === 'asset' && item.entry.asset.kind === 'audio') {
+        audioClipStore.create(item.entry.asset.id, 'sfx', currentTimeMs);
+      } else {
+        layerStore.createFromAsset({
+          ...(item.kind === 'animation'
+            ? { version: 3 as const, type: 'animation' as const, animationId: item.animation.id, startTimeMs: currentTimeMs }
+            : item.entry.dropPayload),
+          position: { x: PROJECT_WIDTH / 2, y: PROJECT_HEIGHT / 2 },
+        });
+      }
+      setStatus('');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : '无法放入镜头。');
+    }
+  };
+
   const refreshAssetMetadata = useCallback(async (
     assetId: string,
     expected?: AssetMetadataProjectIdentity,
@@ -766,6 +850,7 @@ export function AssetLibrary({
   };
 
   const openFlaReview = (): void => {
+    if (flaInspectionOperation.current || busy) return;
     if (!snapshot) {
       setStatus('Open a Panda Stage project before reviewing an FLA.');
       return;
@@ -927,6 +1012,17 @@ export function AssetLibrary({
             : '尚未打开项目'}
         </output>
       </div>
+      {compactImport || (view === 'browser' && !flaReviewOpen) ? (
+      <AssetImportPanel
+        ref={compactImport ? importDropRef : undefined}
+        compact={hideHeading || compactImport}
+        showFlaAction={showFlaAction}
+        importRequestToken={importRequestToken}
+        onImportFla={openFlaReview}
+        onImportedAudioAssets={refreshAudioMetadataBatch}
+        snapshot={snapshot}
+      />
+      ) : null}
       {view === 'browser' ? flaReviewOpen && flaInspection ? (
         <FlaCompatibilityReviewSession
           inspection={flaInspection}
@@ -1000,15 +1096,15 @@ export function AssetLibrary({
         />
       ) : (
         <>
-          <AssetImportPanel
-            ref={compactImport ? importDropRef : undefined}
-            compact={hideHeading || compactImport}
-            showFlaAction={showFlaAction}
-            importRequestToken={importRequestToken}
-            onImportFla={openFlaReview}
-            onImportedAudioAssets={refreshAudioMetadataBatch}
-            snapshot={snapshot}
-          />
+
+            {compactImport ? <nav aria-label="素材分类" className="workbench-asset-categories">
+              {WORKBENCH_CATEGORIES.map(tab => <Button key={tab.id} variant="secondary"
+                aria-pressed={workbenchCategory === tab.id} onClick={() => chooseWorkbenchCategory(tab.id)}>{tab.label}</Button>)}
+              <select aria-label="其他素材分类" value={workbenchCategory === 'animation' || workbenchCategory === 'all' ? workbenchCategory : ''}
+                onChange={event => chooseWorkbenchCategory(event.target.value as WorkbenchAssetFilter)}>
+                <option value="" disabled>更多</option><option value="all">全部</option><option value="animation">动画 / Graphic</option>
+              </select>
+            </nav> : null}
           <div
             className="asset-library-filter-controls"
             data-testid="asset-library-filter-controls"
@@ -1120,7 +1216,7 @@ export function AssetLibrary({
             className="asset-library-browser"
             data-testid="asset-browser-view"
           >
-            <nav aria-label="素材分类" className="asset-category-tabs">
+            {!compactImport ? <nav aria-label="素材分类" className="asset-category-tabs">
               {filterOptions.map((item) => (
                 <button
                   aria-pressed={category === item.id}
@@ -1137,8 +1233,11 @@ export function AssetLibrary({
                   <strong>{counts[item.id]}</strong>
                 </button>
               ))}
-            </nav>
-            <div className="asset-library-content">
+            </nav> : null}
+            {compactImport && workbenchCategory === 'actions' ? <ActionPresetPanel compact query={searchQuery} grid={display === 'grid'} onPreview={onPreviewDraft}
+              viewToggle={<Button variant="secondary" aria-label="切换动作视图" onClick={() => setViewOverride(display === 'grid' ? 'list' : 'grid')}>
+                {display === 'grid' ? '列表' : '网格'}
+              </Button>} /> : <div className="asset-library-content">
               {snapshot ? <BatchImageControls key={JSON.stringify([projectIdentity, category, usageFilter, searchQuery])}
                 snapshot={snapshot} images={visibleItems.flatMap((item) =>
                   item.kind === 'asset' && item.entry.asset.kind === 'image' ? [item.entry.asset] : [],
@@ -1147,15 +1246,20 @@ export function AssetLibrary({
   <AssetGrid
                 project={snapshot.project}
                 projectRoot={snapshot.projectRoot}
+                display={compactImport ? display : undefined}
+                selectedItemId={selectedItemId}
+                onItemSelect={compactImport ? item => setSelectedItemId(item.id) : undefined}
+                onItemActivate={compactImport ? activateItem : undefined}
+                onItemContext={compactImport ? item => { setSelectedItemId(item.id); setItemMenuOpen(true); } : undefined}
                 draggingAssetId={draggingAssetId}
                 onDragEnd={() => {
                   setDraggingAssetId(null);
                   setDragOver(false);
-                  setStatus('素材拖动已结束。');
+                  if (!compactImport) setStatus('素材拖动已结束。');
                 }}
                 onDragStart={(assetId) => {
                   setDraggingAssetId(assetId);
-                  setStatus(
+                  if (!compactImport) setStatus(
                     '正在拖动素材；载荷仅包含受控身份 ID 和枚举类型。',
                   );
                 }}
@@ -1242,7 +1346,21 @@ export function AssetLibrary({
                   </button>
                 </nav>
               ) : null}
-            </div>
+            </div>}
+            {compactImport && workbenchCategory !== "actions" && <div className="workbench-asset-footer">
+              <Button variant="secondary" aria-label="切换素材视图" onClick={() => setViewOverride(display === "grid" ? "list" : "grid")}>
+                {display === "grid" ? "列表" : "网格"}
+              </Button>
+              <Menu.Root open={itemMenuOpen && Boolean(currentItem)} onOpenChange={setItemMenuOpen}>
+                <Menu.Trigger asChild><Button variant="secondary" disabled={!currentItem}>素材操作</Button></Menu.Trigger>
+                <Menu.Portal><Menu.Content className="workbench-menu">
+                  <Menu.Item disabled={!currentItem || busy || Boolean(currentItem && placementReason(currentItem))} onSelect={() => currentItem && activateItem(currentItem)}>放入镜头</Menu.Item>
+                  <Menu.Item disabled={currentItem?.kind !== "asset"} onSelect={() => currentItem?.kind === "asset" && selectAsset(currentItem.entry.asset.id)}>素材详情</Menu.Item>
+                </Menu.Content></Menu.Portal>
+              </Menu.Root>
+              <Button disabled={!currentItem || busy || Boolean(currentItem && placementReason(currentItem))}
+                title={currentItem && placementReason(currentItem)} onClick={() => currentItem && activateItem(currentItem)}>放入镜头</Button>
+            </div>}
           </div>
         </>
       ) : (

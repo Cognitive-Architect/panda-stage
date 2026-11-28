@@ -1,5 +1,6 @@
+import { assertDesignV2StylesheetRevision } from '../helpers/css-runtime-revisions';
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -127,6 +128,8 @@ function project(relocation: Relocation) {
   };
 }
 
+const retiredDrawerStyles = new Set(['G005', 'G077', 'G092', 'G121']);
+
 describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
   it('registers the seven P2-19 and five P2-21 segments with exact ownership', () => {
     for (const expectedBatch of [expectedP219, expectedP221]) {
@@ -146,11 +149,16 @@ describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
     ]));
   });
 
-  it('loads the twelve moved blocks exactly once at the combined canonical positions', () => {
+  it('loads each retained block exactly once in canonical position', () => {
     const imports = importPaths();
     const expected = [...expectedP219, ...expectedP221]
       .sort((left, right) => left.canonicalOrder - right.canonicalOrder);
-    const expectedImports = expected.map(({ targetPath }) => entryImportPath(targetPath));
+    const expectedImports = expected.filter(({ id }) => !retiredDrawerStyles.has(id)).map(({ targetPath }) => entryImportPath(targetPath));
+    for (const { id, targetPath } of expected) {
+      if (!retiredDrawerStyles.has(id)) continue;
+      expect(imports).not.toContain(entryImportPath(targetPath));
+      expect(existsSync(resolve(root, targetPath))).toBe(false);
+    }
 
     for (const expectedImport of expectedImports) {
       expect(imports.filter((candidate) => candidate === expectedImport)).toHaveLength(1);
@@ -170,9 +178,11 @@ describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
     ]) expect(imports).not.toContain(removed);
   });
 
-  it('keeps all twelve targets byte-exact after Phase 3 begins', () => {
+  it('checks every retained target against its approved revision', () => {
     for (const expected of [...expectedP219, ...expectedP221]) {
+      if (retiredDrawerStyles.has(expected.id)) continue;
       const target = normalize(readFileSync(resolve(root, expected.targetPath), 'utf8'));
+      if (assertDesignV2StylesheetRevision(expected.id, target)) continue;
       expect(sha256(target)).toBe(expected.sourceSha256);
       expect(Buffer.byteLength(target, 'utf8')).toBe(
         expected.sourceEndByteExclusive - expected.sourceStartByte,
@@ -182,7 +192,7 @@ describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
   });
 
   it('preserves Quick/History and Tools producers, hosts, states, and geometry owners', () => {
-    const compact = readFileSync(resolve(root, 'src/renderer/shell/CompactProjectBar.tsx'), 'utf8');
+    const compact = readFileSync(resolve(root, 'src/renderer/shell/WorkbenchCommandBar.tsx'), 'utf8');
     const history = readFileSync(resolve(root, 'src/renderer/features/editor/HistoryControls.tsx'), 'utf8');
     const shortcuts = readFileSync(resolve(root, 'src/renderer/features/editor/useHistoryShortcuts.ts'), 'utf8');
     const tools = readFileSync(resolve(root, 'src/renderer/shell/ProjectToolsDrawer.tsx'), 'utf8');
@@ -192,9 +202,9 @@ describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
     const bottom = readFileSync(resolve(root, 'src/renderer/shell/BottomWorkspace.tsx'), 'utf8');
     const editorShell = readFileSync(resolve(root, 'src/renderer/shell/EditorShell.tsx'), 'utf8');
 
-    expect(compact).toContain('<HistoryControls presentation="compact" />');
+    expect(compact).toContain('useHistoryCommands(blocked)');
     expect(compact).toContain('data-save-state={saveState}');
-    expect(compact).toContain('data-testid="quick-action-drawer-handle"');
+    expect(compact).toContain('testId="workbench-file-menu"');
     expect(history).toContain('useHistoryShortcuts(undo, redo)');
     expect(history).toContain('data-history-presentation={presentation}');
     expect(shortcuts).toContain("key === 'z'");
@@ -225,7 +235,7 @@ describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
     expect(sha256(beforePreviewIsolation)).toBe('f6bead7d4fbc6f62582fe8c1de42f97a60330a2098e32728d4ea21e2ca69fb1b');
     // #653 adds a session-only Camera mode to this shell. Keep the historical
     // Quick/History/Tools ownership checks above, not a whole-file freeze.
-    expect(editorShell).toContain('<CompactProjectBar');
+    expect(editorShell).toContain('<WorkbenchCommandBar');
     expect(editorShell).toContain('<RightWorkspace');
     expect(editorShell).toContain('<TimelineDock');
     expect(editorShell).not.toContain('<BottomWorkspace');

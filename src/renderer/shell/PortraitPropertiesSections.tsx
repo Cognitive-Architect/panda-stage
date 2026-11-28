@@ -74,6 +74,7 @@ export function PortraitPropertiesSections({
         <summary>图层</summary>
         {!layerListDocked && <ShotLayerListPanel />}
         <LayerOrderControls
+          organizationDocked={layerListDocked}
           backgroundLayerSelected={backgroundLayerSelected}
           compact
           showLockControl

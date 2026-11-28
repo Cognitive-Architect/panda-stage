@@ -91,7 +91,7 @@ describe('UI-M2 adaptive EditorShell state', () => {
 
   it('keeps one production owner per docked panel and retains the assembly surface', () => {
     const shell = readSource('src/renderer/shell/EditorShell.tsx');
-    const bar = readSource('src/renderer/shell/CompactProjectBar.tsx');
+    const bar = readSource('src/renderer/shell/WorkbenchCommandBar.tsx');
     const switcher = readSource(
       'src/renderer/shell/AdaptiveWorkspaceSwitcher.tsx',
     );

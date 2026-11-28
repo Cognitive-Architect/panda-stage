@@ -1,76 +1,36 @@
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import {
-  QuickActionDrawer,
-  shouldRenderRestSaveState,
-  type CompactProjectSaveState,
-} from '../../src/renderer/shell/CompactProjectBar';
 import { migrateProject } from '../../src/domain';
-import type { EditorProjectSnapshot } from '../../src/renderer/stores/EditorProjectStore';
+import type { ProjectSaveState } from '../../src/renderer/shell/WorkbenchCommandBar';
 import exampleProject from '../../demo-project/project-v1.example.json';
-
-function source(path: string): string {
-  return readFileSync(path, 'utf8').replace(/\r\n/gu, '\n');
-}
+import { renderWorkbenchCommands } from '../helpers/render-workbench-commands';
 
 const project = migrateProject(exampleProject);
-const snapshot: EditorProjectSnapshot = {
-  projectRoot: 'D:\\PandaStage-Acceptance\\issue-470.pandastage',
-  project,
-  dirty: false,
-  revision: 0,
-};
 
-function renderDrawer(saveState: CompactProjectSaveState): string {
-  return renderToStaticMarkup(
-    createElement(QuickActionDrawer, {
-      busy: false,
-      closeConfirmOpen: false,
-      onOpenProductPreview: () => undefined,
-      onOpenProjectCenter: () => undefined,
-      onOpenProjectFolder: async () => undefined,
-      onRequestCloseProject: () => undefined,
-      onSaveProject: async () => undefined,
-      presentation: 'landscape',
-      productPreviewOpen: false,
-      projectSnapshot: {
-        ...snapshot,
-        dirty: saveState !== 'saved',
-      },
-      saveState,
-      status: 'Ready',
-    }),
-  );
+function render(saveState: ProjectSaveState, status = 'Ready'): string {
+  return renderWorkbenchCommands({
+    projectRoot: 'D:/PandaStage-Acceptance/commands.pandastage',
+    project,
+    dirty: saveState !== 'saved',
+    revision: 0,
+  }, { saveState, status });
 }
 
-describe('Issue #470 Quick Action Drawer save-state presentation', () => {
-  it('shows the rest-state only for collapsed transient save states', () => {
-    expect(shouldRenderRestSaveState(false, 'dirty')).toBe(false);
-    expect(shouldRenderRestSaveState(false, 'saving')).toBe(true);
-    expect(shouldRenderRestSaveState(false, 'failed')).toBe(true);
-    expect(shouldRenderRestSaveState(true, 'dirty')).toBe(false);
-    expect(shouldRenderRestSaveState(true, 'saving')).toBe(false);
-    expect(shouldRenderRestSaveState(true, 'failed')).toBe(false);
-    expect(shouldRenderRestSaveState(false, 'saved')).toBe(false);
-    expect(shouldRenderRestSaveState(true, 'saved')).toBe(false);
+describe('Workbench save command', () => {
+  it('disables a saved project and activates Save for a dirty project', () => {
+    const blocked = /<button(?=[^>]*data-testid="quick-action-save")(?=[^>]*disabled="")[^>]*>/u;
+    expect(render('saved')).toMatch(blocked);
+    expect(render('dirty')).not.toMatch(blocked);
+    expect(render('dirty')).toContain('aria-label="保存项目（有未保存更改）"');
+    expect(render('saved', '项目已保存。')).not.toContain('data-testid="editor-action-status"');
   });
 
-  it('keeps the in-drawer state and removes the duplicate external surface', () => {
-    const dirty = renderDrawer('dirty');
-    const saving = renderDrawer('saving');
-    const saved = renderDrawer('saved');
-    const drawer = source('src/renderer/shell/CompactProjectBar.tsx');
-
-    expect(dirty).not.toContain('data-testid="project-save-state"');
-    expect(dirty).not.toContain('data-testid="project-save-state-rest"');
-    expect(saving).toContain('data-testid="project-save-state"');
-    expect(saving).toContain('data-testid="project-save-state-rest"');
-    expect(saved).not.toContain('data-testid="project-save-state"');
-    expect(saved).not.toContain('data-testid="project-save-state-rest"');
-    expect(drawer).toContain(
-      'const showRestSaveState = !docked && shouldRenderRestSaveState(expanded, saveState);',
-    );
+  it('shows progress, prevents a duplicate save, and reports a retryable failure', () => {
+    const saving = render('saving');
+    const failed = render('failed', '保存失败：磁盘不可用。');
+    expect(saving).toMatch(/<button(?=[^>]*data-testid="quick-action-save")(?=[^>]*disabled="")(?=[^>]*aria-busy="true")[^>]*>/u);
+    expect(saving).toContain('role="status">保存中</output>');
+    expect(failed).toContain('aria-label="保存失败，重试保存"');
+    expect(failed).toContain('role="status">保存失败：磁盘不可用。</output>');
+    expect(failed).not.toMatch(/<button(?=[^>]*data-testid="quick-action-save")(?=[^>]*disabled="")[^>]*>/u);
   });
 });

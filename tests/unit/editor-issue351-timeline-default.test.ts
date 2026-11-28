@@ -80,7 +80,7 @@ describe('Issue #351 Timeline State A pending subtitles', () => {
     const styles = source('src/renderer/styles.css');
     const issue351 = styles.slice(
       styles.indexOf('/* Issue #351:'),
-      styles.indexOf('/* Issue #368:'),
+      styles.indexOf('/* Issue #358:'),
     );
     const portraitScope =
       ".editor-shell[data-editor-device-mode='cloud-touch'][data-editor-shell-layout='portrait']";
