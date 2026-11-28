@@ -2,7 +2,10 @@ import { useState } from 'react';
 import Konva from 'konva';
 import { FLA_STATIC_TEXT_LIMITS } from '../../../shared/fla-static-text';
 import {
+  composeAffineMatrix,
+  decomposeAffineMatrix,
   findFlaShapeTweenTrackForTarget,
+  isAffineMatrixTimelineRepresentable,
   listFlaShapeRegionVertices,
   resolveFlaGraphicInternalAuthoringState,
   resolveFlaGraphicTimelineTarget,
@@ -79,7 +82,15 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
   };
   const evaluatedMatrix = find(visual?.layers?.flatMap(layer => layer.nodes) ?? [])?.localTransform;
   const matrix = evaluatedMatrix ? unapplyFlaGraphicSubtreeViewBox(node, evaluatedMatrix) : node.localTransform;
-  const decomposition = new Konva.Transform([matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty]).decompose();
+  const decomposition = decomposeAffineMatrix(matrix);
+  // Progressive disclosure: the shear field only appears for a sheared node, so
+  // ordinary TRS nodes keep the historical five-field inspector.
+  const skewFieldVisible = decomposition.skewXDeg !== undefined;
+  // A base/instance matrix that is neither TRS-safe nor exactly decomposable
+  // (e.g. near-singular sheared source data) keeps the historical Konva skew
+  // composition so editing one field never silently drops its shear.
+  const legacySkewComposition =
+    !internal && !isAffineMatrixTimelineRepresentable(matrix);
   const editable = !target.layer.locked && flaGraphicNodeCanTransform(node) && (!internal || resolveFlaGraphicInternalAuthoringState({
     structure: target.animation.structure, frameOrdinal: scope.frameOrdinal, nodePath: path, internalTimeMs: internalTimeMs ?? 0, timelineAuthoringActive: true,
   }).canEditTransform);
@@ -142,21 +153,52 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
     vertexHandles[0] ??
     null;
 
+  const transformFields = [
+    ['x', 'X', decomposition.tx],
+    ['y', 'Y', decomposition.ty],
+    ['scaleX', '缩放 X %', decomposition.scaleX * 100],
+    ['scaleY', '缩放 Y %', decomposition.scaleY * 100],
+    ['rotation', '旋转 °', decomposition.rotationDeg],
+    ...(skewFieldVisible
+      ? [['skew', '斜切 °', decomposition.skewXDeg ?? 0] as const]
+      : []),
+  ] as const;
+  const transformFieldNames = transformFields.map(([name]) => name);
+
   const commit = (form: HTMLFormElement) => {
     if (!editable) return;
     const values = new FormData(form);
-    const originals = [decomposition.x, decomposition.y, decomposition.scaleX * 100, decomposition.scaleY * 100, decomposition.rotation];
-    const numbers = ['x', 'y', 'scaleX', 'scaleY', 'rotation'].map((key, index) => {
+    const originals = transformFields.map(([, , value]) => value);
+    const numbers = transformFieldNames.map((key, index) => {
       const raw = String(values.get(key) ?? '').trim();
+      if (!raw && key === 'skew') return originals[index]!;
       const number = raw ? Number(raw) : NaN;
       return number === Number(originals[index]!.toFixed(3)) ? originals[index]! : number;
     });
     if (!numbers.every(Number.isFinite)) { setError('请输入有效数值。'); return; }
-    const [x, y, scaleX, scaleY, rotation] = numbers as [number, number, number, number, number];
-    const transform = new Konva.Transform(); transform.translate(x, y); transform.rotate(rotation * Math.PI / 180);
-    transform.skew(decomposition.skewX, decomposition.skewY); transform.scale(scaleX / 100, scaleY / 100);
-    const [a, b, c, d, tx, ty] = transform.getMatrix() as [number, number, number, number, number, number];
-    const next = { a, b, c, d, tx, ty };
+    const [x, y, scaleX, scaleY, rotation, skew = 0] = numbers as [number, number, number, number, number, number?];
+    let next: { a: number; b: number; c: number; d: number; tx: number; ty: number };
+    if (legacySkewComposition) {
+      const konvaDecomposition = new Konva.Transform([
+        matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty,
+      ]).decompose();
+      const transform = new Konva.Transform();
+      transform.translate(x, y);
+      transform.rotate(rotation * Math.PI / 180);
+      transform.skew(konvaDecomposition.skewX, konvaDecomposition.skewY);
+      transform.scale(scaleX / 100, scaleY / 100);
+      const [a, b, c, d, tx, ty] = transform.getMatrix() as [number, number, number, number, number, number];
+      next = { a, b, c, d, tx, ty };
+    } else {
+      next = composeAffineMatrix({
+        tx: x,
+        ty: y,
+        rotationDeg: rotation,
+        scaleX: scaleX / 100,
+        scaleY: scaleY / 100,
+        ...(skewFieldVisible || skew !== 0 ? { skewXDeg: skew } : {}),
+      });
+    }
     if (Object.keys(next).every(key => Math.abs(next[key as keyof typeof next] - matrix[key as keyof typeof matrix]) < 1e-9)) return;
     try {
       if (scope.editMode === 'instance') layerStore.updateFlaGraphicInstanceTransform(target.layerId, scope.frameOrdinal, path, next);
@@ -323,7 +365,7 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
       onSubmit={event => { event.preventDefault(); commit(event.currentTarget); }}
       onBlur={event => { if (event.target instanceof HTMLInputElement) commit(event.currentTarget); }}>
       <fieldset disabled={!editable}>
-        {([['x', 'X', decomposition.x], ['y', 'Y', decomposition.y], ['scaleX', '缩放 X %', decomposition.scaleX * 100], ['scaleY', '缩放 Y %', decomposition.scaleY * 100], ['rotation', '旋转 °', decomposition.rotation]] as const).map(([name, label, value]) =>
+        {transformFields.map(([name, label, value]) =>
           <label key={name}>{label}<input aria-label={label} name={name} type="number" step="any" defaultValue={Number(value.toFixed(3))} /></label>)}
       </fieldset>
     </form>

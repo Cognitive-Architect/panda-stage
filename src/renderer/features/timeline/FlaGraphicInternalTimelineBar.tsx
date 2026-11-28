@@ -489,8 +489,10 @@ export function FlaGraphicInternalTimelineBar({
           ) : (
             <span data-testid="fla-internal-readonly-node">
               {target?.authoringCapability === 'readonly-trs-unsafe'
-                ? '当前节点含倾斜变换（只读）'
-                : '当前节点不可建轨（只读）'}
+                ? '当前节点变换含退化或无法无损分解的分量（只读）'
+                : target?.authoringCapability === 'readonly-affine-unsafe'
+                  ? '相邻关键帧缩放方向相反，补间会经过退化帧（只读）'
+                  : '当前节点不可建轨（只读）'}
             </span>
           )
         ) : (

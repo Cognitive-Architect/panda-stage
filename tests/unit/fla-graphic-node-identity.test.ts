@@ -348,7 +348,7 @@ describe('FLA Graphic cross-frame node identity aliases (#1450)', () => {
     expect(listFlaGraphicIdentityAmbiguities(structure, 9)).toEqual([]);
   });
 
-  it('keeps the authoring capability and reason honest for unaliased, aliased, and TRS-unsafe nodes', () => {
+  it('keeps the authoring capability and reason honest for unaliased, aliased, and complex-affine nodes', () => {
     const structure = multiFrameStructure();
     const ambiguousState = resolveFlaGraphicInternalAuthoringState({
       structure,
@@ -442,9 +442,13 @@ describe('FLA Graphic cross-frame node identity aliases (#1450)', () => {
       internalTimeMs: 0,
       timelineAuthoringActive: true,
     });
-    expect(shearState.authoringCapability).toBe('readonly-trs-unsafe');
-    expect(shearState.reason).toBe('trs-unsafe-readonly');
-    expect(shearState.canAddKeyframe).toBe(false);
+    // #1451: a losslessly decomposable shear is now authorable as an affine key,
+    // not locally read-only.
+    expect(shearState.authoringCapability).toBe('editable');
+    expect(shearState.reason).toBe('no-key-readonly');
+    expect(shearState.canAddKeyframe).toBe(true);
+    expect(shearState.target?.trsSafe).toBe(false);
+    expect(shearState.target?.affineDecomposable).toBe(true);
     expect(shearState.target?.identitySource).toBe('alias');
   });
 

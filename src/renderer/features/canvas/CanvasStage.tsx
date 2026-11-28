@@ -742,10 +742,12 @@ export function CanvasStage({
           if (!authoringState.canEditTransform) {
             setInteractionStatus(
               authoringState.reason === 'trs-unsafe-readonly'
-                ? '当前节点包含倾斜变换，内部时间轴暂不支持编辑。'
-                : authoringState.reason === 'identity-readonly'
-                  ? '当前节点无稳定身份，请先在元件内部时间轴建立节点关联。'
-                  : '当前时间点没有关键帧，请先添加关键帧后再编辑。',
+                ? '当前节点变换含退化或无法无损分解的分量，内部时间轴暂不支持编辑。'
+                : authoringState.reason === 'affine-unsafe-readonly'
+                  ? '相邻关键帧缩放方向相反，补间会经过退化帧，暂不支持编辑。'
+                  : authoringState.reason === 'identity-readonly'
+                    ? '当前节点无稳定身份，请先在元件内部时间轴建立节点关联。'
+                    : '当前时间点没有关键帧，请先添加关键帧后再编辑。',
             );
             return;
           }
