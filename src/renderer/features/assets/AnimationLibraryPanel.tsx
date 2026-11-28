@@ -432,11 +432,13 @@ export function AnimationLibraryCard({
     </div>
   ) : null;
 
+  const chooseCard = onSelect ?? openPreview;
   return (
     <>
       <article
-        aria-haspopup="dialog"
-        aria-label={`${animation.name}，${animation.frames.length} 帧，${formatDuration(animation.durationMs)}，打开预览`}
+        aria-haspopup={onSelect ? undefined : "dialog"}
+        aria-pressed={onSelect ? Boolean(selected) : undefined}
+        aria-label={`${animation.name}，${animation.frames.length} 帧，${formatDuration(animation.durationMs)}${onSelect ? "" : "，打开预览"}`}
         className={"asset-card animation-library-card" + (selected ? " asset-card-selected" : "")}
         onDoubleClick={onActivate}
         onContextMenu={onContext ? event => { event.preventDefault(); onContext(); } : undefined}
@@ -450,8 +452,7 @@ export function AnimationLibraryCard({
             draggedCardRef.current = false;
             return;
           }
-          if (onSelect) onSelect();
-          else openPreview();
+          chooseCard();
         }}
         onDragStart={(event) => {
           draggedCardRef.current = true;
@@ -494,7 +495,7 @@ export function AnimationLibraryCard({
           if (event.target !== event.currentTarget) return;
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
-            openPreview();
+            chooseCard();
           }
         }}
         ref={cardRef}

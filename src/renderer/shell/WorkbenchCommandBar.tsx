@@ -2,7 +2,7 @@ import { useEffect, type ReactNode } from 'react';
 import * as Menu from '@radix-ui/react-dropdown-menu';
 import { Download, LoaderCircle, Play, Redo2, Save, Undo2 } from 'lucide-react';
 import { useHistoryCommands } from '../features/editor/HistoryControls';
-import { isEditableKeyboardTarget } from '../features/properties/LayerOrderControls';
+import { isEditableKeyboardTarget, isMenuOrModalKeyboardTarget } from '../features/properties/LayerOrderControls';
 import { formatTimecode } from '../features/timeline/timeGeometry';
 import { useTimelineUi } from '../features/timeline/timelineUiStore';
 import type { EditorProjectSnapshot } from '../stores/EditorProjectStore';
@@ -82,7 +82,7 @@ export function WorkbenchCommandBar({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.altKey || event.shiftKey || event.repeat ||
         (!event.ctrlKey && !event.metaKey) || isEditableKeyboardTarget(event.target) ||
-        event.target instanceof Element && event.target.closest('[role="menu"], [aria-modal="true"]')) return;
+        isMenuOrModalKeyboardTarget(event.target)) return;
       const key = event.key.toLowerCase();
       if (key === 's' && !saveDisabled) {
         event.preventDefault();

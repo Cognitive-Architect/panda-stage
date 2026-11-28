@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { isEditableKeyboardTarget } from '../properties/LayerOrderControls';
+import { isEditableKeyboardTarget, isMenuOrModalKeyboardTarget } from '../properties/LayerOrderControls';
 
 export type HistoryShortcut = 'undo' | 'redo' | null;
 
@@ -20,7 +20,7 @@ export function resolveHistoryShortcut(
     event.altKey ||
     (!event.ctrlKey && !event.metaKey) ||
     isEditableKeyboardTarget(event.target) ||
-    (typeof Element !== 'undefined' && event.target instanceof Element && event.target.closest('[role="menu"], [aria-modal="true"]'))
+    isMenuOrModalKeyboardTarget(event.target)
   ) {
     return null;
   }

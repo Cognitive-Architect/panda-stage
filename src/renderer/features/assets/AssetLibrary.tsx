@@ -137,7 +137,7 @@ export function AssetLibrary({
   );
   const [workbenchCategory, setWorkbenchCategory] = useState<WorkbenchAssetFilter>('character');
   const [viewOverride, setViewOverride] = useState<'grid' | 'list' | null>(null);
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [itemSelection, setItemSelection] = useState<{ id: string; projectIdentity: string } | null>(null);
   const [itemMenuOpen, setItemMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [usageFilter, setUsageFilter] =
@@ -224,8 +224,9 @@ export function AssetLibrary({
     void flaInspectionLifecycle.current?.cancel();
   }, []);
 
+  const projectInstanceId = editorProjectStore.getProjectInstanceId();
   const projectIdentity = JSON.stringify([
-    liveSnapshot?.projectRoot, liveSnapshot?.project.id, editorProjectStore.getProjectInstanceId(),
+    liveSnapshot?.projectRoot, liveSnapshot?.project.id, projectInstanceId,
   ]);
   const previousProjectIdentity = useRef(projectIdentity);
   useEffect(() => {
@@ -344,6 +345,15 @@ export function AssetLibrary({
         : visibleItems,
     [currentPage, isPortraitBrowser, visibleItems],
   );
+  const currentItem = itemSelection?.projectIdentity === projectIdentity
+    ? pageItems.find(item => item.id === itemSelection.id)
+    : undefined;
+  useEffect(() => {
+    if (view !== 'browser' || currentItem) return;
+    setItemSelection(null);
+    setItemMenuOpen(false);
+  }, [currentItem, view]);
+
   const pageEntries = useMemo(
     () => pageItems.flatMap((item) => item.kind === 'asset' ? [item.entry] : []),
     [pageItems],
@@ -433,7 +443,6 @@ export function AssetLibrary({
 
   const chooseWorkbenchCategory = (next: WorkbenchAssetFilter) => {
     if (!clearSelectedAsset()) return;
-    setSelectedItemId(null);
     setWorkbenchCategory(next);
     setViewOverride(null);
     setCategory(next === 'audio' || next === 'animation' ? next : 'all');
@@ -655,7 +664,16 @@ export function AssetLibrary({
   );
 
   const display = viewOverride ?? (workbenchCategory === 'audio' || workbenchCategory === 'actions' ? 'list' : 'grid');
-  const currentItem = visibleItems.find(item => item.id === selectedItemId);
+  const isCurrentLibraryProject = () => {
+    const current = editorProjectStore.getSnapshot();
+    return current && snapshot && current.projectRoot === snapshot.projectRoot &&
+      current.project.id === snapshot.project.id && editorProjectStore.getProjectInstanceId() === projectInstanceId;
+  };
+  const selectItem = (item: AssetLibraryItem, openContextMenu = false) => {
+    if (view !== 'browser' || !isCurrentLibraryProject() || !pageItems.some(candidate => candidate.id === item.id)) return;
+    setItemSelection({ id: item.id, projectIdentity });
+    if (openContextMenu) setItemMenuOpen(true);
+  };
   const placementReason = (item: AssetLibraryItem, atStart = playheadAtStart): string | undefined => {
     if (!shotStore.getCurrentShotId()) return '请先选择镜头';
     if (item.kind === 'asset' && item.entry.asset.kind === 'video') return '视频可在素材详情中查看';
@@ -663,7 +681,7 @@ export function AssetLibrary({
     return undefined;
   };
   const activateItem = (item: AssetLibraryItem) => {
-    if (busy || !snapshot) return;
+    if (busy || view !== 'browser' || !isCurrentLibraryProject() || !pageItems.some(candidate => candidate.id === item.id)) return;
     const currentTimeMs = timelineUiStore.getSnapshot().currentTimeMs;
     const disabledReason = placementReason(item, currentTimeMs === 0);
     if (disabledReason) { setStatus(disabledReason); return; }
@@ -928,11 +946,10 @@ export function AssetLibrary({
     setCategory(hideHeading ? 'all' : 'background');
   }, [hideHeading]);
 
-  const previousProjectRoot = useRef(snapshot?.projectRoot);
+  const detailsProjectIdentity = useRef(projectIdentity);
   useEffect(() => {
-    const previousProject = previousProjectRoot.current;
-    previousProjectRoot.current = snapshot?.projectRoot;
-    if (previousProject !== snapshot?.projectRoot) {
+    if (detailsProjectIdentity.current !== projectIdentity) {
+      detailsProjectIdentity.current = projectIdentity;
       setCategory(hideHeading ? 'all' : 'background');
       setSearchQuery('');
       setUsageFilter('all');
@@ -941,17 +958,12 @@ export function AssetLibrary({
       setSelectedAssetId(null);
       setSelectedDetailsOpen(false);
       setAuthoritativeReferences([]);
+      setHasUnsavedMetadata(false);
       setMetadataErrors({});
+      lastOpenedAssetId.current = null;
+      onViewChange('browser');
     }
-    if (previousProject !== snapshot?.projectRoot && flaReviewOpen) {
-      closeFlaReview();
-    }
-  }, [
-    closeFlaReview,
-    flaReviewOpen,
-    hideHeading,
-    snapshot?.projectRoot,
-  ]);
+  }, [hideHeading, onViewChange, projectIdentity]);
 
   return (
     <section
@@ -1247,10 +1259,10 @@ export function AssetLibrary({
                 project={snapshot.project}
                 projectRoot={snapshot.projectRoot}
                 display={compactImport ? display : undefined}
-                selectedItemId={selectedItemId}
-                onItemSelect={compactImport ? item => setSelectedItemId(item.id) : undefined}
+                selectedItemId={currentItem?.id}
+                onItemSelect={compactImport ? selectItem : undefined}
                 onItemActivate={compactImport ? activateItem : undefined}
-                onItemContext={compactImport ? item => { setSelectedItemId(item.id); setItemMenuOpen(true); } : undefined}
+                onItemContext={compactImport ? item => selectItem(item, true) : undefined}
                 draggingAssetId={draggingAssetId}
                 onDragEnd={() => {
                   setDraggingAssetId(null);
@@ -1355,7 +1367,7 @@ export function AssetLibrary({
                 <Menu.Trigger asChild><Button variant="secondary" disabled={!currentItem}>素材操作</Button></Menu.Trigger>
                 <Menu.Portal><Menu.Content className="workbench-menu">
                   <Menu.Item disabled={!currentItem || busy || Boolean(currentItem && placementReason(currentItem))} onSelect={() => currentItem && activateItem(currentItem)}>放入镜头</Menu.Item>
-                  <Menu.Item disabled={currentItem?.kind !== "asset"} onSelect={() => currentItem?.kind === "asset" && selectAsset(currentItem.entry.asset.id)}>素材详情</Menu.Item>
+                  <Menu.Item disabled={currentItem?.kind !== "asset"} onSelect={() => currentItem?.kind === "asset" && isCurrentLibraryProject() && selectAsset(currentItem.entry.asset.id)}>素材详情</Menu.Item>
                 </Menu.Content></Menu.Portal>
               </Menu.Root>
               <Button disabled={!currentItem || busy || Boolean(currentItem && placementReason(currentItem))}

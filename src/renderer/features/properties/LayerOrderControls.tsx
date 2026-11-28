@@ -30,6 +30,11 @@ export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   );
 }
 
+export function isMenuOrModalKeyboardTarget(target: EventTarget | null): boolean {
+  return typeof Element !== 'undefined' && target instanceof Element &&
+    Boolean(target.closest('[role="menu"], [aria-modal="true"], dialog[open], [inert]'));
+}
+
 export function shouldDeleteSelectedLayer(
   event: Pick<KeyboardEvent, 'key' | 'target' | 'defaultPrevented'>,
   selectedLayerId: string | null,
@@ -40,7 +45,8 @@ export function shouldDeleteSelectedLayer(
     !backgroundLayerSelected &&
     !event.defaultPrevented &&
     (event.key === 'Delete' || event.key === 'Backspace') &&
-    !isEditableKeyboardTarget(event.target)
+    !isEditableKeyboardTarget(event.target) &&
+    !isMenuOrModalKeyboardTarget(event.target)
   );
 }
 
@@ -200,6 +206,12 @@ export function LayerOrderControls({
       ) {
         return;
       }
+      // Window listeners still see keys during modal focus handoff, when the target can be body.
+      const modalOpen = Array.from(document.querySelectorAll('[aria-modal="true"], dialog[open]')).some(
+        modal => !modal.closest('[inert], [hidden]') && modal.getClientRects().length > 0 &&
+          window.getComputedStyle(modal).visibility === 'visible',
+      );
+      if (modalOpen) return;
       event.preventDefault();
       deleteLayer();
     };

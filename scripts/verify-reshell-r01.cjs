@@ -19,12 +19,12 @@ app.setPath('userData', profile);
 process.env.VITE_DEV_SERVER_URL = '';
 const { LayerMotionService, LayerService, migrateProject, ProjectSchema, ShotService } = require(path.join(root, 'dist-electron/domain/index.js'));
 const example = migrateProject(require(path.join(root, 'demo-project/project-v1.example.json')));
-const regression = ['commands', 'dialogue-drop', 'curve-visibility', 'tools-visibility', 'inspector-focus'].includes(phase);
+const regression = ['r02-regression', 'commands', 'dialogue-drop', 'curve-visibility', 'tools-visibility', 'inspector-focus'].includes(phase);
 const pandaLayerId = '60000000-0000-4000-8000-000000000002';
 const pendingId = '80000000-0000-4000-8000-000000000002';
 let project = ProjectSchema.parse({
   ...example,
-  shots: regression && phase !== 'commands' ? example.shots.map((shot, i) => i === 0 ? {
+  shots: regression && !['commands', 'r02-regression'].includes(phase) ? example.shots.map((shot, i) => i === 0 ? {
     ...shot,
     layers: [...shot.layers, { ...shot.layers.find(layer => layer.id === pandaLayerId), id: '60000000-0000-4000-8000-000000000003', name: 'Parent candidate', zIndex: 2 }],
     dialogues: [...shot.dialogues, { ...shot.dialogues[0], id: pendingId, startMs: 0, endMs: 0, audioClipId: undefined, text: 'R01 pending subtitle' }],
@@ -41,7 +41,7 @@ if (phase === 'commands') {
 }
 let curveLayerId;
 let curveFrameSvg;
-if (phase === 'curve-visibility' || phase === 'tools-visibility') {
+if (['curve-visibility', 'tools-visibility', 'r02-regression'].includes(phase)) {
   const animationId = '91000000-0000-4000-8000-000000001429';
   const frameId = '92000000-0000-4000-8000-000000001429';
   const size = { width: 160, height: 120 };
@@ -58,18 +58,37 @@ if (phase === 'curve-visibility' || phase === 'tools-visibility') {
       frames: [{ ordinal: 0, sourceFrameIndex: 0, assetId: frameId, sha256, sourceViewport: { ...origin, ...size }, offset: origin, startMs: 0, durationMs, createdBySequenceImport: false }],
     }],
   });
-  const shotId = project.shots[0].id;
-  const placed = new LayerService().createFromAnimation(project, shotId, { animationId, position: { x: 500, y: 350 }, startTimeMs: 0 });
-  project = placed.project;
-  curveLayerId = placed.layer.id;
-  const motion = new LayerMotionService();
-  for (const [timeMs, offset] of [[0, 0], [1000, 400]]) {
-    project = motion.applyKeys(project, { shotId, layerId: curveLayerId, timeMs }, { 'transform.offsetX': offset });
+  if (phase !== 'r02-regression') {
+    const shotId = project.shots[0].id;
+    const placed = new LayerService().createFromAnimation(project, shotId, { animationId, position: { x: 500, y: 350 }, startTimeMs: 0 });
+    project = placed.project;
+    curveLayerId = placed.layer.id;
+    const motion = new LayerMotionService();
+    for (const [timeMs, offset] of [[0, 0], [1000, 400]]) {
+      project = motion.applyKeys(project, { shotId, layerId: curveLayerId, timeMs }, { 'transform.offsetX': offset });
+    }
   }
+}
+if (phase === 'r02-regression') {
+  const source = nativeImage.createFromPath(path.join(root, 'demo-project/assets/bamboo-background.png'));
+  const assets = Array.from({ length: 10 }, (_, index) => {
+    const name = 'PageFixture' + String(index).padStart(2, '0');
+    const image = source.resize({ width: 48 + index });
+    const bytes = image.toPNG();
+    const relativePath = 'assets/' + name + '.png';
+    fs.mkdirSync(path.join(projectRoot, 'assets'), { recursive: true });
+    fs.writeFileSync(path.join(projectRoot, relativePath), bytes);
+    return { id: '94000000-0000-4000-8000-' + String(index).padStart(12, '0'), name, kind: 'image', relativePath,
+      mimeType: 'image/png', ...image.getSize(), usage: index === 9 ? 'effect' : 'prop', keywords: [], sha256: createHash('sha256').update(bytes).digest('hex') };
+  });
+  project = ProjectSchema.parse({ ...project, assets: [...project.assets, ...assets] });
 }
 fs.writeFileSync(path.join(projectRoot, 'project.json'), JSON.stringify(project));
 fs.cpSync(path.join(root, 'demo-project/assets'), path.join(projectRoot, 'assets'), { recursive: true });
 if (curveFrameSvg) fs.writeFileSync(path.join(projectRoot, 'assets/r01-curve-frame.svg'), curveFrameSvg);
+const secondProjectRoot = path.join(acceptance, 'second.pandastage');
+if (phase === 'r02-regression') fs.cpSync(projectRoot, secondProjectRoot, { recursive: true });
+let chooserProjectRoot = projectRoot;
 const chooserCalls = [];
 let cancelProjectChooser = false;
 const importedFile = path.join(acceptance, 'R02 imported.png');
@@ -89,7 +108,7 @@ dialog.showOpenDialog = async (...args) => {
   const options = args.at(-1);
   chooserCalls.push(options);
   return options.properties?.includes('openDirectory')
-    ? { canceled: cancelProjectChooser, filePaths: cancelProjectChooser ? [] : [projectRoot] }
+    ? { canceled: cancelProjectChooser, filePaths: cancelProjectChooser ? [] : [chooserProjectRoot] }
     : phase === 'commands' && options.properties?.includes('multiSelections')
       ? { canceled: false, filePaths: [importedFile] }
       : { canceled: true, filePaths: [] };
@@ -217,6 +236,42 @@ const editingState = () => js(() => ({
 }));
 const screenshot = async name => fs.writeFileSync(path.join(acceptance, name), (await win.webContents.capturePage()).toPNG());
 
+async function clickText(selector, text) {
+  const point = await waitFor((sel, value) => {
+    const el = [...document.querySelectorAll(sel)].find(node => node.textContent.trim() === value && node.getClientRects().length);
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    return { x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2) };
+  }, selector, text);
+  for (const type of ['mouseMove', 'mouseDown', 'mouseUp']) win.webContents.sendInputEvent({ type, ...point, button: 'left', clickCount: 1 });
+  await delay(180);
+}
+
+async function waitForOpeningPaint() {
+  return waitFor(() => {
+    const viewport = document.querySelector('[data-testid="project-canvas-viewport"]');
+    const stage = document.querySelector('[data-testid="project-canvas-stage"]');
+    const bounds = viewport?.getBoundingClientRect();
+    const scale = Number(viewport?.dataset.displayScale);
+    if (!(bounds?.width > 0 && bounds.height > 0 && scale > 0) || stage?.dataset.backgroundReady !== 'true') return false;
+    const painted = [...stage.querySelectorAll('.konvajs-content canvas')].some(canvas => {
+      if (!canvas.width || !canvas.height) return false;
+      const [r, g, b, a] = canvas.getContext('2d').getImageData(
+        Math.floor(canvas.width / 5), Math.floor(canvas.height / 5), 1, 1,
+      ).data;
+      return a > 0 && g > r && g > b;
+    });
+    if (!painted) return false;
+    const cards = [...document.querySelectorAll('.asset-grid .asset-card[data-asset-kind="image"]')].slice(0, 2);
+    if (cards.length < 2 || !cards.every(card => {
+      const image = card.querySelector('img');
+      return (image?.complete && image.naturalWidth > 0) || Boolean(card.querySelector('[data-thumbnail-status="missing"]'));
+    })) return false;
+    return { scale, width: bounds.width, height: bounds.height, thumbnails: cards.map(card =>
+      card.querySelector('img')?.naturalWidth > 0 ? 'decoded' : 'missing') };
+  });
+}
+
 async function run() {
   await app.whenReady();
   for (let i = 0; i < 100 && !win; i++) {
@@ -258,6 +313,161 @@ async function run() {
   const panels = await js(() => [...document.querySelectorAll('.dv-tab')].map(el => el.textContent.trim()));
   console.log('panels:', JSON.stringify(panels));
 
+  if (phase === 'r02-regression') {
+    const row = id => '[data-testid="layer-list-row-' + id + '"]';
+    const file = '[data-testid="workbench-file-menu"]';
+    const openFileAction = async label => { await click(file); await clickText('[role="menuitem"]', label); };
+    const pickCategory = label => clickText('nav[aria-label="素材分类"] button', label);
+    const filter = '[placeholder="搜索素材"]';
+    const footer = '.workbench-asset-footer button';
+    const visibleCards = () => js(() => [...document.querySelectorAll('.asset-grid [data-asset-id]')].map(card => card.dataset.assetId));
+    const selected = () => js(() => document.querySelector('.asset-grid [aria-pressed="true"]')?.dataset.assetId);
+    const commandsDisabled = () => js(() => [...document.querySelectorAll('.workbench-asset-footer button')]
+      .filter(button => ['放入镜头', '素材操作'].includes(button.textContent.trim())).every(button => button.disabled));
+    const enterText = async (selector, value) => {
+      await click(selector);
+      await js(sel => document.querySelector(sel).select(), selector);
+      await win.webContents.insertText(value);
+      await delay(180);
+    };
+
+    await click(row(pandaLayerId) + ' .workbench-layer-name');
+    const beforeModal = await editingState();
+    await openFileAction('新建项目…');
+    await waitFor(() => Boolean(document.querySelector('[data-testid="new-project-dialog"]')));
+    const nameInput = '[data-testid="new-project-name"]';
+    await enterText(nameInput, 'XY');
+    await pressKey('Backspace');
+    assert.equal(await js(sel => document.querySelector(sel).value, nameInput), 'X');
+    await js(() => document.querySelector('[data-testid="new-project-cancel"]').focus());
+    for (const keyCode of ['Delete', 'Backspace']) await pressKey(keyCode);
+    assert.deepEqual(await editingState(), beforeModal);
+    await click('[data-testid="new-project-cancel"]');
+    assert.deepEqual(await editingState(), beforeModal);
+    await click(file);
+    await waitFor(() => Boolean(document.activeElement.closest('[role="menu"]')));
+    for (const keyCode of ['Delete', 'Backspace']) await pressKey(keyCode);
+    assert.deepEqual(await editingState(), beforeModal);
+    await pressKey('Escape');
+    await openFileAction('导出设置… Ctrl+M');
+    await waitFor(() => document.querySelector('[data-testid="export-options-dialog"]')?.open);
+    await js(() => document.querySelector('[data-testid="export-options-dialog"] button[type="button"]').focus());
+    await pressKey('Delete');
+    assert.deepEqual(await editingState(), beforeModal);
+    await pressKey('Escape');
+    await click(row(pandaLayerId) + ' .workbench-layer-name');
+    await pressKey('Delete');
+    await waitFor(sel => !document.querySelector(sel), row(pandaLayerId));
+    assert.equal((await editingState()).undo, '1');
+    await click('[aria-label="撤销"]');
+    await waitFor(sel => Boolean(document.querySelector(sel)), row(pandaLayerId));
+    await click('[aria-label="重做"]');
+    await waitFor(sel => !document.querySelector(sel), row(pandaLayerId));
+    await click('[aria-label="撤销"]');
+    console.log('1462 modal, menu, text input, layer delete, undo, redo passed');
+
+    await pickCategory('道具');
+    const firstPage = await visibleCards();
+    assert.equal(firstPage.length, 8);
+    await click('[data-asset-id="' + firstPage[0] + '"]');
+    assert.equal(await selected(), firstPage[0]);
+    const beforePage = await editingState();
+    await click('[aria-label="下一页"]');
+    const secondPage = await visibleCards();
+    assert(secondPage.length > 0 && !secondPage.includes(firstPage[0]));
+    assert.equal(await selected(), undefined);
+    assert(await commandsDisabled());
+    assert.deepEqual(await editingState(), beforePage);
+    const itemB = secondPage[0];
+    const assetB = project.assets.find(asset => asset.id === itemB);
+    await click('[data-asset-id="' + itemB + '"]');
+    await clickText(footer, '放入镜头');
+    const created = await js(() => JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]').dataset.layerJson).find(layer => layer.source.assetId && layer.name.startsWith('PageFixture')));
+    assert.equal(created?.source.assetId, itemB);
+    assert.equal(Number((await editingState()).undo), Number(beforePage.undo) + 1);
+    await click('[aria-label="撤销"]');
+    await enterText(filter, assetB.name);
+    assert.equal(await selected(), itemB, 'search keeps an item that remains on the current page');
+    await clickText(footer, '素材操作');
+    await clickText('[role="menuitem"]', '素材详情');
+    await waitFor(() => Boolean(document.querySelector('[data-testid="asset-details-dialog"]')));
+    await enterText('[data-testid="asset-author-name"] input', 'Uncommitted');
+    await js(() => { window.originalR02Confirm = window.confirm; window.confirm = () => false; });
+    await pressKey('Escape');
+    assert.equal(await js(() => document.querySelector('[data-testid="asset-author-name"] input').value), 'Uncommitted');
+    await js(() => { window.confirm = () => true; });
+    await pressKey('Escape');
+    await js(() => { window.confirm = window.originalR02Confirm; });
+    assert.equal(await selected(), itemB);
+    await enterText(filter, 'NoMatch');
+    assert(await commandsDisabled());
+    await click('[title="清除搜索"]');
+    assert(await commandsDisabled(), 'a hidden selection does not return');
+    await click('[data-asset-id="' + firstPage[0] + '"]');
+    await click('[data-testid="asset-library-usage-filter"]');
+    await click('[data-usage-filter-value="effect"]');
+    assert(await commandsDisabled());
+    await pickCategory('背景');
+    assert(await commandsDisabled());
+    await pickCategory('道具');
+    const remove = firstPage[0];
+    await click('[data-asset-id="' + remove + '"]');
+    await clickText(footer, '素材操作');
+    await clickText('[role="menuitem"]', '素材详情');
+    await click('.asset-details-more > summary');
+    await js(() => { window.originalR02Confirm = window.confirm; window.confirm = () => true; });
+    await click('.asset-details-delete-action');
+    await waitFor(() => !document.querySelector('[data-testid="asset-details-dialog"]'));
+    await js(() => { window.confirm = window.originalR02Confirm; });
+    assert(!(await visibleCards()).includes(remove));
+    assert(await commandsDisabled());
+    console.log('1462 page selection, formal placement, search, use filter, category, metadata draft and removal passed');
+
+    const card = '[data-testid="animation-library-card"]';
+    for (const keyCode of ['Enter', 'Space']) {
+      await pickCategory('背景');
+      await js(() => {
+        const category = document.querySelector('select[aria-label="其他素材分类"]');
+        category.value = 'animation';
+        category.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await waitFor(selector => document.querySelector(selector)?.getAttribute('aria-pressed') === 'false', card);
+      await js(selector => document.querySelector(selector).focus(), card);
+      await pressKey(keyCode);
+      assert.equal(await js(selector => document.querySelector(selector).getAttribute('aria-pressed'), card), 'true');
+      assert.equal(await js(() => Boolean(document.querySelector('[data-testid="animation-preview-dialog"]'))), false);
+    }
+    await pressKey('Tab');
+    await waitFor(() => document.activeElement.matches('.workbench-animation-preview'));
+    await pressKey('Space');
+    await waitFor(() => Boolean(document.querySelector('[data-testid="animation-preview-dialog"]')));
+    await pressKey('Escape');
+    await waitFor(() => !document.querySelector('[data-testid="animation-preview-dialog"]'));
+    const beforeAnimation = Number((await editingState()).undo);
+    await clickText(footer, '放入镜头');
+    await waitFor(count => Number(document.querySelector('[data-testid="history-controls"]').dataset.undoCount) === count + 1, beforeAnimation);
+    const origin = await pointInside(card);
+    const target = await pointInside('.konvajs-content', 0.65);
+    await dragDockTab(origin.x, origin.y, target.x, target.y);
+    await waitFor(count => Number(document.querySelector('[data-testid="history-controls"]').dataset.undoCount) === count + 2, beforeAnimation);
+    console.log('1462 Graphic keyboard selection, separate preview, placement and drag passed');
+
+    await click('[data-testid="quick-action-save"]');
+    await waitFor(() => document.querySelector('[data-testid="quick-action-save"]').dataset.saveState === 'saved');
+    await pickCategory('道具');
+    const sharedAssetId = (await visibleCards())[0];
+    await click('[data-asset-id="' + sharedAssetId + '"]');
+    assert.equal(await selected(), sharedAssetId);
+    chooserProjectRoot = secondProjectRoot;
+    await openFileAction('打开项目…');
+    await waitFor(() => document.querySelector('[data-testid="history-controls"]')?.dataset.undoCount === '0');
+    await pickCategory('道具');
+    assert((await visibleCards()).includes(sharedAssetId));
+    assert(await commandsDisabled());
+    assert.equal(await selected(), undefined);
+    console.log('1462 project switch clears the selection even when the same asset ID exists');
+    return;
+  }
   if (phase === 'commands') {
     const file = '[data-testid="workbench-file-menu"]';
     const row = id => '[data-testid="layer-list-row-' + id + '"]';
@@ -270,18 +480,9 @@ async function run() {
       }, label, text);
       await delay(150);
     };
-    const clickText = async (selector, text) => {
-      const point = await waitFor((sel, value) => {
-        const el = [...document.querySelectorAll(sel)].find(node => node.textContent.trim() === value && node.getClientRects().length);
-        if (!el) return false;
-        const rect = el.getBoundingClientRect();
-        return { x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2) };
-      }, selector, text);
-      for (const type of ['mouseMove', 'mouseDown', 'mouseUp']) win.webContents.sendInputEvent({ type, ...point, button: 'left', clickCount: 1 });
-      await delay(180);
-    };
-    await waitFor(() => document.querySelector('.konvajs-content canvas')?.width > 100);
-    await delay(600);
+    const opening = await waitForOpeningPaint();
+    assert.deepEqual(opening.thumbnails, ['decoded', 'decoded']);
+    console.log('Opening ready', opening);
     await screenshot('opening.png');
     const originalShot = (await editingState()).shot;
     await select('切换镜头', 'Command fixture');
