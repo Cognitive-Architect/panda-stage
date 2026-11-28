@@ -1056,8 +1056,13 @@ export function AssetLibrary({
               onClose={() => setCrossProjectImportSession(null)}
               onImported={(result) => {
                 setCrossProjectImportSession(null);
+                const reusedSummary =
+                  result.reusedCharacterCount > 0 ||
+                  result.reusedAnimationCount > 0
+                    ? `，复用 ${result.reusedCharacterCount} 个角色、${result.reusedAnimationCount} 个 Graphic/动画`
+                    : '';
                 setStatus(
-                  `已从“${result.sourceProjectName}”导入 ${result.importedCharacterCount} 个角色、${result.importedAnimationCount} 个 Graphic/动画、${result.importedAssetCount} 个新素材。`,
+                  `已从“${result.sourceProjectName}”导入 ${result.importedCharacterCount} 个角色、${result.importedAnimationCount} 个 Graphic/动画、${result.importedAssetCount} 个新素材${reusedSummary}。`,
                 );
               }}
               session={crossProjectImportSession}

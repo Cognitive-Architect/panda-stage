@@ -17,6 +17,13 @@ import {
   type ProjectAnimationDefinition,
   type VoiceProfile,
 } from '../models';
+import {
+  analyzeProjectResourceReuse,
+  resolveDefinitionReusePlan,
+  type ProjectResourceReusableDefinition,
+  type ProjectResourceReuseDiagnostic,
+  type ProjectResourceReuseSelection,
+} from './ProjectResourceImportReuse';
 
 export type ProjectResourceImportItemKind = 'character' | 'animation' | 'image';
 
@@ -59,6 +66,16 @@ export interface ProjectResourceImportPreviewPlan {
   assetCount: number;
   reusableAssetCount: number;
   newFileCount: number;
+  reusedCharacterCount: number;
+  reusedAnimationCount: number;
+  reusableDefinitions: Array<{
+    kind: 'character' | 'animation';
+    sourceId: string;
+    sourceName: string;
+    targetId: string;
+    targetName: string;
+  }>;
+  reuseDiagnostics: ProjectResourceReuseDiagnostic[];
   nameConflicts: Array<{
     kind: 'character' | 'animation';
     sourceName: string;
@@ -81,7 +98,9 @@ export interface BuiltProjectResourceImportCandidate {
   importedAssets: Asset[];
   reusedAssetIds: string[];
   importedAnimations: ProjectAnimationDefinition[];
+  reusedAnimationIds: string[];
   importedCharacters: Character[];
+  reusedCharacterIds: string[];
   importedVoiceProfiles: VoiceProfile[];
   assetIdMap: Map<string, string>;
   animationIdMap: Map<string, string>;
@@ -551,6 +570,151 @@ export function buildProjectResourceImportCatalog(
   return items;
 }
 
+export interface EffectiveImportScope {
+  readonly charactersToCreate: Character[];
+  readonly animationsToCreate: ProjectAnimationDefinition[];
+  readonly assetsToTransfer: Asset[];
+  readonly voiceProfilesToCreate: VoiceProfile[];
+}
+
+function collectCharacterDirectAssetIds(
+  character: Character,
+  out: Set<string>,
+): void {
+  for (const pose of character.mouthPoseSet?.poses ?? []) {
+    if (pose.source.kind === 'image') out.add(pose.source.assetId);
+  }
+  if (character.mode === 'adaptive-parts') {
+    for (const part of character.parts) {
+      const vs = resolveCharacterPartVisualSource(part);
+      if (vs.kind === 'image') out.add(vs.assetId);
+    }
+    for (const expression of character.expressions ?? []) {
+      if (!expression.visualSource && expression.assetId) {
+        out.add(expression.assetId);
+      }
+    }
+    if (character.mouthOpenAssetId) out.add(character.mouthOpenAssetId);
+  } else {
+    if (character.baseAssetId) out.add(character.baseAssetId);
+    if (character.mode === 'composite') {
+      out.add(character.bodyAssetId);
+      if (character.head) out.add(character.head.assetId);
+    }
+    for (const expression of character.expressions) {
+      if (!expression.visualSource && expression.assetId) {
+        out.add(expression.assetId);
+      }
+    }
+    if (character.mouthOpenAssetId) out.add(character.mouthOpenAssetId);
+  }
+}
+
+function collectCharacterDirectAnimationIds(
+  character: Character,
+  out: Set<string>,
+): void {
+  if (character.talkingAnimationId) out.add(character.talkingAnimationId);
+  for (const source of Object.values(character.expressionTalkingSources ?? {})) {
+    out.add(source.animationId);
+  }
+  for (const pose of character.mouthPoseSet?.poses ?? []) {
+    if (pose.source.kind !== 'image') out.add(pose.source.animationId);
+  }
+  for (const action of character.actions ?? []) {
+    if (!('kind' in action)) out.add(action.animationId);
+  }
+  if (character.mode === 'adaptive-parts') {
+    for (const part of character.parts) {
+      const vs = resolveCharacterPartVisualSource(part);
+      if (vs.kind !== 'image') out.add(vs.animationId);
+    }
+    for (const expression of character.expressions ?? []) {
+      if (expression.visualSource) out.add(expression.visualSource.animationId);
+    }
+    if (character.mouthOpenVisualSource) {
+      out.add(character.mouthOpenVisualSource.animationId);
+    }
+  } else {
+    for (const expression of character.expressions) {
+      if (expression.visualSource) out.add(expression.visualSource.animationId);
+    }
+    if (character.mouthOpenVisualSource) {
+      out.add(character.mouthOpenVisualSource.animationId);
+    }
+  }
+}
+
+/**
+ * Computes the exact subset of closure definitions and assets that still need
+ * to be newly created/transferred once explicit definition reuse choices are applied.
+ */
+export function collectEffectiveImportScope(
+  sourceProject: Project,
+  selections: readonly ProjectResourceImportSelection[],
+  closure: ProjectResourceImportClosure,
+  reusedAnimations: ReadonlyMap<string, ProjectResourceReusableDefinition> = new Map(),
+  reusedCharacters: ReadonlyMap<string, ProjectResourceReusableDefinition> = new Map(),
+): EffectiveImportScope {
+  const charactersToCreate = closure.characters.filter(
+    (character) => !reusedCharacters.has(character.id),
+  );
+  const neededAnimIds = new Set<string>();
+  for (const selection of selections) {
+    if (selection.kind === 'animation' && !reusedAnimations.has(selection.id)) {
+      neededAnimIds.add(selection.id);
+    }
+  }
+  for (const character of charactersToCreate) {
+    const directAnimIds = new Set<string>();
+    collectCharacterDirectAnimationIds(character, directAnimIds);
+    for (const animId of directAnimIds) {
+      if (!reusedAnimations.has(animId)) {
+        neededAnimIds.add(animId);
+      }
+    }
+  }
+  const animationsToCreate = closure.animations.filter((animation) =>
+    neededAnimIds.has(animation.id),
+  );
+
+  const neededAssetIds = new Set<string>();
+  for (const selection of selections) {
+    if (selection.kind === 'image') {
+      neededAssetIds.add(selection.id);
+    }
+  }
+  for (const character of charactersToCreate) {
+    collectCharacterDirectAssetIds(character, neededAssetIds);
+  }
+  if (animationsToCreate.length > 0) {
+    const animClosure = collectProjectResourceClosure(
+      sourceProject,
+      animationsToCreate.map((animation) => ({
+        kind: 'animation' as const,
+        id: animation.id,
+      })),
+    );
+    for (const assetId of animClosure.assetIds) {
+      neededAssetIds.add(assetId);
+    }
+  }
+  const assetsToTransfer = closure.assets.filter((asset) =>
+    neededAssetIds.has(asset.id),
+  );
+  const createdCharIds = new Set(charactersToCreate.map((c) => c.id));
+  const voiceProfilesToCreate = closure.voiceProfiles.filter((profile) =>
+    createdCharIds.has(profile.characterId),
+  );
+
+  return {
+    charactersToCreate,
+    animationsToCreate,
+    assetsToTransfer,
+    voiceProfilesToCreate,
+  };
+}
+
 /**
  * Pure preview calculation with zero disk writes.
  */
@@ -559,8 +723,23 @@ export function buildProjectResourceImportPreview(
   targetProject: Project,
   selections: readonly ProjectResourceImportSelection[],
   reuseIdenticalAssets = false,
+  reuseDefinitions: readonly ProjectResourceReuseSelection[] = [],
 ): ProjectResourceImportPreviewPlan {
   const closure = collectProjectResourceClosure(sourceProject, selections);
+  const reuseAnalysis = analyzeProjectResourceReuse({
+    sourceProject,
+    targetProject,
+    closure,
+  });
+  const reusePlan = resolveDefinitionReusePlan(reuseAnalysis, reuseDefinitions, closure);
+  const effectiveScope = collectEffectiveImportScope(
+    sourceProject,
+    selections,
+    closure,
+    reusePlan.reusedAnimations,
+    reusePlan.reusedCharacters,
+  );
+
   const occupiedCharacterNames = new Set(
     targetProject.characters.map((character) =>
       normalizeResourceName(character.name),
@@ -573,7 +752,7 @@ export function buildProjectResourceImportPreview(
   );
   const nameConflicts: ProjectResourceImportPreviewPlan['nameConflicts'] = [];
 
-  for (const character of closure.characters) {
+  for (const character of effectiveScope.charactersToCreate) {
     const allocated = allocateUniqueResourceName(
       character.name,
       occupiedCharacterNames,
@@ -586,7 +765,7 @@ export function buildProjectResourceImportPreview(
       });
     }
   }
-  for (const animation of closure.animations) {
+  for (const animation of effectiveScope.animationsToCreate) {
     const allocated = allocateUniqueResourceName(
       animation.name,
       occupiedAnimationNames,
@@ -601,23 +780,33 @@ export function buildProjectResourceImportPreview(
   }
 
   let reusableAssetCount = 0;
-  for (const asset of closure.assets) {
+  for (const asset of effectiveScope.assetsToTransfer) {
     if (findProvablyReusableTargetAsset(targetProject, asset)) {
       reusableAssetCount += 1;
     }
   }
 
   const newFileCount = reuseIdenticalAssets
-    ? closure.assets.length - reusableAssetCount
-    : closure.assets.length;
+    ? effectiveScope.assetsToTransfer.length - reusableAssetCount
+    : effectiveScope.assetsToTransfer.length;
 
   return {
     selectedCount: selections.length,
-    characterCount: closure.characters.length,
-    animationCount: closure.animations.length,
-    assetCount: closure.assets.length,
+    characterCount: effectiveScope.charactersToCreate.length,
+    animationCount: effectiveScope.animationsToCreate.length,
+    assetCount: effectiveScope.assetsToTransfer.length,
     reusableAssetCount,
     newFileCount,
+    reusedCharacterCount: reusePlan.reusedCharacters.size,
+    reusedAnimationCount: reusePlan.reusedAnimations.size,
+    reusableDefinitions: reuseAnalysis.reusableDefinitions.map((candidate) => ({
+      kind: candidate.kind,
+      sourceId: candidate.sourceId,
+      sourceName: candidate.sourceName,
+      targetId: candidate.targetId,
+      targetName: candidate.targetName,
+    })),
+    reuseDiagnostics: [...reuseAnalysis.diagnostics],
     nameConflicts,
     issues: closure.issues,
   };
@@ -876,6 +1065,10 @@ export function buildImportedProjectCandidate(options: {
   plannedAssets: readonly PlannedAssetTransfer[];
   createId: () => string;
   updatedAtIso: string;
+  reusedAnimations?: ReadonlyMap<string, ProjectResourceReusableDefinition>;
+  reusedCharacters?: ReadonlyMap<string, ProjectResourceReusableDefinition>;
+  /** Optional explicit selection list used to avoid creating orphan animations only owned by reused characters. */
+  selections?: readonly ProjectResourceImportSelection[];
 }): BuiltProjectResourceImportCandidate {
   const {
     targetProject,
@@ -884,7 +1077,37 @@ export function buildImportedProjectCandidate(options: {
     plannedAssets,
     createId,
     updatedAtIso,
+    reusedAnimations = new Map(),
+    reusedCharacters = new Map(),
+    selections,
   } = options;
+
+  const effectiveScope = selections
+    ? collectEffectiveImportScope(
+        sourceProject,
+        selections,
+        closure,
+        reusedAnimations,
+        reusedCharacters,
+      )
+    : {
+        charactersToCreate: closure.characters.filter(
+          (character) => !reusedCharacters.has(character.id),
+        ),
+        animationsToCreate: closure.animations.filter(
+          (animation) => !reusedAnimations.has(animation.id),
+        ),
+        assetsToTransfer: closure.assets,
+        voiceProfilesToCreate: closure.voiceProfiles.filter(
+          (profile) => !reusedCharacters.has(profile.characterId),
+        ),
+      };
+  const animationsToCreateIds = new Set(
+    effectiveScope.animationsToCreate.map((animation) => animation.id),
+  );
+  const charactersToCreateIds = new Set(
+    effectiveScope.charactersToCreate.map((character) => character.id),
+  );
 
   const usedIds = new Set([
     ...collectProjectUuidValues(targetProject),
@@ -893,7 +1116,8 @@ export function buildImportedProjectCandidate(options: {
   ]);
   const allocateId = createUniqueUuidAllocator(usedIds, createId);
 
-  // Phase 1: Allocate project-level IDs & conflict-safe names.
+  // Phase 1: Allocate project-level IDs & conflict-safe names, or bind
+  // verified reused target definitions (including internal part & action IDs).
   const assetIdMap = new Map<string, string>();
   const reusedAssetIds: string[] = [];
   for (const planned of plannedAssets) {
@@ -905,6 +1129,7 @@ export function buildImportedProjectCandidate(options: {
 
   const animationIdMap = new Map<string, string>();
   const animationNameMap = new Map<string, string>();
+  const reusedAnimationIds: string[] = [];
   const occupiedAnimationNames = new Set(
     targetProject.animations.map((animation) =>
       normalizeResourceName(animation.name),
@@ -912,6 +1137,15 @@ export function buildImportedProjectCandidate(options: {
   );
   const nameConflicts: BuiltProjectResourceImportCandidate['nameConflicts'] = [];
   for (const animation of closure.animations) {
+    const reused = reusedAnimations.get(animation.id);
+    if (reused) {
+      animationIdMap.set(animation.id, reused.targetId);
+      reusedAnimationIds.push(reused.targetId);
+      continue;
+    }
+    if (!animationsToCreateIds.has(animation.id)) {
+      continue;
+    }
     animationIdMap.set(animation.id, allocateId());
     const allocated = allocateUniqueResourceName(
       animation.name,
@@ -932,12 +1166,40 @@ export function buildImportedProjectCandidate(options: {
   const characterPartIdMaps = new Map<string, Map<string, string>>();
   const characterActionIdMaps = new Map<string, Map<string, string>>();
   const voiceProfileIdMap = new Map<string, string>();
+  const reusedCharacterIds: string[] = [];
   const occupiedCharacterNames = new Set(
     targetProject.characters.map((character) =>
       normalizeResourceName(character.name),
     ),
   );
   for (const character of closure.characters) {
+    const reused = reusedCharacters.get(character.id);
+    if (reused) {
+      characterIdMap.set(character.id, reused.targetId);
+      reusedCharacterIds.push(reused.targetId);
+      if (reused.voiceProfileId) {
+        voiceProfileIdMap.set(
+          character.defaultVoiceProfileId,
+          reused.voiceProfileId,
+        );
+      }
+      if (reused.partIdMap) {
+        characterPartIdMaps.set(
+          character.id,
+          new Map(Object.entries(reused.partIdMap)),
+        );
+      }
+      if (reused.actionIdMap) {
+        characterActionIdMaps.set(
+          character.id,
+          new Map(Object.entries(reused.actionIdMap)),
+        );
+      }
+      continue;
+    }
+    if (!charactersToCreateIds.has(character.id)) {
+      continue;
+    }
     characterIdMap.set(character.id, allocateId());
     const allocated = allocateUniqueResourceName(
       character.name,
@@ -970,8 +1232,10 @@ export function buildImportedProjectCandidate(options: {
       characterActionIdMaps.set(character.id, actionIdMap);
     }
   }
-  for (const voiceProfile of closure.voiceProfiles) {
-    voiceProfileIdMap.set(voiceProfile.id, allocateId());
+  for (const voiceProfile of effectiveScope.voiceProfilesToCreate) {
+    if (!voiceProfileIdMap.has(voiceProfile.id)) {
+      voiceProfileIdMap.set(voiceProfile.id, allocateId());
+    }
   }
 
   const remapAsset = (sourceId: string): string => {
@@ -1023,14 +1287,19 @@ export function buildImportedProjectCandidate(options: {
     }
   }
 
-  const importedAnimations: ProjectAnimationDefinition[] = closure.animations.map(
-    (animation) => {
+  const importedAnimations: ProjectAnimationDefinition[] =
+    effectiveScope.animationsToCreate.map((animation) => {
       const targetId = remapAnimation(animation.id);
       const targetName = animationNameMap.get(animation.id)!;
       const frames = animation.frames.map((frame) => ({
         ...frame,
         assetId: remapAssetOptional(frame.assetId),
       }));
+      const importProvenance = {
+        sourceProjectId: sourceProject.id,
+        sourceDefinitionId: animation.id,
+        importedName: targetName,
+      };
       if (isFlaGraphicDefinition(animation)) {
         return {
           ...animation,
@@ -1045,6 +1314,7 @@ export function buildImportedProjectCandidate(options: {
                 ),
               }
             : {}),
+          importProvenance,
         };
       }
       return {
@@ -1052,11 +1322,12 @@ export function buildImportedProjectCandidate(options: {
         id: targetId,
         name: targetName,
         frames,
+        importProvenance,
       };
-    },
-  );
+    });
 
-  const importedCharacters: Character[] = closure.characters.map((character) => {
+  const importedCharacters: Character[] =
+    effectiveScope.charactersToCreate.map((character) => {
     const targetCharacterId = characterIdMap.get(character.id)!;
     const targetVoiceProfileId = voiceProfileIdMap.get(
       character.defaultVoiceProfileId,
@@ -1262,6 +1533,17 @@ export function buildImportedProjectCandidate(options: {
         ...(motionMappings && motionMappings.length > 0
           ? { motionMappings }
           : { motionMappings: undefined }),
+        importProvenance: {
+          sourceProjectId: sourceProject.id,
+          sourceDefinitionId: character.id,
+          importedName: targetName,
+          ...(partIdMap.size > 0
+            ? { partIdMap: Object.fromEntries(partIdMap.entries()) }
+            : {}),
+          ...(actionIdMap.size > 0
+            ? { actionIdMap: Object.fromEntries(actionIdMap.entries()) }
+            : {}),
+        },
       };
     }
 
@@ -1288,13 +1570,14 @@ export function buildImportedProjectCandidate(options: {
       unusedPartRemapper,
       allocateId,
     );
-    const { actions } = remapCharacterActions(
-      character.actions,
-      remapAnimation,
-      unusedPartRemapper,
-      allocateId,
-      characterActionIdMaps.get(character.id),
-    );
+    const { actions, actionIdMap: nonAdaptiveActionIdMap } =
+      remapCharacterActions(
+        character.actions,
+        remapAnimation,
+        unusedPartRemapper,
+        allocateId,
+        characterActionIdMaps.get(character.id),
+      );
 
     const common = {
       id: targetCharacterId,
@@ -1324,6 +1607,16 @@ export function buildImportedProjectCandidate(options: {
       ...(mouthPoseSet ? { mouthPoseSet } : {}),
       ...(expressionTalkingSources ? { expressionTalkingSources } : {}),
       ...(actions ? { actions } : {}),
+      importProvenance: {
+        sourceProjectId: sourceProject.id,
+        sourceDefinitionId: character.id,
+        importedName: targetName,
+        ...(nonAdaptiveActionIdMap.size > 0
+          ? {
+              actionIdMap: Object.fromEntries(nonAdaptiveActionIdMap.entries()),
+            }
+          : {}),
+      },
     };
 
     if (character.mode === 'composite') {
@@ -1348,13 +1641,12 @@ export function buildImportedProjectCandidate(options: {
     };
   });
 
-  const importedVoiceProfiles: VoiceProfile[] = closure.voiceProfiles.map(
-    (profile) => ({
+  const importedVoiceProfiles: VoiceProfile[] =
+    effectiveScope.voiceProfilesToCreate.map((profile) => ({
       ...profile,
       id: voiceProfileIdMap.get(profile.id)!,
       characterId: characterIdMap.get(profile.characterId)!,
-    }),
-  );
+    }));
 
   // Strip undefined optional fields cleanly before strict Zod parse.
   const cleanedCharacters = importedCharacters.map((character) => {
@@ -1369,21 +1661,34 @@ export function buildImportedProjectCandidate(options: {
     return character;
   });
 
-  const candidate = ProjectSchema.parse({
-    ...targetProject,
-    assets: [...targetProject.assets, ...importedAssets],
-    animations: [...targetProject.animations, ...importedAnimations],
-    characters: [...targetProject.characters, ...cleanedCharacters],
-    voiceProfiles: [...targetProject.voiceProfiles, ...importedVoiceProfiles],
-    updatedAt: updatedAtIso,
-  });
+  const hasChanges =
+    importedAssets.length > 0 ||
+    importedAnimations.length > 0 ||
+    cleanedCharacters.length > 0 ||
+    importedVoiceProfiles.length > 0;
+
+  const candidate = hasChanges
+    ? ProjectSchema.parse({
+        ...targetProject,
+        assets: [...targetProject.assets, ...importedAssets],
+        animations: [...targetProject.animations, ...importedAnimations],
+        characters: [...targetProject.characters, ...cleanedCharacters],
+        voiceProfiles: [
+          ...targetProject.voiceProfiles,
+          ...importedVoiceProfiles,
+        ],
+        updatedAt: updatedAtIso,
+      })
+    : targetProject;
 
   return {
     project: candidate,
     importedAssets,
     reusedAssetIds,
     importedAnimations,
+    reusedAnimationIds,
     importedCharacters: cleanedCharacters,
+    reusedCharacterIds,
     importedVoiceProfiles,
     assetIdMap,
     animationIdMap,

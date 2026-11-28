@@ -1,6 +1,7 @@
 import type {
   ProjectResourceImportApplyRequest,
   ProjectResourceImportApplyResponse,
+  ProjectResourceImportReuseChoice,
   ProjectResourceImportSelection,
 } from '../../../shared/project-resource-import-api';
 import {
@@ -19,7 +20,9 @@ export type CrossProjectResourceImportCommitResult =
       ok: true;
       sourceProjectName: string;
       importedCharacterCount: number;
+      reusedCharacterCount: number;
       importedAnimationCount: number;
+      reusedAnimationCount: number;
       importedAssetCount: number;
       reusedAssetCount: number;
     }
@@ -32,6 +35,7 @@ export async function commitCrossProjectResourceImport(options: {
   sourceToken: string;
   resources: readonly ProjectResourceImportSelection[];
   reuseIdenticalAssets: boolean;
+  reuseDefinitions?: readonly ProjectResourceImportReuseChoice[];
   api?: ProjectResourceImportApi;
   store?: EditorProjectStore;
 }): Promise<CrossProjectResourceImportCommitResult> {
@@ -59,6 +63,9 @@ export async function commitCrossProjectResourceImport(options: {
       sourceToken: options.sourceToken,
       resources: [...options.resources],
       reuseIdenticalAssets: options.reuseIdenticalAssets,
+      ...(options.reuseDefinitions && options.reuseDefinitions.length > 0
+        ? { reuseDefinitions: [...options.reuseDefinitions] }
+        : {}),
     });
     if (!response.ok) {
       return { ok: false, message: response.error.message };
@@ -73,17 +80,21 @@ export async function commitCrossProjectResourceImport(options: {
         message: '导入结果与当前打开的项目会话不匹配，请重试。',
       };
     }
-    store.acceptSavedProjectCommand(
-      lease,
-      response.project,
-      response.savedRevision,
-      '从其他工程导入素材',
-    );
+    if (response.savedRevision !== lease.revision) {
+      store.acceptSavedProjectCommand(
+        lease,
+        response.project,
+        response.savedRevision,
+        '从其他工程导入素材',
+      );
+    }
     return {
       ok: true,
       sourceProjectName: response.sourceProjectName,
       importedCharacterCount: response.importedCharacters.length,
+      reusedCharacterCount: response.reusedCharacterIds?.length ?? 0,
       importedAnimationCount: response.importedAnimations.length,
+      reusedAnimationCount: response.reusedAnimationIds?.length ?? 0,
       importedAssetCount: response.importedAssets.length,
       reusedAssetCount: response.reusedAssetIds.length,
     };

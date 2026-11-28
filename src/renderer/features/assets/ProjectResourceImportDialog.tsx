@@ -4,6 +4,7 @@ import { AlertCircle, X } from 'lucide-react';
 import type {
   ProjectResourceImportOption,
   ProjectResourceImportPreviewResponse,
+  ProjectResourceImportReuseChoice,
   ProjectResourceImportSelection,
 } from '../../../shared/project-resource-import-api';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
@@ -67,6 +68,9 @@ export function ProjectResourceImportDialog({
     () => new Set(),
   );
   const [reuseIdenticalAssets, setReuseIdenticalAssets] = useState(false);
+  const [reuseChoiceByKey, setReuseChoiceByKey] = useState<
+    Record<string, ProjectResourceImportReuseChoice>
+  >({});
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [committing, setCommitting] = useState(false);
@@ -80,6 +84,11 @@ export function ProjectResourceImportDialog({
     }
     return out;
   }, [selectedKeys, session.items]);
+
+  const activeReuseDefinitions = useMemo<ProjectResourceImportReuseChoice[]>(
+    () => Object.values(reuseChoiceByKey),
+    [reuseChoiceByKey],
+  );
 
   const grouped = useMemo(() => {
     const characters = session.items.filter((item) => item.kind === 'character');
@@ -95,6 +104,12 @@ export function ProjectResourceImportDialog({
   useEffect(() => {
     if (selectedResources.length === 0) {
       setPreview(null);
+      // Only clear when there is something to clear; a fresh {} would change
+      // the reference, re-trigger this effect through activeReuseDefinitions,
+      // and spin forever on an empty selection.
+      setReuseChoiceByKey((previous) =>
+        Object.keys(previous).length === 0 ? previous : {},
+      );
       return;
     }
     let cancelled = false;
@@ -106,6 +121,9 @@ export function ProjectResourceImportDialog({
         sourceToken: session.sourceToken,
         resources: selectedResources,
         reuseIdenticalAssets,
+        ...(activeReuseDefinitions.length > 0
+          ? { reuseDefinitions: activeReuseDefinitions }
+          : {}),
       })
       .then((response) => {
         if (cancelled) return;
@@ -116,6 +134,18 @@ export function ProjectResourceImportDialog({
         }
         setError(null);
         setPreview(response);
+        const validKeys = new Set(
+          (response.reusableDefinitions ?? []).map(
+            (item) => `${item.kind}:${item.sourceId}`,
+          ),
+        );
+        setReuseChoiceByKey((previous) => {
+          const entries = Object.entries(previous).filter(([key]) =>
+            validKeys.has(key),
+          );
+          if (entries.length === Object.keys(previous).length) return previous;
+          return Object.fromEntries(entries);
+        });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -126,6 +156,7 @@ export function ProjectResourceImportDialog({
       cancelled = true;
     };
   }, [
+    activeReuseDefinitions,
     reuseIdenticalAssets,
     selectedResources,
     session.sourceToken,
@@ -153,6 +184,7 @@ export function ProjectResourceImportDialog({
       sourceToken: session.sourceToken,
       resources: selectedResources,
       reuseIdenticalAssets,
+      reuseDefinitions: activeReuseDefinitions,
     });
     setCommitting(false);
     if (!result.ok) {
@@ -262,10 +294,77 @@ export function ProjectResourceImportDialog({
           {preview ? (
             <>
               <div>
-                已选 {preview.selectedCount} 项 · 含 {preview.characterCount}{' '}
+                已选 {preview.selectedCount} 项 · 新增 {preview.characterCount}{' '}
                 个角色、{preview.animationCount} 个 Graphic/动画、
                 预计复制 {preview.newFileCount} 个素材文件
+                {(preview.reusedCharacterCount ?? 0) > 0 ||
+                (preview.reusedAnimationCount ?? 0) > 0
+                  ? ` · 复用 ${preview.reusedCharacterCount ?? 0} 个角色、${preview.reusedAnimationCount ?? 0} 个 Graphic/动画`
+                  : ''}
               </div>
+              {(preview.reusableDefinitions?.length ?? 0) > 0 ? (
+                <div
+                  className="project-resource-import-reuse-list"
+                  data-testid="project-resource-import-reuse-list"
+                >
+                  {preview.reusableDefinitions!.map((candidate) => {
+                    const key = `${candidate.kind}:${candidate.sourceId}`;
+                    const reusing = Boolean(reuseChoiceByKey[key]);
+                    return (
+                      <div
+                        className="project-resource-import-reuse-row"
+                        key={key}
+                      >
+                        <span className="project-resource-import-reuse-label">
+                          {candidate.kind === 'character' ? '角色' : '动画'}“
+                          {candidate.sourceName}” → 已有“{candidate.targetName}”
+                        </span>
+                        <select
+                          aria-label={`${candidate.sourceName} 导入方式`}
+                          className="project-resource-import-reuse-select"
+                          data-testid={`project-resource-reuse-select-${candidate.sourceId}`}
+                          disabled={committing}
+                          onChange={(event) => {
+                            const mode = event.target.value;
+                            setReuseChoiceByKey((previous) => {
+                              const next = { ...previous };
+                              if (mode === 'reuse') {
+                                next[key] = {
+                                  kind: candidate.kind,
+                                  sourceId: candidate.sourceId,
+                                  targetId: candidate.targetId,
+                                };
+                              } else {
+                                delete next[key];
+                              }
+                              return next;
+                            });
+                          }}
+                          value={reusing ? 'reuse' : 'copy'}
+                        >
+                          <option value="copy">复制独立定义</option>
+                          <option value="reuse">复用已有</option>
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+              {(preview.reuseDiagnostics?.length ?? 0) > 0 ? (
+                <div
+                  className="project-resource-import-reuse-diagnostics"
+                  data-testid="project-resource-import-reuse-diagnostics"
+                >
+                  {preview.reuseDiagnostics!.slice(0, 3).map((diag) => (
+                    <div key={`${diag.kind}:${diag.sourceId}`}>
+                      {diag.sourceName}：{diag.reason}
+                    </div>
+                  ))}
+                  {preview.reuseDiagnostics!.length > 3
+                    ? `等 ${preview.reuseDiagnostics!.length} 项将复制为独立定义`
+                    : null}
+                </div>
+              ) : null}
               {preview.reusableAssetCount > 0 ? (
                 <label className="project-resource-import-reuse-option">
                   <input

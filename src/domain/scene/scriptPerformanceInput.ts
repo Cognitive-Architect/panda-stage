@@ -1,5 +1,9 @@
 import type { ActionPresetId } from '../actions/ActionPreset';
 import {
+  CAMERA_MOTION_PRESET_LABELS,
+  type CameraMotionPresetId,
+} from '../camera-motion-presets';
+import {
   DIALOGUE_SPEAKER_CHARACTER,
   DIALOGUE_SPEAKER_NARRATOR,
   type Character,
@@ -29,7 +33,8 @@ export type BasicPerformanceAction =
 export type PerformanceDirectiveAction =
   | BasicPerformanceAction
   | 'character-action'
-  | 'action-recipe';
+  | 'action-recipe'
+  | 'camera-motion';
 
 export type PerformanceTimeAnchor = 'start' | 'end';
 
@@ -59,7 +64,27 @@ export const PERFORMANCE_ACTION_LABELS: Readonly<
   'fade-out': '淡出',
   'character-action': '角色动作',
   'action-recipe': '配方',
+  'camera-motion': '运镜',
 };
+
+const CAMERA_PRESET_BY_LABEL: Readonly<Record<string, CameraMotionPresetId>> = {
+  推近: 'push-in',
+  拉近: 'push-in',
+  拉远: 'pull-out',
+  水平平移: 'pan-horizontal',
+  垂直平移: 'pan-vertical',
+  'a→b': 'a-to-b',
+  'a到b': 'a-to-b',
+  回全景: 'return-to-full-stage',
+};
+
+function resolveCameraPreset(value: string): CameraMotionPresetId | null {
+  const trimmed = value.trim();
+  if (trimmed in CAMERA_MOTION_PRESET_LABELS) {
+    return trimmed as CameraMotionPresetId;
+  }
+  return CAMERA_PRESET_BY_LABEL[trimmed.toLocaleLowerCase()] ?? null;
+}
 
 const ACTION_BY_LABEL: Readonly<Record<string, PerformanceDirectiveAction>> = {
   左入场: 'left-enter',
@@ -76,6 +101,11 @@ const ACTION_BY_LABEL: Readonly<Record<string, PerformanceDirectiveAction>> = {
   动作: 'character-action',
   配方: 'action-recipe',
   操作配方: 'action-recipe',
+  运镜: 'camera-motion',
+  镜头运动: 'camera-motion',
+  推近: 'camera-motion',
+  拉近: 'camera-motion',
+  拉远: 'camera-motion',
 };
 
 export type ScriptDialogueParseIssueCode =
@@ -112,7 +142,8 @@ export type PerformanceParseIssueCode =
   | 'PERFORMANCE_INVALID_NUMBER'
   | 'PERFORMANCE_INVALID_SCALE'
   | 'PERFORMANCE_EMPTY_TARGET'
-  | 'PERFORMANCE_INVALID_TIMING';
+  | 'PERFORMANCE_INVALID_TIMING'
+  | 'PERFORMANCE_INVALID_CAMERA_PRESET';
 
 export interface ParsedPerformanceDirective {
   /** Stable deterministic directive identifier for per-row UI/CLI overrides. */
@@ -136,6 +167,8 @@ export interface ParsedPerformanceDirective {
   readonly expressionName?: string;
   readonly characterActionName?: string;
   readonly recipeName?: string;
+  readonly cameraPreset?: CameraMotionPresetId;
+  readonly cameraAmplitude?: number;
   readonly parseIssue?: {
     readonly code: PerformanceParseIssueCode;
     readonly message: string;
@@ -658,6 +691,72 @@ function parsePerformanceDirectiveLine(
       ...(amplitudeX !== undefined ? { amplitudeX } : {}),
       ...(amplitudeY !== undefined ? { amplitudeY } : {}),
       ...(frequencyHz !== undefined ? { frequencyHz } : {}),
+    };
+  }
+
+  if (action === 'camera-motion') {
+    let cameraPreset: CameraMotionPresetId | null = null;
+    let cameraAmplitude: number | undefined;
+    const defaultPreset =
+      actionLabel === '拉远' ? 'pull-out' : resolveCameraPreset(actionLabel);
+
+    for (const token of actionTokens) {
+      const eqIndex = token.indexOf('=');
+      if (eqIndex > 0) {
+        const key = token.slice(0, eqIndex).trim().toLowerCase();
+        const value = token.slice(eqIndex + 1).trim();
+        if (
+          key === '预设' ||
+          key === 'preset' ||
+          key === '运镜' ||
+          key === '镜头'
+        ) {
+          const resolved = resolveCameraPreset(value);
+          if (!resolved) {
+            return makeIssue(
+              'PERFORMANCE_INVALID_CAMERA_PRESET',
+              `第 ${line.lineNumber} 行运镜预设「${value}」不受支持。`,
+              dialogueOrdinal,
+              actionLabel,
+              action,
+            );
+          }
+          cameraPreset = resolved;
+          continue;
+        }
+        if (key === '幅度' || key === 'amplitude') {
+          const parsed = parseFiniteNumber(value);
+          if (parsed === null || parsed <= 0) {
+            return makeIssue(
+              'PERFORMANCE_INVALID_NUMBER',
+              `第 ${line.lineNumber} 行运镜幅度「${value}」必须是大于 0 的数字。`,
+              dialogueOrdinal,
+              actionLabel,
+              action,
+            );
+          }
+          cameraAmplitude = parsed;
+          continue;
+        }
+      }
+      const labelPreset = resolveCameraPreset(token);
+      if (labelPreset) {
+        cameraPreset = labelPreset;
+        continue;
+      }
+      return makeIssue(
+        'PERFORMANCE_EXTRA_PARAM',
+        `第 ${line.lineNumber} 行运镜不支持参数「${token}」，请使用预设=推近 或 幅度=1.4。`,
+        dialogueOrdinal,
+        actionLabel,
+        action,
+      );
+    }
+
+    return {
+      ...base,
+      cameraPreset: cameraPreset ?? defaultPreset ?? 'push-in',
+      ...(cameraAmplitude !== undefined ? { cameraAmplitude } : {}),
     };
   }
 

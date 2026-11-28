@@ -15,6 +15,7 @@ import {
   retimeTargetKeySpanDuration,
   setTargetKeyEasing,
   targetCompositeKeyEasing,
+  targetTracks,
   upsertTargetKeyValues,
   type AnimationMotionValues,
   type TargetKeySpanDurationInput,
@@ -263,6 +264,37 @@ export function layerCompositeKeyTimes(layer: Layer): number[] {
   const clip = layerRootMotionClip(layer);
   if (!clip) return [];
   return compositeKeyTimesForTarget(clip.tracks, layerTargetRef(layer.id));
+}
+
+/**
+ * Properties that actually own a key at `timeMs`. Key identity on a layer is
+ * (property, time), so callers that must not re-bind a *different* key created
+ * at the same timestamp can compare this set.
+ */
+export function layerCompositeKeyPropertiesAtTime(
+  layer: Layer,
+  timeMs: number,
+): string[] {
+  return Object.keys(layerCompositeAuthoredValuesAtTime(layer, timeMs));
+}
+
+/**
+ * Authored property values at `timeMs`. Two keys can share (layer, time,
+ * property) after a delete + re-create, so the value is the only remaining
+ * evidence that a session reference still points at the same product.
+ */
+export function layerCompositeAuthoredValuesAtTime(
+  layer: Layer,
+  timeMs: number,
+): Record<string, number> {
+  const clip = layerRootMotionClip(layer);
+  if (!clip) return {};
+  const values: Record<string, number> = {};
+  for (const track of targetTracks(clip.tracks, layerTargetRef(layer.id))) {
+    const key = track.keys.find((candidate) => candidate.timeMs === timeMs);
+    if (key) values[track.property] = key.value;
+  }
+  return values;
 }
 
 /** True when the Layer Clip v2 has an outgoing interval at `timeMs`. */

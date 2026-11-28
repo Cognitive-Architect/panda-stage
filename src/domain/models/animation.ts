@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { IdSchema, NameSchema } from './common';
 import { FlaGraphicShapeOverridesSchema } from '../fla-shape-vector';
 import { FlaGraphicStructureV1Schema } from './flaGraphicStructure';
+import { ResourceImportProvenanceSchema } from './importProvenance';
 
 const ANIMATION_V22_MAX_FRAMES = 24;
 export const ANIMATION_MAX_FRAMES = 256;
@@ -196,6 +197,7 @@ export const AnimationDefinitionSchema = z
   .object({
     ...AnimationDefinitionShape,
     frames: z.array(AnimationFrameSchema).min(1).max(ANIMATION_MAX_FRAMES),
+    importProvenance: ResourceImportProvenanceSchema.optional(),
   })
   .strict()
   .superRefine(validateAnimationDefinition);
@@ -210,6 +212,7 @@ export const FlaGraphicDefinitionSchema = FlaGraphicDefinitionV28Schema.safeExte
     sourceFrameIndex: z.number().int().nonnegative(),
     text: z.string().trim().min(1).max(120),
   }).strict()).max(FLA_GRAPHIC_MAX_FRAMES).optional(),
+  importProvenance: ResourceImportProvenanceSchema.optional(),
 }).superRefine((definition, context) => {
   const seen = new Set<number>();
   for (const [index, label] of (definition.sourceFrameLabels ?? []).entries()) {

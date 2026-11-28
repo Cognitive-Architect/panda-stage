@@ -159,6 +159,7 @@ describe('WF-04 shared script & performance planner and applier', () => {
     expect(bounded.blocks[0]!.finalDurationMs).toBe(1_500);
     const plan = planScriptPerformance(project, script, { extendShotForPerformance: true });
     expect(plan.performances[0]).toMatchObject({ status: 'ready', startMs: 0, endMs: 2_000 });
+    expect(plan.performances[0]!.motionKeyTimes?.length).toBeGreaterThan(0);
     const applied = applyScriptPerformancePlan(project, plan, { allowPartialConfirm: false });
     expect(applied.ok).toBe(true);
     if (!applied.ok) throw new Error(applied.message);
@@ -732,5 +733,327 @@ describe('WF-04 shared script & performance planner and applier', () => {
       allowPartialConfirm: false,
     });
     expect(applied).toMatchObject({ ok: false, errorCode: 'STALE_PLAN' });
+  });
+
+  it('applies one existing camera preset from the script and reports real camera key times', () => {
+    const base = buildWf04Project();
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: base.shots.map((shot) => ({
+        ...shot,
+        camera: { mode: 'manual' as const, keys: [] },
+      })),
+    });
+    const script = [
+      '镜头：运镜测试',
+      '时长：3000ms',
+      '出场：师兄',
+      '对白：',
+      '师兄：第一句。',
+      '表演：',
+      '1｜运镜｜预设=推近｜时长=600ms',
+    ].join('\n');
+
+    const plan = planScriptPerformance(project, script);
+    expect(plan.performances[0]).toMatchObject({
+      status: 'ready',
+      property: 'camera',
+      startMs: 0,
+      // 600ms snaps to the 583ms frame boundary; the report follows the real key.
+      endMs: 583,
+      cameraPreset: 'push-in',
+    });
+    expect(plan.performances[0]!.cameraKeyTimes).toEqual([0, 583]);
+
+    const applied = applyScriptPerformancePlan(project, plan, {
+      allowPartialConfirm: false,
+    });
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) throw new Error(applied.message);
+    const shot = applied.project.shots.at(-1)!;
+    expect(shot.camera?.mode).toBe('manual');
+    expect(shot.camera?.keys.length).toBeGreaterThan(0);
+    expect(shot.timelineEvents).toHaveLength(0);
+  });
+
+  it('reports the snapped camera keys for a non-frame-aligned anchor', () => {
+    const base = buildWf04Project();
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: base.shots.map((shot) => ({
+        ...shot,
+        camera: { mode: 'manual' as const, keys: [] },
+      })),
+    });
+    const script = [
+      '镜头：运镜测试',
+      '时长：3000ms',
+      '出场：师兄',
+      '对白：',
+      '师兄：第一句。',
+      '表演：',
+      '1｜运镜｜预设=推近｜时长=500ms｜偏移=100ms',
+    ].join('\n');
+
+    const plan = planScriptPerformance(project, script);
+    expect(plan.performances[0]).toMatchObject({
+      status: 'ready',
+      property: 'camera',
+      // 100ms snaps to 83ms on the 24fps grid; the un-snapped 600ms end is not
+      // the real range end either.
+      startMs: 83,
+      endMs: 583,
+    });
+    expect(plan.performances[0]!.cameraKeyTimes).toEqual([83, 583]);
+
+    const applied = applyScriptPerformancePlan(project, plan, {
+      allowPartialConfirm: false,
+    });
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) throw new Error(applied.message);
+    const shot = applied.project.shots.at(-1)!;
+    expect(
+      [...(shot.camera?.keys ?? [])].map((key) => key.timeMs).sort((a, b) => a - b),
+    ).toEqual([83, 583]);
+  });
+
+  it('refuses an overflowing camera directive without authorization and keeps the shot intact', () => {
+    const base = buildWf04Project();
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: base.shots.map((shot) => ({
+        ...shot,
+        camera: { mode: 'manual' as const, keys: [] },
+      })),
+    });
+    const script = [
+      '镜头：运镜测试',
+      '时长：3000ms',
+      '出场：师兄',
+      '对白：',
+      '师兄：第一句。',
+      '表演：',
+      '1｜运镜｜预设=推近｜时长=600ms｜偏移=2800ms',
+    ].join('\n');
+
+    const plan = planScriptPerformance(project, script);
+    const row = plan.performances[0]!;
+    expect(row.status).toBe('issue');
+    expect(row.issueCode).toBe('OUT_OF_SHOT_BOUNDS');
+    expect(row.requiredShotDurationMs).toBe(row.endMs);
+
+    const applied = applyScriptPerformancePlan(project, plan, {
+      allowPartialConfirm: true,
+    });
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) throw new Error(applied.message);
+    // Unauthorized overflow never grows the shot.
+    expect(applied.project.shots.at(-1)!.durationMs).toBe(3_000);
+    expect(applied.project.shots.at(-1)!.camera?.keys ?? []).toHaveLength(0);
+  });
+
+  it('extends the shot for an authorized camera directive using the real snapped range', () => {
+    const base = buildWf04Project();
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: base.shots.map((shot) => ({
+        ...shot,
+        camera: { mode: 'manual' as const, keys: [] },
+      })),
+    });
+    const script = [
+      '镜头：运镜测试',
+      '时长：3000ms',
+      '出场：师兄',
+      '对白：',
+      '师兄：第一句。',
+      '表演：',
+      '1｜运镜｜预设=推近｜时长=600ms｜偏移=2800ms',
+    ].join('\n');
+
+    const plan = planScriptPerformance({
+      ...project,
+    }, script, { extendShotForPerformance: true });
+    const row = plan.performances[0]!;
+    expect(row.status).toBe('ready');
+    expect(row.requiredShotDurationMs).toBeGreaterThan(3_000);
+    expect(row.requiredShotDurationMs).toBe(row.endMs);
+    expect(row.cameraKeyTimes).toEqual([row.startMs, row.endMs]);
+
+    const applied = applyScriptPerformancePlan(project, plan, {
+      allowPartialConfirm: false,
+    });
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) throw new Error(applied.message);
+    const shot = applied.project.shots.at(-1)!;
+    // The extension equals the preset plan's real (snapped) end, not the raw
+    // 3400ms request.
+    expect(shot.durationMs).toBe(row.requiredShotDurationMs);
+    expect(
+      [...(shot.camera?.keys ?? [])].map((key) => key.timeMs).sort((a, b) => a - b),
+    ).toEqual([row.startMs, row.endMs]);
+  });
+
+  it('extends a 1000ms shot to 1042ms when upward start snapping (21ms -> 42ms) pushes 21+979ms past the shot end (R3-P2-02)', () => {
+    const base = buildWf04Project();
+    const audio1000 = makeAudioAsset(AUDIO_IDS.a1, '1_师兄', 1_000);
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: [
+        ...base.assets.filter((asset) => asset.id !== AUDIO_IDS.a1),
+        audio1000,
+      ],
+      shots: base.shots.map((shot) => ({
+        ...shot,
+        camera: { mode: 'manual' as const, keys: [] },
+      })),
+    });
+    const script = [
+      '镜头：向上吸附越界测试',
+      '时长：1000ms',
+      '出场：师兄',
+      '对白：',
+      '师兄：正好一秒。',
+      '表演：',
+      '1｜运镜｜预设=推近｜偏移=21ms｜时长=979ms',
+    ].join('\n');
+
+    // Unauthorized: raw end is 1000ms, but snapped start 42ms + 979ms -> 1042ms
+    // overflows the 1000ms shot; must diagnose OUT_OF_SHOT_BOUNDS and not grow.
+    const unauthorized = planScriptPerformance(project, script);
+    expect(unauthorized.performances[0]).toMatchObject({
+      status: 'issue',
+      issueCode: 'OUT_OF_SHOT_BOUNDS',
+      startMs: 42,
+      endMs: 1_042,
+      requiredShotDurationMs: 1_042,
+    });
+    const partialApplied = applyScriptPerformancePlan(project, unauthorized, {
+      allowPartialConfirm: true,
+    });
+    expect(partialApplied.ok).toBe(true);
+    if (!partialApplied.ok) throw new Error(partialApplied.message);
+    const untouchedShot = partialApplied.project.shots.at(-1)!;
+    expect(untouchedShot.durationMs).toBe(1_000);
+    expect(untouchedShot.camera?.keys ?? []).toHaveLength(0);
+
+    // Authorized: extends shot to 1042ms and writes real keys at [42, 1042].
+    const authorized = planScriptPerformance(project, script, {
+      extendShotForPerformance: true,
+    });
+    expect(authorized.performances[0]).toMatchObject({
+      status: 'ready',
+      property: 'camera',
+      startMs: 42,
+      endMs: 1_042,
+      requiredShotDurationMs: 1_042,
+      cameraKeyTimes: [42, 1_042],
+    });
+    expect(authorized.blocks[0]).toMatchObject({
+      finalDurationMs: 1_042,
+      extendedForPerformance: true,
+    });
+
+    const applied = applyScriptPerformancePlan(project, authorized, {
+      allowPartialConfirm: false,
+    });
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) throw new Error(applied.message);
+    const extendedShot = applied.project.shots.at(-1)!;
+    expect(extendedShot.durationMs).toBe(1_042);
+    expect(
+      [...(extendedShot.camera?.keys ?? [])]
+        .map((key) => key.timeMs)
+        .sort((a, b) => a - b),
+    ).toEqual([42, 1_042]);
+  });
+
+  it('does not extend the shot on downward snap that fits inside duration and leaves no partial extension on camera key conflict (R3-P2-02)', () => {
+    const base = buildWf04Project();
+    const audio1000 = makeAudioAsset(AUDIO_IDS.a1, '1_师兄', 1_000);
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: [
+        ...base.assets.filter((asset) => asset.id !== AUDIO_IDS.a1),
+        audio1000,
+      ],
+      shots: base.shots.map((shot) => ({
+        ...shot,
+        camera: { mode: 'manual' as const, keys: [] },
+      })),
+    });
+
+    // Downward snap: start=20ms snaps down to 0ms, 0+985ms snaps to 1000ms -> fits without extension.
+    const downwardScript = [
+      '镜头：向下吸附不延长',
+      '时长：1000ms',
+      '出场：师兄',
+      '对白：',
+      '师兄：正好一秒。',
+      '表演：',
+      '1｜运镜｜预设=推近｜偏移=20ms｜时长=985ms',
+    ].join('\n');
+    const downwardPlan = planScriptPerformance(project, downwardScript);
+    expect(downwardPlan.performances[0]).toMatchObject({
+      status: 'ready',
+      startMs: 0,
+      endMs: 1_000,
+      requiredShotDurationMs: null,
+      cameraKeyTimes: [0, 1_000],
+    });
+    expect(downwardPlan.blocks[0]!.finalDurationMs).toBe(1_000);
+    expect(downwardPlan.blocks[0]!.extendedForPerformance).toBe(false);
+
+    // Conflicting second camera directive that also overflows: even with
+    // extendShotForPerformance=true, the conflict fails without growing the shot.
+    const conflictScript = [
+      '镜头：运镜冲突不留半成品',
+      '时长：1000ms',
+      '出场：师兄',
+      '对白：',
+      '师兄：正好一秒。',
+      '表演：',
+      '1｜运镜｜预设=推近｜偏移=0ms｜时长=500ms',
+      '1｜运镜｜预设=拉远｜偏移=21ms｜时长=979ms',
+    ].join('\n');
+    const conflictPlan = planScriptPerformance(project, conflictScript, {
+      extendShotForPerformance: true,
+    });
+    expect(conflictPlan.performances[0]).toMatchObject({
+      status: 'ready',
+      startMs: 0,
+      endMs: 500,
+    });
+    expect(conflictPlan.performances[1]).toMatchObject({
+      status: 'issue',
+      issueCode: 'CAMERA_PRESET_FAILED',
+    });
+    expect(conflictPlan.blocks[0]!.finalDurationMs).toBe(1_000);
+    expect(conflictPlan.blocks[0]!.extendedForPerformance).toBe(false);
+  });
+
+  it('reports an unsupported camera parameter locally without blocking other directives', () => {
+    const base = buildWf04Project();
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: base.shots.map((shot) => ({
+        ...shot,
+        camera: { mode: 'manual' as const, keys: [] },
+      })),
+    });
+    const script = [
+      '镜头：运镜测试',
+      '时长：3000ms',
+      '出场：师兄',
+      '对白：',
+      '师兄：第一句。',
+      '表演：',
+      '1｜运镜｜乱写=1',
+    ].join('\n');
+    const plan = planScriptPerformance(project, script);
+    expect(plan.performances[0]).toMatchObject({
+      status: 'issue',
+      issueCode: 'PARSE_ISSUE',
+    });
   });
 });

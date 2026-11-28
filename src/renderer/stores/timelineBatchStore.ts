@@ -5,6 +5,7 @@ import {
   type BatchTimelineEdit,
   type BatchTimelineEditPlan,
   type CrossTypeBatchShiftPlan,
+  type InsertTimeGapPlan,
   type Project,
   type SharedAudioClipPolicy,
 } from '../../domain';
@@ -60,6 +61,29 @@ export class TimelineBatchStore {
     const next = this.service.apply(project, { shotId, ...input });
     if (next !== project) {
       this.editorStore.updateProject(next, HISTORY_LABEL[input.edit.action]);
+    }
+  }
+
+  planInsertGap(input: {
+    readonly atMs: number;
+    readonly durationMs: number;
+    readonly layerIds?: readonly string[];
+    readonly sharedClipPolicy?: SharedAudioClipPolicy;
+  }): InsertTimeGapPlan {
+    const { project, shotId } = this.context();
+    return this.service.planInsertGap(project, { shotId, ...input });
+  }
+
+  applyInsertGap(input: {
+    readonly atMs: number;
+    readonly durationMs: number;
+    readonly layerIds?: readonly string[];
+    readonly sharedClipPolicy?: SharedAudioClipPolicy;
+  }): void {
+    const { project, shotId } = this.context();
+    const next = this.service.applyInsertGap(project, { shotId, ...input });
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Insert timeline gap');
     }
   }
 

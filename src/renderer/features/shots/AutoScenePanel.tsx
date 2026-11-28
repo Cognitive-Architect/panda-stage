@@ -29,6 +29,7 @@ import {
 } from '../../stores/EditorProjectStore';
 import { scenePreviewStore } from '../../stores/scenePreviewStore';
 import { shotStore } from '../../stores/shotStore';
+import { dialoguePerformanceLinkStore } from '../../stores/dialoguePerformanceLinkStore';
 
 export interface AutoScenePanelProps {
   snapshot: EditorProjectSnapshot | null;
@@ -450,6 +451,13 @@ export function AutoScenePanel({
       return;
     }
     scenePreviewStore.clear();
+    // Capture the applied result, not the earlier preview: a re-plan can hand
+    // back fresh dialogue/event IDs that the preview never saw.
+    dialoguePerformanceLinkStore.capture(
+      result.project.id,
+      result.performances,
+      result.project,
+    );
     const isScriptMode = activePlan.parsed.hasDialogueOrPerformance;
     const label = isScriptMode
       ? `剧本表演生成（${result.createdShotIds.length} 镜头 / ${result.scheduledDialogueCount} 对白 / ${result.readyPerformanceCount} 动作）`

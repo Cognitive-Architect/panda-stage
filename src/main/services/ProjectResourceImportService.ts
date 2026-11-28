@@ -2,18 +2,22 @@ import { randomUUID } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  analyzeProjectResourceReuse,
   buildImportedProjectCandidate,
   buildProjectResourceImportCatalog,
   buildProjectResourceImportPreview,
+  collectEffectiveImportScope,
   collectProjectResourceClosure,
   collectProjectUuidValues,
   findProvablyReusableTargetAssets,
   ProjectSchema,
+  resolveDefinitionReusePlan,
   type Asset,
   type Character,
   type PlannedAssetTransfer,
   type Project,
   type ProjectAnimationDefinition,
+  type ResolvedDefinitionReusePlan,
   type VoiceProfile,
 } from '../../domain';
 import {
@@ -83,7 +87,9 @@ export interface ProjectResourceImportOperation {
   importedAssets: Asset[];
   reusedAssetIds: string[];
   importedAnimations: ProjectAnimationDefinition[];
+  reusedAnimationIds: string[];
   importedCharacters: Character[];
+  reusedCharacterIds: string[];
   importedVoiceProfiles: VoiceProfile[];
   nameConflicts: Array<{
     kind: 'character' | 'animation';
@@ -273,6 +279,7 @@ export class ProjectResourceImportService {
       target.project,
       request.resources,
       request.reuseIdenticalAssets ?? false,
+      request.reuseDefinitions ?? [],
     );
     return ProjectResourceImportPreviewResponseSchema.parse({
       ok: true,
@@ -377,6 +384,83 @@ export class ProjectResourceImportService {
             ),
           );
 
+          // Verify explicit definition reuse choices against both live JSON
+          // semantics AND actual on-disk target asset files (never hashing
+          // unrelated files in the target project).
+          let reusePlan: ResolvedDefinitionReusePlan = {
+            reusedAnimations: new Map(),
+            reusedCharacters: new Map(),
+            rejectedChoices: [],
+          };
+          if (request.reuseDefinitions && request.reuseDefinitions.length > 0) {
+            const initialAnalysis = analyzeProjectResourceReuse({
+              sourceProject: session.sourceProject,
+              targetProject: current.project,
+              closure,
+            });
+            const preflightByAssetId = new Map(
+              preflight.map((item) => [item.sourceAsset.id, item]),
+            );
+            const targetAssetsById = new Map(
+              current.project.assets.map((asset) => [asset.id, asset]),
+            );
+            const verifiedAssetMatches = new Map<string, Set<string>>();
+            const checkedPairKeys = new Set<string>();
+
+            for (const choice of request.reuseDefinitions) {
+              const pairKey = `${choice.kind}:${choice.sourceId}:${choice.targetId}`;
+              const requiredPairs =
+                initialAnalysis.requiredTargetAssetPairsByCandidate.get(pairKey) ??
+                [];
+              for (const { sourceAssetId, targetAssetId } of requiredPairs) {
+                const assetPairKey = `${sourceAssetId}:${targetAssetId}`;
+                if (checkedPairKeys.has(assetPairKey)) continue;
+                checkedPairKeys.add(assetPairKey);
+                const preflightItem = preflightByAssetId.get(sourceAssetId);
+                const targetAsset = targetAssetsById.get(targetAssetId);
+                if (!preflightItem || !targetAsset) continue;
+                const ok = await this.verifyReusableTargetAsset(
+                  transaction.projectRoot,
+                  targetAsset,
+                  preflightItem.sha256,
+                  preflightItem.sourceAsset,
+                );
+                if (ok) {
+                  const set =
+                    verifiedAssetMatches.get(sourceAssetId) ?? new Set<string>();
+                  set.add(targetAssetId);
+                  verifiedAssetMatches.set(sourceAssetId, set);
+                }
+              }
+            }
+
+            const verifiedAnalysis = analyzeProjectResourceReuse({
+              sourceProject: session.sourceProject,
+              targetProject: current.project,
+              closure,
+              verifiedAssetMatches,
+            });
+            reusePlan = resolveDefinitionReusePlan(
+              verifiedAnalysis,
+              request.reuseDefinitions,
+              closure,
+            );
+          }
+
+          const effectiveScope = collectEffectiveImportScope(
+            session.sourceProject,
+            selected,
+            closure,
+            reusePlan.reusedAnimations,
+            reusePlan.reusedCharacters,
+          );
+          const effectiveAssetIds = new Set(
+            effectiveScope.assetsToTransfer.map((asset) => asset.id),
+          );
+          const effectivePreflight = preflight.filter((item) =>
+            effectiveAssetIds.has(item.sourceAsset.id),
+          );
+
           const plannedAssets: PlannedAssetTransfer[] = [];
           const filesToCopy: Array<{
             sourcePath: string;
@@ -385,7 +469,7 @@ export class ProjectResourceImportService {
             assetName: string;
           }> = [];
 
-          for (const item of preflight) {
+          for (const item of effectivePreflight) {
             let reusable: Asset | null = null;
             if (request.reuseIdenticalAssets) {
               const candidates = findProvablyReusableTargetAssets(
@@ -455,7 +539,34 @@ export class ProjectResourceImportService {
             plannedAssets,
             createId: this.createId,
             updatedAtIso: this.now().toISOString(),
+            reusedAnimations: reusePlan.reusedAnimations,
+            reusedCharacters: reusePlan.reusedCharacters,
+            selections: selected,
           });
+
+          // If every selected definition was reused with zero new assets or
+          // definitions, avoid writing a no-op project revision to disk.
+          if (candidate.project === current.project) {
+            return {
+              projectRoot: targetRoot,
+              projectId: current.project.id,
+              ...(request.openInstanceId !== undefined
+                ? { openInstanceId: request.openInstanceId }
+                : {}),
+              project: current.project,
+              baseRevision: request.baseRevision,
+              savedRevision: request.baseRevision,
+              sourceProjectName: session.sourceProjectName,
+              importedAssets: candidate.importedAssets,
+              reusedAssetIds: candidate.reusedAssetIds,
+              importedAnimations: candidate.importedAnimations,
+              reusedAnimationIds: candidate.reusedAnimationIds,
+              importedCharacters: candidate.importedCharacters,
+              reusedCharacterIds: candidate.reusedCharacterIds,
+              importedVoiceProfiles: candidate.importedVoiceProfiles,
+              nameConflicts: candidate.nameConflicts,
+            };
+          }
 
           for (const file of filesToCopy) {
             const targetPath = await this.fileSystem.copyIntoAssetsAtomically(
@@ -502,7 +613,9 @@ export class ProjectResourceImportService {
             importedAssets: candidate.importedAssets,
             reusedAssetIds: candidate.reusedAssetIds,
             importedAnimations: candidate.importedAnimations,
+            reusedAnimationIds: candidate.reusedAnimationIds,
             importedCharacters: candidate.importedCharacters,
+            reusedCharacterIds: candidate.reusedCharacterIds,
             importedVoiceProfiles: candidate.importedVoiceProfiles,
             nameConflicts: candidate.nameConflicts,
           };

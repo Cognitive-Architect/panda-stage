@@ -160,6 +160,43 @@
   cursor: pointer;
 }
 
+.project-resource-import-reuse-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-1);
+}
+
+.project-resource-import-reuse-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-space-2);
+  color: var(--ui-color-text-primary);
+}
+
+.project-resource-import-reuse-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-resource-import-reuse-select {
+  padding: 3px 8px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-overlay);
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-secondary);
+}
+
+.project-resource-import-reuse-diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--ui-color-text-muted);
+}
+
 .project-resource-import-error {
   display: flex;
   align-items: center;

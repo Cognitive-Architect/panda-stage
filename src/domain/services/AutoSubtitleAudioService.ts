@@ -53,6 +53,15 @@ export interface DialogueDraftRowSeed {
   readonly characterId?: string;
   readonly speakerName: string;
   readonly existingDialogueId?: string;
+  /** Portable manifest identity; survives reorder/edit round-trips. */
+  readonly lineKey?: string;
+  /**
+   * Explicitly keeps this draft row unselected for audio (`manualAudioAssetId: null`)
+   * until the author manually chooses a recording, preventing fallback to
+   * `<ordinal>_<speakerName>` auto-matching or stale confirmed caches (e.g. for
+   * out-of-scope CSV rows preserved as plain text).
+   */
+  readonly explicitAudioUnselected?: boolean;
   readonly confirmedAudioAssetId?: string;
   readonly sourceStartMs?: number;
   readonly sourceEndMs?: number;
@@ -75,6 +84,59 @@ export function createDraftRowIdGenerator(
     counter += 1;
     return `${prefix}-${counter}`;
   };
+}
+
+/** Imported identity of one CSV row, waiting for its draft row to appear. */
+export interface DialogueManifestPendingIdentity {
+  readonly lineKey?: string;
+  readonly dialogueId?: string;
+  readonly speaker: string;
+  readonly text: string;
+  /** Out-of-scope CSV rows stay plain text and must remain explicitly unselected. */
+  readonly explicitAudioUnselected?: boolean;
+}
+
+/**
+ * One-shot bridge from imported CSV rows to draft rows.
+ *
+ * The slot is the CSV row position, and a row only takes the identity of **its
+ * own** slot. Rows whose slot is empty or marked out-of-scope never inherit an
+ * identical line from elsewhere, and an identity is retired once consumed so a
+ * later re-number cannot re-apply it.
+ */
+export function attachDialogueManifestIdentities(
+  rows: readonly StableDialogueDraftRow[],
+  pendingByIdentitySlot: Map<number, DialogueManifestPendingIdentity>,
+): StableDialogueDraftRow[] {
+  if (pendingByIdentitySlot.size === 0) return [...rows];
+  return rows.map((row) => {
+    if (row.lineKey || row.existingDialogueId || row.explicitAudioUnselected) {
+      return row;
+    }
+    const identity = pendingByIdentitySlot.get(row.sourceLineNumber);
+    if (!identity) return row;
+    pendingByIdentitySlot.delete(row.sourceLineNumber);
+    if (identity.explicitAudioUnselected) {
+      // This slot only carries a negative audio-selection decision, never a
+      // dialogue or recording identity. Text trimming/newline normalization
+      // (or an ambiguous edit) must not re-enable numbered audio matching.
+      const next: StableDialogueDraftRow = {
+        ...row,
+        explicitAudioUnselected: true,
+      };
+      return next;
+    }
+    if (identity.text !== row.text || identity.speaker !== row.speakerName) {
+      // The CSV row at this position is not the row that was created (invalid,
+      // foreign or manually remapped): drop the identity instead of guessing.
+      return row;
+    }
+    return {
+      ...row,
+      ...(identity.lineKey ? { lineKey: identity.lineKey } : {}),
+      ...(identity.dialogueId ? { existingDialogueId: identity.dialogueId } : {}),
+    };
+  });
 }
 
 export interface DialogueAudioMatchRequest {
@@ -248,6 +310,47 @@ export function audioAssetDisplayFileName(asset: AudioAsset): string {
   return normalized.slice(normalized.lastIndexOf('/') + 1) || asset.name;
 }
 
+/**
+ * Name index for manifest imports. Values are candidate **sets** so two assets
+ * sharing a name stay ambiguous instead of resolving to whichever was indexed
+ * last, which would silently bind the wrong recording.
+ */
+export type AudioAssetFileNameIndex = ReadonlyMap<
+  string,
+  ReadonlyMap<string, AudioAsset>
+>;
+
+export function buildAudioAssetFileNameIndex(
+  assets: readonly AudioAsset[],
+): AudioAssetFileNameIndex {
+  const index = new Map<string, Map<string, AudioAsset>>();
+  for (const asset of assets) {
+    for (const raw of [asset.name, audioAssetDisplayFileName(asset)]) {
+      if (!raw) continue;
+      for (const key of new Set([raw, raw.toLocaleLowerCase()])) {
+        const bucket = index.get(key) ?? new Map<string, AudioAsset>();
+        bucket.set(asset.id, asset);
+        index.set(key, bucket);
+      }
+    }
+  }
+  return index;
+}
+
+/** Distinct candidates across raw/display/case-normalized name lookups. */
+export function resolveAudioAssetFileNameCandidates(
+  index: AudioAssetFileNameIndex,
+  fileName: string,
+): AudioAsset[] {
+  const merged = new Map<string, AudioAsset>();
+  for (const key of new Set([fileName, fileName.toLocaleLowerCase()])) {
+    for (const [id, asset] of index.get(key) ?? []) {
+      merged.set(id, asset);
+    }
+  }
+  return [...merged.values()];
+}
+
 export function formatAudioDurationMs(milliseconds: number): string {
   if (!Number.isSafeInteger(milliseconds) || milliseconds < 0) return '—';
   const seconds = (milliseconds / 1_000).toFixed(3).replace(/\.?0+$/u, '');
@@ -340,6 +443,20 @@ export function reconcileDialogueDraftRows(
     () => null,
   );
 
+  // Pass 0: portable manifest lineKey is the strongest cross-session identity;
+  // it survives reorder and single-line text edits.
+  nextSeeds.forEach((seed, nextIndex) => {
+    if (!seed.lineKey) return;
+    for (const prevIndex of available) {
+      const prev = previousRows[prevIndex]!;
+      if (prev.lineKey === seed.lineKey) {
+        matchedPrevious[nextIndex] = prev;
+        available.delete(prevIndex);
+        break;
+      }
+    }
+  });
+
   // Pass 1: exact existingDialogueId match.
   nextSeeds.forEach((seed, nextIndex) => {
     if (!seed.existingDialogueId) return;
@@ -396,7 +513,7 @@ export function reconcileDialogueDraftRows(
       return {
         ...seed,
         draftRowId: nextId(),
-        ...(seed.confirmedAudioAssetId
+        ...(!seed.explicitAudioUnselected && seed.confirmedAudioAssetId
           ? { confirmedSpeakerKey: speakerKey }
           : {}),
       };
@@ -404,9 +521,12 @@ export function reconcileDialogueDraftRows(
 
     const sameSpeaker =
       (prev.confirmedSpeakerKey ?? dialogueDraftSpeakerKey(prev)) === speakerKey;
-    const confirmedAudioAssetId =
-      seed.confirmedAudioAssetId ??
-      (sameSpeaker ? prev.confirmedAudioAssetId : undefined);
+    const explicitAudioUnselected =
+      prev.explicitAudioUnselected || seed.explicitAudioUnselected || undefined;
+    const confirmedAudioAssetId = explicitAudioUnselected
+      ? undefined
+      : seed.confirmedAudioAssetId ??
+        (sameSpeaker ? prev.confirmedAudioAssetId : undefined);
     const sourceStartMs =
       seed.sourceStartMs ?? (sameSpeaker ? prev.sourceStartMs : undefined);
     const sourceEndMs =
@@ -415,9 +535,19 @@ export function reconcileDialogueDraftRows(
     return {
       ...seed,
       draftRowId: prev.draftRowId,
-      ...(seed.existingDialogueId ?? prev.existingDialogueId
-        ? { existingDialogueId: seed.existingDialogueId ?? prev.existingDialogueId }
+      // An already-matched draft row keeps its own portable identity. A later
+      // seed (e.g. positional manifest lookup after partial commit) must never
+      // overwrite it onto another dialogue/lineKey.
+      ...(prev.existingDialogueId ?? seed.existingDialogueId
+        ? {
+            existingDialogueId:
+              prev.existingDialogueId ?? seed.existingDialogueId,
+          }
         : {}),
+      ...(prev.lineKey ?? seed.lineKey
+        ? { lineKey: prev.lineKey ?? seed.lineKey }
+        : {}),
+      ...(explicitAudioUnselected ? { explicitAudioUnselected: true } : {}),
       ...(confirmedAudioAssetId !== undefined
         ? { confirmedAudioAssetId, confirmedSpeakerKey: speakerKey }
         : {}),

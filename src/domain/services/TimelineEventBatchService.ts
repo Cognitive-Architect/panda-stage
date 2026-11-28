@@ -1,6 +1,8 @@
 import {
   ProjectSchema,
   type CharacterActionEvent,
+  type ExpressionEvent,
+  type FlipEvent,
   type GraphicPlaybackEvent,
   type Layer,
   type MoveEvent,
@@ -10,6 +12,7 @@ import {
   type ShakeEvent,
   type Shot,
   type TimelineEvent,
+  type VisibilityEvent,
 } from '../models';
 import {
   TIMELINE_FPS,
@@ -23,6 +26,7 @@ import {
   type SharedAudioClipPolicy,
 } from './DialogueService';
 import { LayerMotionService, layerCompositeKeyTimes } from './LayerMotionService';
+import { ShotService } from './ShotService';
 
 /**
  * Official independently editable TimelineEvent interval types supported by
@@ -80,6 +84,27 @@ export type BatchEditableEvent =
   | CharacterActionEvent
   | GraphicPlaybackEvent;
 
+/** Instantaneous switch events are shift-only; they never gain a duration. */
+export const BATCH_SHIFTABLE_POINT_EVENT_TYPES = [
+  'expression',
+  'flip',
+  'visibility',
+] as const;
+
+export type BatchShiftablePointEventType =
+  (typeof BATCH_SHIFTABLE_POINT_EVENT_TYPES)[number];
+
+export type BatchShiftablePointEvent =
+  | ExpressionEvent
+  | FlipEvent
+  | VisibilityEvent;
+
+export type BatchShiftableEvent = BatchEditableEvent | BatchShiftablePointEvent;
+
+export type BatchShiftableEventType =
+  | BatchEditableEventType
+  | BatchShiftablePointEventType;
+
 type TimelineEventChannel =
   | 'move'
   | 'scale'
@@ -96,6 +121,16 @@ const EVENT_CHANNEL: Record<BatchEditableEventType, TimelineEventChannel | null>
   'graphic-playback': 'graphic-playback',
 };
 
+function eventChannel(eventType: BatchShiftableEventType): TimelineEventChannel | null {
+  return isBatchEditableEventType(eventType) ? EVENT_CHANNEL[eventType] : null;
+}
+
+function isBatchEditableEventType(
+  eventType: BatchShiftableEventType,
+): eventType is BatchEditableEventType {
+  return (BATCH_EDITABLE_EVENT_TYPES as readonly string[]).includes(eventType);
+}
+
 export const BATCH_EVENT_TYPE_LABEL: Record<BatchEditableEventType, string> = {
   move: '移动',
   scale: '缩放',
@@ -105,15 +140,26 @@ export const BATCH_EVENT_TYPE_LABEL: Record<BatchEditableEventType, string> = {
   'graphic-playback': '元件播放',
 };
 
-const ANY_EVENT_TYPE_LABEL: Record<TimelineEvent['type'], string> = {
-  ...BATCH_EVENT_TYPE_LABEL,
+export const BATCH_POINT_EVENT_TYPE_LABEL: Record<
+  BatchShiftablePointEventType,
+  string
+> = {
   expression: '表情',
   flip: '翻转',
   visibility: '显示',
+};
+
+const ANY_EVENT_TYPE_LABEL: Record<TimelineEvent['type'], string> = {
+  ...BATCH_EVENT_TYPE_LABEL,
+  ...BATCH_POINT_EVENT_TYPE_LABEL,
   'mouth-cue': '口型点',
   'mouth-pose': '口型段',
   'graphic-frame': '元件定格',
 };
+
+const POINT_EVENT_TYPE_SET = new Set<TimelineEvent['type']>(
+  BATCH_SHIFTABLE_POINT_EVENT_TYPES,
+);
 
 function formatSeconds(ms: number): string {
   const seconds = Math.abs(ms) / 1_000;
@@ -128,6 +174,8 @@ export type TimelineEventBatchErrorCode =
   | 'TIMELINE_EVENT_BATCH_TOO_SMALL'
   | 'TIMELINE_EVENT_UNSUPPORTED'
   | 'TIMELINE_EVENT_NOT_TIMED'
+  | 'POINT_EVENT_DURATION_UNSUPPORTED'
+  | 'POINT_EVENT_CONFLICT'
   | 'TIMELINE_EVENT_LAYER_MISSING'
   | 'TIMELINE_EVENT_LAYER_LOCKED'
   | 'INVALID_TIMELINE_EDIT_AMOUNT'
@@ -155,6 +203,8 @@ export interface BatchLayerMotionSpanRef {
   readonly layerId: string;
   readonly startMs: number;
   readonly endMs: number;
+  /** Explicit selected key times; when omitted, all layer keys inside the range participate. */
+  readonly keyTimesMs?: readonly number[];
 }
 
 export interface BatchEditTimelineEventsInput {
@@ -172,12 +222,18 @@ export interface BatchTimelineEventEntry {
   readonly eventId: string;
   readonly layerId: string;
   readonly layerName: string;
-  readonly eventType: BatchEditableEventType;
+  readonly eventType: BatchShiftableEventType;
   readonly startMs: number;
   readonly endMs: number;
   readonly nextStartMs: number;
   readonly nextEndMs: number;
   readonly nextPlaybackStartMs?: number;
+}
+
+/** Real per-key retime produced by the official frame-aligned planner. */
+export interface BatchLayerMotionKeyMove {
+  readonly fromTimeMs: number;
+  readonly toTimeMs: number;
 }
 
 export interface BatchLayerMotionSpanEntry {
@@ -191,12 +247,20 @@ export interface BatchLayerMotionSpanEntry {
   readonly nextEndMs: number;
   readonly keyTimesMs: readonly number[];
   readonly deltaFrames?: number;
+  /**
+   * Exact from->to per key. A single integer delta is not enough: on the 24fps
+   * grid 42ms->83ms (+41) and 83ms->125ms (+42) differ.
+   */
+  readonly keyMoves?: readonly BatchLayerMotionKeyMove[];
 }
 
 export type BatchTimelineSkippedReasonCode =
   | 'UNSUPPORTED_EVENT_TYPE'
   | 'MOUTH_POSE_BOUND_TO_DIALOGUE'
   | 'EVENT_NOT_TIMED'
+  | 'POINT_EVENT_DURATION_UNSUPPORTED'
+  | 'POINT_EVENT_CONFLICT'
+  | 'CROSSES_INSERT_POINT'
   | 'LAYER_MISSING'
   | 'LAYER_LOCKED'
   | 'PROTECTED_BASE_KEY'
@@ -204,7 +268,7 @@ export type BatchTimelineSkippedReasonCode =
 
 export interface BatchTimelineSkippedEntry {
   readonly itemId: string;
-  readonly kind: 'timeline-event' | 'layer-motion-span';
+  readonly kind: 'dialogue' | 'timeline-event' | 'layer-motion-span';
   readonly layerId?: string;
   readonly layerName?: string;
   readonly label: string;
@@ -264,8 +328,51 @@ export interface CrossTypeBatchShiftPlan {
   readonly changedCount: number;
 }
 
+export interface InsertTimeGapInput {
+  readonly shotId: string;
+  readonly atMs: number;
+  readonly durationMs: number;
+  /** Editable layers whose events/keyframes participate; defaults to all unlocked layers. */
+  readonly layerIds?: readonly string[];
+  readonly sharedClipPolicy?: SharedAudioClipPolicy;
+}
+
+export interface InsertGapUnsupportedEntry {
+  readonly kind:
+    | 'standalone-audio'
+    | 'camera-key'
+    | 'camera-override'
+    | 'depth-key'
+    | 'parent-key'
+    | 'graphic-frame';
+  readonly layerId?: string;
+  readonly label: string;
+  readonly reason: string;
+}
+
+export interface InsertTimeGapPlan {
+  readonly shotId: string;
+  readonly atMs: number;
+  readonly durationMs: number;
+  /** Delta the supported content actually moves; frame-snapped when keys participate. */
+  readonly effectiveDeltaMs: number;
+  readonly deltaFrames?: number;
+  readonly frameSnapped?: boolean;
+  readonly dialogueIds: readonly string[];
+  readonly eventIds: readonly string[];
+  readonly layerMotionSpans: readonly BatchLayerMotionSpanRef[];
+  readonly crossTypePlan: CrossTypeBatchShiftPlan | null;
+  readonly skipped: readonly BatchTimelineSkippedEntry[];
+  readonly unsupported: readonly InsertGapUnsupportedEntry[];
+  readonly needsShotExtension: boolean;
+  readonly extensionToMs: number | null;
+  readonly earliestStartMs: number;
+  readonly latestEndMs: number;
+  readonly changedCount: number;
+}
+
 interface SelectedEvent {
-  readonly event: BatchEditableEvent;
+  readonly event: BatchShiftableEvent;
   readonly layerName: string;
 }
 
@@ -297,6 +404,18 @@ export function isBatchEditableEvent(
   return (BATCH_EDITABLE_EVENT_TYPES as readonly string[]).includes(event.type);
 }
 
+export function isBatchShiftablePointEvent(
+  event: TimelineEvent,
+): event is BatchShiftablePointEvent {
+  return POINT_EVENT_TYPE_SET.has(event.type);
+}
+
+export function isBatchShiftableEvent(
+  event: TimelineEvent,
+): event is BatchShiftableEvent {
+  return isBatchEditableEvent(event) || isBatchShiftablePointEvent(event);
+}
+
 function retimeEvent(
   event: TimelineEvent,
   entry: BatchTimelineEventEntry,
@@ -307,6 +426,9 @@ function retimeEvent(
     case 'opacity':
     case 'shake':
     case 'character-action':
+    case 'expression':
+    case 'flip':
+    case 'visibility':
       return {
         ...event,
         startMs: entry.nextStartMs,
@@ -487,18 +609,21 @@ export class TimelineEventBatchService {
   private readonly now: () => Date;
   private readonly layerMotionService: LayerMotionService;
   private readonly dialogueService: DialogueService;
+  private readonly shotService: ShotService;
 
   constructor(
     options: {
       now?: () => Date;
       layerMotionService?: LayerMotionService;
       dialogueService?: DialogueService;
+      shotService?: ShotService;
     } = {},
   ) {
     this.now = options.now ?? (() => new Date());
     this.layerMotionService =
       options.layerMotionService ?? new LayerMotionService();
     this.dialogueService = options.dialogueService ?? new DialogueService({ now: this.now });
+    this.shotService = options.shotService ?? new ShotService({ now: this.now });
   }
 
   /**
@@ -515,7 +640,12 @@ export class TimelineEventBatchService {
     const eventIds = [...new Set(input.eventIds ?? [])];
     const uniqueSpans = new Map<string, BatchLayerMotionSpanRef>();
     for (const span of input.layerMotionSpans ?? []) {
-      if (!uniqueSpans.has(span.id)) uniqueSpans.set(span.id, span);
+      const selectionKey = span.keyTimesMs
+        ? `${span.layerId}:keys:${[...new Set(span.keyTimesMs)]
+            .sort((left, right) => left - right)
+            .join(',')}`
+        : `${span.layerId}:range:${span.startMs}:${span.endMs}`;
+      if (!uniqueSpans.has(selectionKey)) uniqueSpans.set(selectionKey, span);
     }
     const spans = [...uniqueSpans.values()];
 
@@ -531,7 +661,7 @@ export class TimelineEventBatchService {
     );
     const layersById = new Map(shot.layers.map((layer) => [layer.id, layer]));
     const selectedEvents: SelectedEvent[] = [];
-    const selectedSpans: SelectedMotionSpan[] = [];
+    let selectedSpans: SelectedMotionSpan[] = [];
     const skipped: BatchTimelineSkippedEntry[] = [];
 
     for (const eventId of eventIds) {
@@ -546,7 +676,7 @@ export class TimelineEventBatchService {
       const layerName = layer?.name ?? '该对象';
       const typeLabel = ANY_EVENT_TYPE_LABEL[event.type];
 
-      if (!isBatchEditableEvent(event)) {
+      if (!isBatchShiftableEvent(event)) {
         skipped.push({
           itemId: event.id,
           kind: 'timeline-event',
@@ -587,7 +717,32 @@ export class TimelineEventBatchService {
         });
         continue;
       }
-      if (event.endMs <= event.startMs) {
+      if (isBatchShiftablePointEvent(event)) {
+        if (edit.action === 'unify-duration') {
+          skipped.push({
+            itemId: event.id,
+            kind: 'timeline-event',
+            layerId: layer.id,
+            layerName: layer.name,
+            label: `${layer.name} · ${typeLabel}`,
+            reasonCode: 'POINT_EVENT_DURATION_UNSUPPORTED',
+            reason: `「${layer.name}」的${typeLabel}是点事件，只能平移，不能统一时长。`,
+          });
+          continue;
+        }
+        if (event.endMs !== event.startMs) {
+          skipped.push({
+            itemId: event.id,
+            kind: 'timeline-event',
+            layerId: layer.id,
+            layerName: layer.name,
+            label: `${layer.name} · ${typeLabel}`,
+            reasonCode: 'EVENT_NOT_TIMED',
+            reason: `「${layer.name}」的${typeLabel}不是零时长点事件，已跳过。`,
+          });
+          continue;
+        }
+      } else if (event.endMs <= event.startMs) {
         skipped.push({
           itemId: event.id,
           kind: 'timeline-event',
@@ -628,10 +783,20 @@ export class TimelineEventBatchService {
         continue;
       }
       const allKeyTimes = layerCompositeKeyTimes(layer);
-      const keyTimesMs = allKeyTimes.filter(
-        (timeMs) => timeMs >= span.startMs && timeMs <= span.endMs,
+      const requestedKeyTimes = span.keyTimesMs
+        ? [...new Set(span.keyTimesMs)].sort((left, right) => left - right)
+        : allKeyTimes.filter(
+            (timeMs) => timeMs >= span.startMs && timeMs <= span.endMs,
+          );
+      const keyTimesMs = requestedKeyTimes.filter((timeMs) =>
+        allKeyTimes.includes(timeMs),
       );
-      if (span.endMs <= span.startMs || keyTimesMs.length < 2) {
+      const minimumKeyCount = edit.action === 'shift' ? 1 : 2;
+      if (
+        span.endMs < span.startMs ||
+        keyTimesMs.length !== requestedKeyTimes.length ||
+        keyTimesMs.length < minimumKeyCount
+      ) {
         skipped.push({
           itemId: span.id,
           kind: 'layer-motion-span',
@@ -639,9 +804,29 @@ export class TimelineEventBatchService {
           layerName: layer.name,
           label: `${layer.name} · 关键帧选段`,
           reasonCode: 'INVALID_MOTION_SPAN',
-          reason: `「${layer.name}」的关键帧选段至少需要 2 枚关键帧，已跳过。`,
+          reason:
+            edit.action === 'shift'
+              ? `「${layer.name}」的关键帧选段至少需要 1 枚真实关键帧，已跳过。`
+              : `「${layer.name}」的关键帧选段至少需要 2 枚真实关键帧，已跳过。`,
         });
         continue;
+      }
+      if (edit.action === 'unify-duration') {
+        const covered = allKeyTimes.filter(
+          (timeMs) => timeMs >= keyTimesMs[0]! && timeMs <= keyTimesMs[keyTimesMs.length - 1]!,
+        );
+        if (covered.length !== keyTimesMs.length) {
+          skipped.push({
+            itemId: span.id,
+            kind: 'layer-motion-span',
+            layerId: layer.id,
+            layerName: layer.name,
+            label: `${layer.name} · 关键帧选段`,
+            reasonCode: 'INVALID_MOTION_SPAN',
+            reason: `「${layer.name}」的统一时长要求选段连续，已跳过。`,
+          });
+          continue;
+        }
       }
       if (edit.action === 'shift' && keyTimesMs.includes(0)) {
         skipped.push({
@@ -657,6 +842,13 @@ export class TimelineEventBatchService {
       }
       selectedSpans.push({ span, layer, keyTimesMs });
     }
+
+    // Identical or partially overlapping key selections on one layer must become
+    // a single retime unit; otherwise the shared key is planned twice from the
+    // same baseline and applied twice (or cannot be found after the first move).
+    const normalized = this.normalizeMotionSpans(selectedSpans, edit.action);
+    selectedSpans = normalized.spans;
+    skipped.push(...normalized.skipped);
 
     if (selectedEvents.length === 0 && selectedSpans.length === 0) {
       throw new TimelineEventBatchError(
@@ -713,7 +905,7 @@ export class TimelineEventBatchService {
       }
     }
 
-    const entries = selectedEvents.map(
+    let entries = selectedEvents.map(
       ({ event, layerName }): BatchTimelineEventEntry => {
         const nextTiming = this.candidateEventTiming(
           shot,
@@ -737,6 +929,16 @@ export class TimelineEventBatchService {
         };
       },
     );
+
+    const pointConflictResult = this.filterPointEventConflicts(shot, entries);
+    entries = pointConflictResult.entries;
+    skipped.push(...pointConflictResult.skipped);
+    if (entries.length === 0 && selectedSpans.length === 0) {
+      throw new TimelineEventBatchError(
+        'TIMELINE_EVENT_UNSUPPORTED',
+        skipped[0]?.reason ?? '所选项目均不支持当前批量时间调整。',
+      );
+    }
 
     this.assertNoNewChannelConflict(shot, entries);
 
@@ -764,6 +966,10 @@ export class TimelineEventBatchService {
               nextEndMs: nextTimes[nextTimes.length - 1]!,
               keyTimesMs,
               deltaFrames,
+              keyMoves: retimePlan.moves.map((move) => ({
+                fromTimeMs: move.fromTimeMs,
+                toTimeMs: move.toTimeMs,
+              })),
             };
           } catch (error) {
             throw new TimelineEventBatchError(
@@ -1109,6 +1315,388 @@ export class TimelineEventBatchService {
     return candidate;
   }
 
+  /**
+   * Plans the first Spacer slice: insert positive blank time at the playhead and
+   * shift only officially supported content at/after that point. Crossing
+   * intervals, locked layers and unsupported timing objects are reported
+   * locally rather than silently cut, skipped without notice, or claimed as a
+   * full-track ripple.
+   */
+  planInsertGap(
+    project: Project,
+    input: InsertTimeGapInput,
+  ): InsertTimeGapPlan {
+    const shot = this.shot(project, input.shotId);
+    if (
+      !Number.isSafeInteger(input.atMs) ||
+      input.atMs < 0 ||
+      input.atMs > shot.durationMs
+    ) {
+      throw new TimelineEventBatchError(
+        'TIMELINE_EVENT_BATCH_OUT_OF_RANGE',
+        '插入位置必须位于当前镜头范围内。',
+      );
+    }
+    if (!Number.isSafeInteger(input.durationMs) || input.durationMs < 1) {
+      throw new TimelineEventBatchError(
+        'INVALID_TIMELINE_EDIT_AMOUNT',
+        '插入空白时长必须是大于 0 的整数毫秒。',
+      );
+    }
+
+    const atMs = input.atMs;
+    const durationMs = input.durationMs;
+    const layerFilter = input.layerIds ? new Set(input.layerIds) : null;
+    const includesLayer = (layerId: string): boolean =>
+      layerFilter === null || layerFilter.has(layerId);
+    const layersById = new Map(shot.layers.map((layer) => [layer.id, layer]));
+    const dialogueIds: string[] = [];
+    const eventIds: string[] = [];
+    const layerMotionSpans: BatchLayerMotionSpanRef[] = [];
+    const skipped: BatchTimelineSkippedEntry[] = [];
+    const unsupported: InsertGapUnsupportedEntry[] = [];
+
+    for (const dialogue of shot.dialogues) {
+      if (dialogue.endMs <= dialogue.startMs) continue;
+      if (dialogue.startMs >= atMs) {
+        dialogueIds.push(dialogue.id);
+      } else if (dialogue.endMs > atMs) {
+        skipped.push({
+          itemId: dialogue.id,
+          kind: 'dialogue',
+          label: '对白',
+          reasonCode: 'CROSSES_INSERT_POINT',
+          reason: `有一条对白跨越插入点（${formatSeconds(dialogue.startMs)}–${formatSeconds(dialogue.endMs)}s），请先调整或拆开，已跳过。`,
+        });
+      }
+    }
+
+    for (const event of shot.timelineEvents) {
+      if (!includesLayer(event.layerId)) continue;
+      const layer = layersById.get(event.layerId);
+      const layerName = layer?.name ?? '该对象';
+      const typeLabel = ANY_EVENT_TYPE_LABEL[event.type];
+      if (event.type === 'mouth-pose' || event.type === 'mouth-cue') continue;
+      if (event.type === 'graphic-frame') {
+        if (event.startMs >= atMs) {
+          unsupported.push({
+            kind: 'graphic-frame',
+            layerId: event.layerId,
+            label: `${layerName} · ${typeLabel}`,
+            reason: `「${layerName}」的${typeLabel}尚未纳入 Spacer，已保留原位。`,
+          });
+        }
+        continue;
+      }
+      if (!layer) {
+        skipped.push({
+          itemId: event.id,
+          kind: 'timeline-event',
+          layerId: event.layerId,
+          label: typeLabel,
+          reasonCode: 'LAYER_MISSING',
+          reason: '所选动作所属的对象已不在当前镜头里，已跳过。',
+        });
+        continue;
+      }
+      if (layer.locked) {
+        skipped.push({
+          itemId: event.id,
+          kind: 'timeline-event',
+          layerId: layer.id,
+          layerName: layer.name,
+          label: `${layer.name} · ${typeLabel}`,
+          reasonCode: 'LAYER_LOCKED',
+          reason: `「${layer.name}」已锁定，未纳入本次插入，已跳过。`,
+        });
+        continue;
+      }
+      if (event.startMs >= atMs) {
+        eventIds.push(event.id);
+      } else if (event.endMs > atMs) {
+        skipped.push({
+          itemId: event.id,
+          kind: 'timeline-event',
+          layerId: layer.id,
+          layerName: layer.name,
+          label: `${layer.name} · ${typeLabel}`,
+          reasonCode: 'CROSSES_INSERT_POINT',
+          reason: `「${layer.name}」的${typeLabel}跨越插入点，首版不自动截断，已跳过。`,
+        });
+      }
+    }
+
+    for (const layer of shot.layers) {
+      if (layer.id === shot.backgroundLayerId || !includesLayer(layer.id)) {
+        continue;
+      }
+      const times = layerCompositeKeyTimes(layer).filter(
+        (timeMs) => timeMs > 0 && timeMs >= atMs,
+      );
+      if (layer.locked) {
+        if (times.length > 0) {
+          skipped.push({
+            itemId: `layer-motion:${layer.id}`,
+            kind: 'layer-motion-span',
+            layerId: layer.id,
+            layerName: layer.name,
+            label: `${layer.name} · 关键帧`,
+            reasonCode: 'LAYER_LOCKED',
+            reason: `「${layer.name}」已锁定，关键帧未纳入本次插入，已跳过。`,
+          });
+        }
+      } else if (times.length > 0) {
+        layerMotionSpans.push({
+          id: `spacer:${layer.id}`,
+          layerId: layer.id,
+          startMs: times[0]!,
+          endMs: times[times.length - 1]!,
+          keyTimesMs: times,
+        });
+      }
+
+      if (layer.depthKeys?.some((key) => key.timeMs >= atMs)) {
+        unsupported.push({
+          kind: 'depth-key',
+          layerId: layer.id,
+          label: `${layer.name} · 深度键`,
+          reason: `「${layer.name}」的深度键尚未纳入 Spacer，已保留原位。`,
+        });
+      }
+      if (layer.parentKeys?.some((key) => key.timeMs >= atMs)) {
+        unsupported.push({
+          kind: 'parent-key',
+          layerId: layer.id,
+          label: `${layer.name} · 父级交接`,
+          reason: `「${layer.name}」的父级交接尚未纳入 Spacer，已保留原位。`,
+        });
+      }
+    }
+
+    const referencedClipIds = new Set(
+      shot.dialogues
+        .map((dialogue) => dialogue.audioClipId)
+        .filter((clipId): clipId is string => clipId !== undefined),
+    );
+    for (const clip of shot.audioClips) {
+      if (referencedClipIds.has(clip.id)) continue;
+      if (clip.startMs >= atMs || (clip.startMs < atMs && clip.endMs > atMs)) {
+        unsupported.push({
+          kind: 'standalone-audio',
+          label: `独立音频 · ${clip.name}`,
+          reason: `独立音频「${clip.name}」尚未纳入 Spacer，已保留原位。`,
+        });
+      }
+    }
+
+    for (const key of shot.camera?.keys ?? []) {
+      if (key.timeMs >= atMs) {
+        unsupported.push({
+          kind: 'camera-key',
+          label: '镜头相机键',
+          reason: '镜头相机键尚未纳入 Spacer，已保留原位。',
+        });
+        break;
+      }
+    }
+    for (const override of shot.camera?.overrides ?? []) {
+      if (override.startMs >= atMs || (override.startMs < atMs && override.endMs > atMs)) {
+        unsupported.push({
+          kind: 'camera-override',
+          label: '镜头相机接管',
+          reason: '镜头相机接管尚未纳入 Spacer，已保留原位。',
+        });
+        break;
+      }
+    }
+
+    const hasSupported =
+      dialogueIds.length > 0 ||
+      eventIds.length > 0 ||
+      layerMotionSpans.length > 0;    let maxEndMs = atMs;
+    if (hasSupported) {
+      for (const dialogueId of dialogueIds) {
+        const dialogue = shot.dialogues.find(
+          (candidate) => candidate.id === dialogueId,
+        );
+        if (!dialogue) continue;
+        maxEndMs = Math.max(maxEndMs, dialogue.endMs);
+        // A linked audio clip can outlast its dialogue; the shifted copy must
+        // still fit, so its end participates in the required duration.
+        const clip = dialogue.audioClipId
+          ? shot.audioClips.find(
+              (candidate) => candidate.id === dialogue.audioClipId,
+            )
+          : undefined;
+        if (clip) maxEndMs = Math.max(maxEndMs, clip.endMs);
+      }
+      // "Move linked dialogues too" must never quietly drag content that sits
+      // before the insert point; that would move crossed-over material the
+      // preview does not account for. Require the explicit split policy here.
+      if ((input.sharedClipPolicy ?? 'split') === 'include') {
+        const movingSet = new Set(dialogueIds);
+        const movingClipIds = new Set(
+          shot.dialogues
+            .filter(
+              (dialogue) =>
+                movingSet.has(dialogue.id) && dialogue.audioClipId,
+            )
+            .map((dialogue) => dialogue.audioClipId!),
+        );
+        const blocked = shot.dialogues.filter(
+          (dialogue) =>
+            !movingSet.has(dialogue.id) &&
+            dialogue.audioClipId &&
+            movingClipIds.has(dialogue.audioClipId) &&
+            dialogue.startMs < atMs,
+        );
+        if (blocked.length > 0) {
+          throw new TimelineEventBatchError(
+            'TIMELINE_EVENT_UNSUPPORTED',
+            `共享配音的未选对白位于插入点之前（${blocked.length} 条），连同移动会把插入点前的内容整体后移；请改用「拆分共享配音」。`,
+          );
+        }
+      }
+      for (const eventId of eventIds) {
+        const event = shot.timelineEvents.find(
+          (candidate) => candidate.id === eventId,
+        );
+        if (event) maxEndMs = Math.max(maxEndMs, event.endMs);
+      }
+      for (const span of layerMotionSpans) {
+        maxEndMs = Math.max(maxEndMs, span.endMs);
+      }
+    }
+    const requiredEndMs = maxEndMs + durationMs;
+    // Keyframe shifts are quantized to the 24fps grid, so the real result may
+    // land later than `maxEndMs + requestedDelta` (e.g. 1000ms + 30ms -> 1042ms).
+    // Probe once with slack to learn the actual frame-aligned delta, then plan,
+    // extend and later apply with **that** delta. Re-using the raw millisecond
+    // request against the already-snapped shorter shot would reject valid work.
+    let extensionToMs: number | null = null;
+    let crossTypePlan: CrossTypeBatchShiftPlan | null = null;
+    let probeDeltaMs: number | null = null;
+
+    if (hasSupported) {
+      const probeEndMs =
+        requiredEndMs + Math.ceil(1_000 / TIMELINE_FPS) + 1;
+      const probeProject =
+        probeEndMs > shot.durationMs
+          ? this.shotService.setDuration(project, shot.id, probeEndMs)
+          : project;
+      const probePlan = this.tryPlanCrossTypeShift(probeProject, {
+        shotId: shot.id,
+        dialogueIds,
+        eventIds,
+        layerMotionSpans,
+        deltaMs: durationMs,
+        ...(input.sharedClipPolicy
+          ? { sharedClipPolicy: input.sharedClipPolicy }
+          : {}),
+      });
+
+      if (probePlan) {
+        const actualDeltaMs = probePlan.deltaMs;
+        probeDeltaMs = actualDeltaMs;
+        // Real target end: the actual shifted content plus whatever the probe
+        // already knows is furthest (events, root keys, linked audio clips).
+        const contentEndMs = Math.max(
+          maxEndMs + actualDeltaMs,
+          probePlan.latestEndMs,
+        );
+        const needsExtension = contentEndMs > shot.durationMs;
+        const planningProject = needsExtension
+          ? this.shotService.setDuration(project, shot.id, contentEndMs)
+          : project;
+        if (needsExtension) extensionToMs = contentEndMs;
+        crossTypePlan = this.tryPlanCrossTypeShift(planningProject, {
+          shotId: shot.id,
+          dialogueIds,
+          eventIds,
+          layerMotionSpans,
+          deltaMs: actualDeltaMs,
+          ...(input.sharedClipPolicy
+            ? { sharedClipPolicy: input.sharedClipPolicy }
+            : {}),
+        });
+      }
+    }
+
+    const needsShotExtension = extensionToMs !== null;
+    const allSkipped = [...skipped, ...(crossTypePlan?.skipped ?? [])];
+    const changedCount = crossTypePlan?.changedCount ?? 0;
+    const effectiveDeltaMs =
+      crossTypePlan?.deltaMs ?? probeDeltaMs ?? durationMs;
+    return {
+      shotId: shot.id,
+      atMs,
+      durationMs,
+      effectiveDeltaMs,
+      ...(crossTypePlan?.deltaFrames !== undefined
+        ? { deltaFrames: crossTypePlan.deltaFrames }
+        : {}),
+      // Snap is judged against the caller's request, not the already-snapped plan.
+      frameSnapped: effectiveDeltaMs !== durationMs,
+      dialogueIds,
+      eventIds,
+      layerMotionSpans,
+      crossTypePlan,
+      skipped: allSkipped,
+      unsupported,
+      needsShotExtension,
+      extensionToMs,
+      earliestStartMs: crossTypePlan?.earliestStartMs ?? atMs,
+      latestEndMs: crossTypePlan?.latestEndMs ?? atMs,
+      changedCount,
+    };
+  }
+
+  /**
+   * Plans a cross-type shift, treating "nothing supported selected" as an empty
+   * plan instead of an error so a healthy subset can still be previewed.
+   */
+  private tryPlanCrossTypeShift(
+    project: Project,
+    input: CrossTypeBatchShiftInput,
+  ): CrossTypeBatchShiftPlan | null {
+    try {
+      return this.planCrossTypeShift(project, input);
+    } catch (error) {
+      if (
+        error instanceof TimelineEventBatchError &&
+        (error.code === 'TIMELINE_EVENT_UNSUPPORTED' ||
+          error.code === 'TIMELINE_EVENT_BATCH_TOO_SMALL')
+      ) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Applies the planned Spacer as one candidate Project. Shot extension and
+   * cross-type shift are composed before the renderer's single History commit.
+   */
+  applyInsertGap(project: Project, input: InsertTimeGapInput): Project {
+    const plan = this.planInsertGap(project, input);
+    if (plan.changedCount === 0) return project;
+    const candidate = plan.needsShotExtension && plan.extensionToMs !== null
+      ? this.shotService.setDuration(project, plan.shotId, plan.extensionToMs)
+      : project;
+    // Apply the delta the plan actually resolved (frame-snapped), never the raw
+    // millisecond request: the extended shot is sized for the real offset.
+    return this.applyCrossTypeShift(candidate, {
+      shotId: plan.shotId,
+      dialogueIds: plan.dialogueIds,
+      eventIds: plan.eventIds,
+      layerMotionSpans: plan.layerMotionSpans,
+      deltaMs: plan.effectiveDeltaMs,
+      ...(input.sharedClipPolicy
+        ? { sharedClipPolicy: input.sharedClipPolicy }
+        : {}),
+    });
+  }
+
   private collectUnsupportedAsSkipped(
     project: Project,
     shotId: string,
@@ -1181,7 +1769,7 @@ export class TimelineEventBatchService {
 
   private candidateEventTiming(
     shot: Shot,
-    event: BatchEditableEvent,
+    event: BatchShiftableEvent,
     edit: BatchTimelineEdit,
     layerName: string,
   ): { startMs: number; endMs: number; playbackStartMs?: number } {
@@ -1191,7 +1779,7 @@ export class TimelineEventBatchService {
       edit.action === 'shift'
         ? event.endMs + edit.deltaMs
         : event.startMs + edit.durationMs;
-    const label = BATCH_EVENT_TYPE_LABEL[event.type];
+    const label = ANY_EVENT_TYPE_LABEL[event.type];
 
     if (!Number.isSafeInteger(startMs) || !Number.isSafeInteger(endMs)) {
       throw new TimelineEventBatchError(
@@ -1215,7 +1803,13 @@ export class TimelineEventBatchService {
           : `「${layerName}」的${label}统一为 ${formatSeconds(edit.durationMs)} 秒会超出镜头结尾。`,
       );
     }
-    if (endMs <= startMs) {
+    if (endMs < startMs) {
+      throw new TimelineEventBatchError(
+        'INVALID_TIMELINE_EDIT_AMOUNT',
+        `「${layerName}」的${label}调整后时间无效。`,
+      );
+    }
+    if (!isBatchShiftablePointEvent(event) && endMs === startMs) {
       throw new TimelineEventBatchError(
         'INVALID_TIMELINE_EDIT_AMOUNT',
         `「${layerName}」的${label}调整后没有持续时间。`,
@@ -1241,6 +1835,172 @@ export class TimelineEventBatchService {
     return { startMs, endMs };
   }
 
+  /**
+   * Collapses duplicated / partially overlapping key selections per layer so a
+   * shared key is never retimed twice from the same baseline. A shift unions the
+   * selected keys; a duration unify keeps each continuous span but rejects
+   * overlapping ones instead of silently widening the selection.
+   */
+  private normalizeMotionSpans(
+    spans: readonly SelectedMotionSpan[],
+    action: BatchTimelineEdit['action'],
+  ): { spans: SelectedMotionSpan[]; skipped: BatchTimelineSkippedEntry[] } {
+    if (spans.length === 0) return { spans: [], skipped: [] };
+
+    if (action === 'shift') {
+      const byLayer = new Map<
+        string,
+        { span: BatchLayerMotionSpanRef; layer: Layer; keyTimes: Set<number> }
+      >();
+      const order: string[] = [];
+      for (const entry of spans) {
+        const existing = byLayer.get(entry.layer.id);
+        if (!existing) {
+          byLayer.set(entry.layer.id, {
+            span: entry.span,
+            layer: entry.layer,
+            keyTimes: new Set(entry.keyTimesMs),
+          });
+          order.push(entry.layer.id);
+          continue;
+        }
+        for (const timeMs of entry.keyTimesMs) existing.keyTimes.add(timeMs);
+      }
+      return {
+        spans: order.map((layerId) => {
+          const merged = byLayer.get(layerId)!;
+          const keyTimesMs = [...merged.keyTimes].sort(
+            (left, right) => left - right,
+          );
+          return {
+            span: {
+              ...merged.span,
+              startMs: keyTimesMs[0]!,
+              endMs: keyTimesMs[keyTimesMs.length - 1]!,
+              keyTimesMs,
+            },
+            layer: merged.layer,
+            keyTimesMs,
+          };
+        }),
+        skipped: [],
+      };
+    }
+
+    const accepted: SelectedMotionSpan[] = [];
+    const skipped: BatchTimelineSkippedEntry[] = [];
+    const rangesByLayer = new Map<
+      string,
+      Array<{ startMs: number; endMs: number }>
+    >();
+    for (const entry of spans) {
+      const startMs = entry.keyTimesMs[0]!;
+      const endMs = entry.keyTimesMs[entry.keyTimesMs.length - 1]!;
+      const ranges = rangesByLayer.get(entry.layer.id) ?? [];
+      if (ranges.some((range) => startMs <= range.endMs && range.startMs <= endMs)) {
+        skipped.push({
+          itemId: entry.span.id,
+          kind: 'layer-motion-span',
+          layerId: entry.layer.id,
+          layerName: entry.layer.name,
+          label: `${entry.layer.name} · 关键帧选段`,
+          reasonCode: 'INVALID_MOTION_SPAN',
+          reason: `「${entry.layer.name}」的统一时长选段与其他选段重叠，已跳过；请合并为一个连续选段。`,
+        });
+        continue;
+      }
+      ranges.push({ startMs, endMs });
+      rangesByLayer.set(entry.layer.id, ranges);
+      accepted.push(entry);
+    }
+    return { spans: accepted, skipped };
+  }
+
+  /**
+   * Point events have no interval overlap semantics. Two same-layer, same-type
+   * switch events landing on the same timestamp would make the effective one
+   * depend on ID ordering, so report them locally instead of silently stacking.
+   *
+   * Conflicts are judged on **final** positions: an event that this same batch
+   * moves away does not block its old slot. An event that ends up skipped stays
+   * where it was, so its original slot becomes resident and the loop re-checks —
+   * one exclusion can never let a second collision slip through.
+   */
+  private filterPointEventConflicts(
+    shot: Shot,
+    entries: readonly BatchTimelineEventEntry[],
+  ): {
+    entries: BatchTimelineEventEntry[];
+    skipped: BatchTimelineSkippedEntry[];
+  } {
+    const pointEntries = entries.filter((entry) =>
+      POINT_EVENT_TYPE_SET.has(entry.eventType),
+    );
+    if (pointEntries.length === 0) {
+      return { entries: [...entries], skipped: [] };
+    }
+
+    const keyOf = (
+      layerId: string,
+      eventType: TimelineEvent['type'],
+      timeMs: number,
+    ): string => `${layerId}:${eventType}:${timeMs}`;
+    const batchIds = new Set(pointEntries.map((entry) => entry.eventId));
+
+    // Everything outside this point batch keeps its current position.
+    const resident = new Set<string>();
+    for (const other of shot.timelineEvents) {
+      if (batchIds.has(other.id)) continue;
+      if (!POINT_EVENT_TYPE_SET.has(other.type)) continue;
+      resident.add(keyOf(other.layerId, other.type, other.startMs));
+    }
+
+    let remaining = [...pointEntries];
+    const skipped: BatchTimelineSkippedEntry[] = [];
+    let guard = pointEntries.length + 1;
+    while (guard > 0) {
+      guard -= 1;
+      const targetCounts = new Map<string, number>();
+      for (const entry of remaining) {
+        const key = keyOf(entry.layerId, entry.eventType, entry.nextStartMs);
+        targetCounts.set(key, (targetCounts.get(key) ?? 0) + 1);
+      }
+      const conflicting = remaining.filter((entry) => {
+        const key = keyOf(entry.layerId, entry.eventType, entry.nextStartMs);
+        return (targetCounts.get(key) ?? 0) > 1 || resident.has(key);
+      });
+      if (conflicting.length === 0) break;
+
+      for (const entry of conflicting) {
+        skipped.push({
+          itemId: entry.eventId,
+          kind: 'timeline-event',
+          layerId: entry.layerId,
+          layerName: entry.layerName,
+          label: `${entry.layerName} · ${ANY_EVENT_TYPE_LABEL[entry.eventType]}`,
+          reasonCode: 'POINT_EVENT_CONFLICT',
+          reason: `「${entry.layerName}」在 ${formatSeconds(
+            entry.nextStartMs,
+          )} 秒已有同类型点事件，本次平移会重合；请调整偏移或先处理该点事件，已跳过。`,
+        });
+        resident.add(keyOf(entry.layerId, entry.eventType, entry.startMs));
+      }
+      const conflictingIds = new Set(conflicting.map((entry) => entry.eventId));
+      remaining = remaining.filter(
+        (entry) => !conflictingIds.has(entry.eventId),
+      );
+    }
+
+    if (skipped.length === 0) {
+      return { entries: [...entries], skipped: [] };
+    }
+    const skippedIds = new Set(skipped.map((entry) => entry.itemId));
+    return {
+      entries: entries.filter((entry) => !skippedIds.has(entry.eventId)),
+      skipped,
+    };
+  }
+
   private assertNoNewChannelConflict(
     shot: Shot,
     entries: readonly BatchTimelineEventEntry[],
@@ -1250,7 +2010,7 @@ export class TimelineEventBatchService {
     );
 
     for (const entry of entries) {
-      const channel = EVENT_CHANNEL[entry.eventType];
+      const channel = eventChannel(entry.eventType);
       if (!channel) continue;
       for (const other of shot.timelineEvents) {
         if (other.id === entry.eventId) continue;
@@ -1273,7 +2033,7 @@ export class TimelineEventBatchService {
           startMs: entry.startMs,
           endMs: entry.endMs,
         };
-        const channelLabel = BATCH_EVENT_TYPE_LABEL[entry.eventType];
+        const channelLabel = ANY_EVENT_TYPE_LABEL[entry.eventType];
 
         if (
           !overlaps(currentTiming, {

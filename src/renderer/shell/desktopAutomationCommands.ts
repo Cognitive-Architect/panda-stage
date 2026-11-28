@@ -8,6 +8,7 @@ import { timelineUiStore } from '../features/timeline/timelineUiStore';
 import { editorProjectStore } from '../stores/EditorProjectStore';
 import { selectionStore } from '../stores/selectionStore';
 import { shotStore } from '../stores/shotStore';
+import { dialoguePerformanceLinkStore } from '../stores/dialoguePerformanceLinkStore';
 
 const dialogue = new DialogueService();
 const fail = (code: Extract<DesktopAutomationResult, { ok: false }>['code'], message: string): DesktopAutomationResult => ({ ok: false, code, message });
@@ -184,6 +185,8 @@ function summarizeScriptPlan(plan: ScriptPerformancePlan): Record<string, unknow
       requiredShotDurationMs: row.requiredShotDurationMs,
       status: row.status,
       eventIds: row.eventIds,
+      ...(row.motionKeyTimes ? { motionKeyTimes: row.motionKeyTimes } : {}),
+      ...(row.cameraKeyTimes ? { cameraKeyTimes: row.cameraKeyTimes } : {}),
       issueCode: row.issueCode,
       issueMessage: row.issueMessage,
     })),
@@ -212,6 +215,11 @@ export function executeDesktopAutomation(request: DesktopAutomationRendererReque
         allowPartialConfirm: command.allowPartialConfirm ?? false,
       });
       if (!applied.ok) return fail('COMMAND_FAILED', applied.message);
+      dialoguePerformanceLinkStore.capture(
+        applied.project.id,
+        applied.performances,
+        applied.project,
+      );
       const label = plan.parsed.hasDialogueOrPerformance
         ? `剧本表演生成（${applied.createdShotIds.length} 镜头 / ${applied.scheduledDialogueCount} 对白 / ${applied.readyPerformanceCount} 动作）`
         : `自动布景（${applied.createdShotIds.length} 个镜头）`;

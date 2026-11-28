@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, Volume2, X } from 'lucide-react';
 import {
   BATCH_EVENT_TYPE_LABEL,
-  isBatchEditableEvent,
+  isBatchShiftableEvent,
   layerCompositeKeyTimes,
   type BatchLayerMotionSpanRef,
   type BatchTimelineEditPlan,
@@ -10,6 +10,7 @@ import {
   type CrossTypeBatchShiftPlan,
   type Dialogue,
   type DialogueBatchMovePlan,
+  type InsertTimeGapPlan,
   type Project,
   type SharedAudioClipPolicy,
   type Shot,
@@ -21,6 +22,8 @@ import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 import { dialogueStore } from '../../stores/dialogueStore';
 import { timelineBatchStore } from '../../stores/timelineBatchStore';
 import { dialogueSpeakerName } from '../dialogue/dialogueSpeaker';
+import { dialoguePerformanceLinkStore } from '../../stores/dialoguePerformanceLinkStore';
+import { useTimelineUi } from './timelineUiStore';
 
 export interface BatchTimeEditPanelProps {
   project: Project;
@@ -28,7 +31,7 @@ export interface BatchTimeEditPanelProps {
   onClose: () => void;
 }
 
-type BatchTimeMode = 'shift' | 'unify-duration';
+type BatchTimeMode = 'shift' | 'unify-duration' | 'insert-gap';
 
 interface ActionCandidate {
   readonly id: string;
@@ -36,8 +39,10 @@ interface ActionCandidate {
   readonly label: string;
   readonly startMs: number;
   readonly endMs: number;
-  readonly supported: boolean;
+  readonly supportedModes: readonly BatchTimeMode[];
   readonly spanRef?: BatchLayerMotionSpanRef;
+  readonly layerId?: string;
+  readonly keyTimeMs?: number;
 }
 
 type PreviewResult =
@@ -69,6 +74,11 @@ type PreviewResult =
       readonly actionCount: number;
       readonly skipped: readonly BatchTimelineSkippedEntry[];
       readonly actionPlan: BatchTimelineEditPlan;
+    }
+  | {
+      readonly ok: true;
+      readonly mode: 'insert-gap';
+      readonly plan: InsertTimeGapPlan;
     }
   | { readonly ok: false; readonly message: string };
 
@@ -103,6 +113,34 @@ function parseSecondsToMs(raw: string): number | null {
   return Math.round(value * 1_000);
 }
 
+function mergeMotionSpans(
+  spans: readonly BatchLayerMotionSpanRef[],
+): BatchLayerMotionSpanRef[] {
+  const timesByLayer = new Map<string, Set<number>>();
+  const passthrough: BatchLayerMotionSpanRef[] = [];
+  for (const span of spans) {
+    if (!span.keyTimesMs) {
+      // Legacy range-only spans cannot be merged precisely; preserve them.
+      passthrough.push(span);
+      continue;
+    }
+    const times = timesByLayer.get(span.layerId) ?? new Set<number>();
+    for (const timeMs of span.keyTimesMs) times.add(timeMs);
+    timesByLayer.set(span.layerId, times);
+  }
+  const merged = [...timesByLayer.entries()].map(([layerId, times]) => {
+    const sorted = [...times].sort((left, right) => left - right);
+    return {
+      id: `merged:${layerId}:${sorted.join(':')}`,
+      layerId,
+      startMs: sorted[0]!,
+      endMs: sorted[sorted.length - 1]!,
+      keyTimesMs: sorted,
+    };
+  });
+  return [...passthrough, ...merged];
+}
+
 function listTimedDialogues(shot: Shot): Dialogue[] {
   return [...shot.dialogues]
     .filter((dialogue) => dialogue.endMs > dialogue.startMs)
@@ -123,37 +161,50 @@ function listActionCandidates(shot: Shot): ActionCandidate[] {
     const layer = layersById.get(event.layerId);
     const layerName = layer?.name ?? '图层';
     const typeLabel = EVENT_TYPE_FALLBACK_LABEL[event.type];
-    const supported =
-      isBatchEditableEvent(event) &&
-      Boolean(layer) &&
-      !layer!.locked &&
-      event.endMs > event.startMs;
+    const isPointEvent =
+      event.type === 'expression' ||
+      event.type === 'flip' ||
+      event.type === 'visibility';
+    const available = isBatchShiftableEvent(event) && Boolean(layer) && !layer!.locked;
+    const canShift = available && (isPointEvent ? event.endMs === event.startMs : event.endMs > event.startMs);
+    const canSetDuration = available && !isPointEvent && event.endMs > event.startMs;
     items.push({
       id: event.id,
       kind: 'timeline-event',
       label: `${layerName} · ${typeLabel}`,
       startMs: event.startMs,
       endMs: event.endMs,
-      supported,
+      supportedModes: [
+        ...(canShift ? (['shift'] as const) : []),
+        ...(canSetDuration ? (['unify-duration'] as const) : []),
+      ],
     });
   }
 
   for (const layer of shot.layers) {
     if (layer.id === shot.backgroundLayerId) continue;
     const times = layerCompositeKeyTimes(layer);
-    const nonZero = times.filter((t) => t > 0);
-    if (nonZero.length >= 2) {
-      const startMs = nonZero[0]!;
-      const endMs = nonZero[nonZero.length - 1]!;
-      const spanId = `layer-motion:${layer.id}:${startMs}:${endMs}`;
+    const nonZero = [...new Set(times.filter((t) => t > 0))].sort(
+      (left, right) => left - right,
+    );
+    for (const timeMs of nonZero) {
+      const spanId = `layer-motion:${layer.id}:${timeMs}`;
       items.push({
         id: spanId,
         kind: 'layer-motion-span',
-        label: `${layer.name} · 关键帧选段`,
-        startMs,
-        endMs,
-        supported: !layer.locked,
-        spanRef: { id: spanId, layerId: layer.id, startMs, endMs },
+        label: `${layer.name} · 关键帧 ${formatSeconds(timeMs)}`,
+        startMs: timeMs,
+        endMs: timeMs,
+        supportedModes: layer.locked ? [] : ['shift', 'unify-duration'],
+        spanRef: {
+          id: spanId,
+          layerId: layer.id,
+          startMs: timeMs,
+          endMs: timeMs,
+          keyTimesMs: [timeMs],
+        },
+        layerId: layer.id,
+        keyTimeMs: timeMs,
       });
     }
   }
@@ -188,7 +239,28 @@ export function BatchTimeEditPanel({
   const [durationInput, setDurationInput] = useState('1.00');
   const [sharedClipPolicy, setSharedClipPolicy] =
     useState<SharedAudioClipPolicy>('split');
+  const [includeLinkedPerformance, setIncludeLinkedPerformance] =
+    useState(false);
   const [commitError, setCommitError] = useState<string | null>(null);
+  const [gapDurationInput, setGapDurationInput] = useState('0.50');
+  const [confirmedGapExtensionToMs, setConfirmedGapExtensionToMs] = useState<
+    number | null
+  >(null);
+  const timelineUi = useTimelineUi();
+  const editableLayers = useMemo(
+    () => shot.layers.filter((layer) => layer.id !== shot.backgroundLayerId),
+    [shot.backgroundLayerId, shot.layers],
+  );
+  const [gapLayerIds, setGapLayerIds] = useState<readonly string[]>(() =>
+    editableLayers.filter((layer) => !layer.locked).map((layer) => layer.id),
+  );
+
+  useEffect(() => {
+    setGapLayerIds(
+      editableLayers.filter((layer) => !layer.locked).map((layer) => layer.id),
+    );
+    setConfirmedGapExtensionToMs(null);
+  }, [shot.id]);
 
   const timedDialogues = useMemo(() => listTimedDialogues(shot), [shot]);
   const timedDialogueIdSet = useMemo(
@@ -206,14 +278,14 @@ export function BatchTimeEditPanel({
     [actionCandidates],
   );
 
-  // Prune stale action selections on shot/project updates.
+  // Prune stale or mode-incompatible action selections on shot/project/mode updates.
   useEffect(() => {
     setSelectedActionIds((current) =>
-      current.every((id) => actionById.has(id))
+      current.every((id) => actionById.get(id)?.supportedModes.includes(mode))
         ? current
-        : current.filter((id) => actionById.has(id)),
+        : current.filter((id) => actionById.get(id)?.supportedModes.includes(mode)),
     );
-  }, [actionById]);
+  }, [actionById, mode]);
 
   // Escape closes cleanly without touching Project.
   useEffect(() => {
@@ -230,16 +302,66 @@ export function BatchTimeEditPanel({
   const selectedEventIds = useMemo(
     () =>
       selectedActionIds.filter(
-        (id) => actionById.get(id)?.kind === 'timeline-event',
+        (id) =>
+          actionById.get(id)?.kind === 'timeline-event' &&
+          actionById.get(id)?.supportedModes.includes(mode),
       ),
-    [selectedActionIds, actionById],
+    [selectedActionIds, actionById, mode],
   );
-  const selectedMotionSpans = useMemo(
+  const selectedMotionSpans = useMemo(() => {
+    const timesByLayer = new Map<string, number[]>();
+    for (const id of selectedActionIds) {
+      const item = actionById.get(id);
+      if (
+        item?.kind !== 'layer-motion-span' ||
+        !item.layerId ||
+        item.keyTimeMs === undefined
+      ) {
+        continue;
+      }
+      const times = timesByLayer.get(item.layerId) ?? [];
+      times.push(item.keyTimeMs);
+      timesByLayer.set(item.layerId, times);
+    }
+    return [...timesByLayer.entries()].map(
+      ([layerId, times]): BatchLayerMotionSpanRef => {
+        const sorted = [...new Set(times)].sort((left, right) => left - right);
+        return {
+          id: `layer-motion:${layerId}:${sorted.join(':')}`,
+          layerId,
+          startMs: sorted[0]!,
+          endMs: sorted[sorted.length - 1]!,
+          keyTimesMs: sorted,
+        };
+      },
+    );
+  }, [selectedActionIds, actionById]);
+
+  const availablePerformanceLinks = useMemo(
     () =>
-      selectedActionIds
-        .map((id) => actionById.get(id)?.spanRef)
-        .filter((span): span is BatchLayerMotionSpanRef => Boolean(span)),
-    [selectedActionIds, actionById],
+      activeDialogueIds.length > 0
+        ? dialoguePerformanceLinkStore.resolve(
+            project.id,
+            shot,
+            activeDialogueIds,
+          )
+        : { eventIds: [], layerMotionSpans: [], missingCount: 0, blockedCount: 0 },
+    [activeDialogueIds, project.id, shot],
+  );
+  const linkedPerformance = includeLinkedPerformance
+    ? availablePerformanceLinks
+    : { eventIds: [], layerMotionSpans: [], missingCount: 0, blockedCount: 0 };
+  const effectiveEventIds = useMemo(
+    () => [...new Set([...selectedEventIds, ...linkedPerformance.eventIds])],
+    [linkedPerformance.eventIds, selectedEventIds],
+  );
+  const effectiveMotionSpans = useMemo(
+    () =>
+      mergeMotionSpans([
+        ...selectedMotionSpans,
+        ...linkedPerformance.layerMotionSpans,
+      ]),
+    [linkedPerformance.layerMotionSpans, selectedMotionSpans],
   );
 
   const hasSharedClipWithUnselected = useMemo(() => {
@@ -255,13 +377,61 @@ export function BatchTimeEditPanel({
     );
   }, [activeDialogueIds, shot.dialogues]);
 
+  /** Shared clip between a dialogue that moves and one that stays put. */
+  const hasSharedClipAcrossInsertPoint = useMemo(() => {
+    if (mode !== 'insert-gap') return false;
+    const atMs = timelineUi.currentTimeMs;
+    const moving = new Set(
+      shot.dialogues
+        .filter((dialogue) => dialogue.startMs >= atMs && dialogue.endMs > dialogue.startMs)
+        .map((dialogue) => dialogue.id),
+    );
+    if (moving.size === 0) return false;
+    const movingClipIds = new Set(
+      shot.dialogues
+        .filter((dialogue) => moving.has(dialogue.id) && dialogue.audioClipId)
+        .map((dialogue) => dialogue.audioClipId!),
+    );
+    return shot.dialogues.some(
+      (dialogue) =>
+        !moving.has(dialogue.id) &&
+        dialogue.audioClipId &&
+        movingClipIds.has(dialogue.audioClipId),
+    );
+  }, [mode, shot.dialogues, timelineUi.currentTimeMs]);
+
   const parsedDeltaMs = parseSecondsToMs(deltaInput);
   const parsedDurationMs = parseSecondsToMs(durationInput);
+  const parsedGapDurationMs = parseSecondsToMs(gapDurationInput);
 
   const preview: PreviewResult | null = useMemo(() => {
     const hasDialogues = activeDialogueIds.length > 0;
     const hasActions =
-      selectedEventIds.length > 0 || selectedMotionSpans.length > 0;
+      effectiveEventIds.length > 0 || effectiveMotionSpans.length > 0;
+
+    if (mode === 'insert-gap') {
+      if (parsedGapDurationMs === null || parsedGapDurationMs < 1) {
+        return { ok: false, message: '请输入大于 0 的插入空白时长（秒）。' };
+      }
+      try {
+        return {
+          ok: true,
+          mode: 'insert-gap',
+          plan: timelineBatchStore.planInsertGap({
+            atMs: timelineUi.currentTimeMs,
+            durationMs: parsedGapDurationMs,
+            layerIds: gapLayerIds,
+            sharedClipPolicy,
+          }),
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          message:
+            error instanceof Error ? error.message : '无法计算插入空白预览。',
+        };
+      }
+    }
 
     if (mode === 'shift') {
       if (!hasDialogues && !hasActions) return null;
@@ -272,8 +442,8 @@ export function BatchTimeEditPanel({
         if (hasDialogues && hasActions) {
           const crossTypePlan = timelineBatchStore.planCrossTypeShift({
             dialogueIds: activeDialogueIds,
-            eventIds: selectedEventIds,
-            layerMotionSpans: selectedMotionSpans,
+            eventIds: effectiveEventIds,
+            layerMotionSpans: effectiveMotionSpans,
             deltaMs: parsedDeltaMs,
             sharedClipPolicy,
           });
@@ -323,8 +493,8 @@ export function BatchTimeEditPanel({
           };
         }
         const actionPlan = timelineBatchStore.plan({
-          eventIds: selectedEventIds,
-          layerMotionSpans: selectedMotionSpans,
+          eventIds: effectiveEventIds,
+          layerMotionSpans: effectiveMotionSpans,
           edit: { action: 'shift', deltaMs: parsedDeltaMs },
         });
         return {
@@ -388,37 +558,103 @@ export function BatchTimeEditPanel({
     activeDialogueIds,
     selectedEventIds,
     selectedMotionSpans,
+    effectiveEventIds,
+    effectiveMotionSpans,
     mode,
     parsedDeltaMs,
     parsedDurationMs,
+    parsedGapDurationMs,
+    gapLayerIds,
+    timelineUi.currentTimeMs,
     sharedClipPolicy,
   ]);
 
-  const canApply = Boolean(preview && preview.ok && preview.changedCount > 0);
+  const previewChangedCount = preview?.ok
+    ? preview.mode === 'insert-gap'
+      ? preview.plan.changedCount
+      : preview.changedCount
+    : 0;
+  const previewSkipped = preview?.ok
+    ? preview.mode === 'insert-gap'
+      ? preview.plan.skipped
+      : preview.skipped
+    : [];
+  const previewGapExtensionToMs =
+    preview?.ok && preview.mode === 'insert-gap'
+      ? preview.plan.extensionToMs
+      : null;
+  const gapExtensionConfirmed =
+    previewGapExtensionToMs === null ||
+    confirmedGapExtensionToMs === previewGapExtensionToMs;
+  useEffect(() => {
+    if (
+      confirmedGapExtensionToMs !== null &&
+      confirmedGapExtensionToMs !== previewGapExtensionToMs
+    ) {
+      setConfirmedGapExtensionToMs(null);
+    }
+  }, [confirmedGapExtensionToMs, previewGapExtensionToMs]);
+  const canApply =
+    Boolean(preview?.ok) &&
+    previewChangedCount > 0 &&
+    (mode !== 'insert-gap' || gapExtensionConfirmed);
 
   const handleApply = (): void => {
-    if (!preview || !preview.ok || preview.changedCount === 0) return;
+    if (!preview || !preview.ok || previewChangedCount === 0) return;
     setCommitError(null);
     const snapshotBefore = editorProjectStore.getSnapshot();
     if (!snapshotBefore || snapshotBefore.project.id !== project.id) return;
     try {
+      if (preview.mode === 'insert-gap') {
+        timelineBatchStore.applyInsertGap({
+          atMs: timelineUi.currentTimeMs,
+          durationMs: preview.plan.durationMs,
+          layerIds: gapLayerIds,
+          sharedClipPolicy,
+        });
+        onClose();
+        return;
+      }
       if (preview.mode === 'shift') {
         if (preview.crossTypePlan) {
-          timelineBatchStore.applyCrossTypeShift({
-            dialogueIds: activeDialogueIds,
-            eventIds: selectedEventIds,
-            layerMotionSpans: selectedMotionSpans,
-            deltaMs: parsedDeltaMs!,
-            sharedClipPolicy,
-          });
+          const moves = includeLinkedPerformance
+            ? // Remap with the exact per-key moves the batch performed: a single
+              // integer delta fabricates identities on the 24fps grid.
+              (preview.crossTypePlan.actionPlan?.motionSpanEntries ?? [])
+                .filter((entry) => (entry.keyMoves?.length ?? 0) > 0)
+                .map((entry) => ({
+                  layerId: entry.layerId,
+                  keyMoves: entry.keyMoves!,
+                }))
+            : [];
+          const commitCrossType = (): void => {
+            timelineBatchStore.applyCrossTypeShift({
+              dialogueIds: activeDialogueIds,
+              eventIds: effectiveEventIds,
+              layerMotionSpans: effectiveMotionSpans,
+              deltaMs: parsedDeltaMs!,
+              sharedClipPolicy,
+            });
+          };
+          if (includeLinkedPerformance && moves.length > 0) {
+            dialoguePerformanceLinkStore.applyTrackedMove(
+              project.id,
+              shot.id,
+              activeDialogueIds,
+              moves,
+              commitCrossType,
+            );
+          } else {
+            commitCrossType();
+          }
         } else if (preview.dialoguePlan) {
           dialogueStore.moveMany(activeDialogueIds, parsedDeltaMs!, {
             sharedClipPolicy,
           });
         } else if (preview.actionPlan) {
           timelineBatchStore.apply({
-            eventIds: selectedEventIds,
-            layerMotionSpans: selectedMotionSpans,
+            eventIds: effectiveEventIds,
+            layerMotionSpans: effectiveMotionSpans,
             edit: { action: 'shift', deltaMs: parsedDeltaMs! },
           });
         }
@@ -503,6 +739,21 @@ export function BatchTimeEditPanel({
         >
           统一动作时长
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'insert-gap'}
+          className={`batch-time-mode-tab${
+            mode === 'insert-gap' ? ' is-active' : ''
+          }`}
+          data-testid="batch-time-mode-insert-gap"
+          onClick={() => {
+            setMode('insert-gap');
+            setCommitError(null);
+          }}
+        >
+          插入空白
+        </button>
       </div>
 
       {mode === 'shift' ? (
@@ -535,7 +786,7 @@ export function BatchTimeEditPanel({
             </button>
           </div>
         </div>
-      ) : (
+      ) : mode === 'unify-duration' ? (
         <div className="batch-time-edit-control-row">
           <label className="batch-time-input-label">
             <span>目标时长（秒）</span>
@@ -552,9 +803,31 @@ export function BatchTimeEditPanel({
             />
           </label>
         </div>
+      ) : (
+        <div className="batch-time-edit-control-row">
+          <label className="batch-time-input-label">
+            <span>插入时长（秒）</span>
+            <input
+              type="number"
+              min="0.04"
+              step="0.1"
+              value={gapDurationInput}
+              data-testid="batch-time-gap-duration-input"
+              onChange={(event) => {
+                setGapDurationInput(event.target.value);
+                setConfirmedGapExtensionToMs(null);
+                setCommitError(null);
+              }}
+            />
+          </label>
+          <span className="batch-time-note">
+            {`从 ${formatSeconds(timelineUi.currentTimeMs)} 起插入空白`}
+          </span>
+        </div>
       )}
 
-      {mode === 'shift' && hasSharedClipWithUnselected ? (
+      {(mode === 'shift' && hasSharedClipWithUnselected) ||
+      (mode === 'insert-gap' && hasSharedClipAcrossInsertPoint) ? (
         <div
           className="batch-time-shared-clip-policy"
           data-testid="batch-time-shared-clip-policy"
@@ -583,6 +856,84 @@ export function BatchTimeEditPanel({
         </div>
       ) : null}
 
+      {mode === 'shift' &&
+      activeDialogueIds.length > 0 &&
+      (availablePerformanceLinks.eventIds.length > 0 ||
+        availablePerformanceLinks.layerMotionSpans.length > 0 ||
+        availablePerformanceLinks.missingCount > 0 ||
+        availablePerformanceLinks.blockedCount > 0) ? (
+        <>
+          {availablePerformanceLinks.eventIds.length > 0 ||
+          availablePerformanceLinks.layerMotionSpans.length > 0 ? (
+            <label
+              className="batch-time-linked-performance"
+              data-testid="batch-time-linked-performance"
+            >
+              <input
+                type="checkbox"
+                checked={includeLinkedPerformance}
+                onChange={(event) => {
+                  setIncludeLinkedPerformance(event.target.checked);
+                  setCommitError(null);
+                }}
+              />
+              <span>
+                {`连同剧本关联表演移动（${
+                  availablePerformanceLinks.eventIds.length +
+                  availablePerformanceLinks.layerMotionSpans.reduce(
+                    (sum, span) => sum + (span.keyTimesMs?.length ?? 0),
+                    0,
+                  )
+                } 项）`}
+              </span>
+            </label>
+          ) : null}
+          {availablePerformanceLinks.missingCount > 0 ? (
+            <div className="batch-time-note" role="status">
+              {`${availablePerformanceLinks.missingCount} 项关联表演已被修改或删除（同刻新建的其他键不算），本次不会移动。`}
+            </div>
+          ) : null}
+          {availablePerformanceLinks.blockedCount > 0 ? (
+            <div className="batch-time-note" role="status">
+              {`${availablePerformanceLinks.blockedCount} 个关联键在同刻新增了未关联属性，整键移动会带上无关内容，本次局部跳过。`}
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
+      {mode === 'insert-gap' ? (
+        <div className="batch-time-group" data-testid="batch-time-gap-layers">
+          <div className="batch-time-group-title">参与图层</div>
+          <div className="batch-time-gap-layers">
+            {editableLayers.map((layer) => {
+              const checked = gapLayerIds.includes(layer.id);
+              return (
+                <label key={layer.id} className="batch-time-item">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={layer.locked}
+                    onChange={() =>
+                      setGapLayerIds((current) =>
+                        checked
+                          ? current.filter((id) => id !== layer.id)
+                          : [...current, layer.id],
+                      )
+                    }
+                  />
+                  <span className="batch-time-item-label">
+                    <span>{layer.name}</span>
+                    {layer.locked ? (
+                      <span className="batch-time-badge">已锁定</span>
+                    ) : null}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
       <div className="batch-time-selection-toolbar">
         {mode === 'shift' && timedDialogues.length > 0 ? (
           <button
@@ -602,12 +953,12 @@ export function BatchTimeEditPanel({
             onClick={() =>
               setSelectedActionIds(
                 actionCandidates
-                  .filter((item) => item.supported)
+                  .filter((item) => item.supportedModes.includes(mode))
                   .map((item) => item.id),
               )
             }
           >
-            全选动作（{actionCandidates.filter((item) => item.supported).length}）
+            全选动作（{actionCandidates.filter((item) => item.supportedModes.includes(mode)).length}）
           </button>
         ) : null}
         {activeDialogueIds.length > 0 || selectedActionIds.length > 0 ? (
@@ -669,31 +1020,38 @@ export function BatchTimeEditPanel({
 
         {actionCandidates.length > 0 ? (
           <div className="batch-time-group">
-            <div className="batch-time-group-title">动作区间</div>
+            <div className="batch-time-group-title">动作与关键帧</div>
             <ul className="batch-time-list" data-testid="batch-time-action-list">
               {actionCandidates.map((item) => {
                 const checked = selectedActionIds.includes(item.id);
+                const supported = item.supportedModes.includes(mode);
                 return (
                   <li key={item.id}>
                     <label
                       className={`batch-time-item${
-                        item.supported ? '' : ' is-unsupported'
+                        supported ? '' : ' is-unsupported'
                       }`}
                     >
                       <input
                         type="checkbox"
                         checked={checked}
+                        disabled={!supported}
                         onChange={() => toggleAction(item.id)}
                       />
                       <span className="batch-time-item-label">
                         <span>{item.label}</span>
-                        {!item.supported ? (
-                          <span className="batch-time-badge">暂不支持</span>
+                        {!supported ? (
+                          <span className="batch-time-badge">
+                            {mode === 'unify-duration'
+                              ? '仅支持平移'
+                              : '暂不支持'}
+                          </span>
                         ) : null}
                       </span>
                       <span className="batch-time-item-meta">
-                        {formatSeconds(item.startMs)}–
-                        {formatSeconds(item.endMs)}
+                        {item.keyTimeMs !== undefined
+                          ? '关键帧'
+                          : `${formatSeconds(item.startMs)}–${formatSeconds(item.endMs)}`}
                       </span>
                     </label>
                   </li>
@@ -716,12 +1074,84 @@ export function BatchTimeEditPanel({
             role="status"
           >
             <div>
-              {preview.changedCount === 0
-                ? '目标时间与当前一致，无变更。'
-                : `预计调整 ${preview.changedCount} 项：${formatSeconds(
-                    preview.earliestStartMs,
-                  )} – ${formatSeconds(preview.latestEndMs)}`}
+              {previewChangedCount === 0
+                ? '没有可后移的受支持内容。'
+                : `预计调整 ${previewChangedCount} 项：${formatSeconds(
+                    preview.mode === 'insert-gap'
+                      ? preview.plan.earliestStartMs
+                      : preview.earliestStartMs,
+                  )} – ${formatSeconds(
+                    preview.mode === 'insert-gap'
+                      ? preview.plan.latestEndMs
+                      : preview.latestEndMs,
+                  )}`}
             </div>
+            {preview.mode === 'insert-gap' ? (
+              <>
+                {preview.plan.effectiveDeltaMs !== preview.plan.durationMs ? (
+                  <div
+                    className="batch-time-gap-effective"
+                    data-testid="batch-time-gap-effective"
+                  >
+                    {`关键帧按 24fps 对齐，实际后移 ${formatSeconds(
+                      preview.plan.effectiveDeltaMs,
+                    )}（请求 ${formatSeconds(preview.plan.durationMs)}）`}
+                  </div>
+                ) : null}
+                {preview.plan.crossTypePlan?.dialoguePlan ? (
+                  <div
+                    className="batch-time-gap-shared-audio"
+                    data-testid="batch-time-gap-shared-audio"
+                  >
+                    {`移动对白 ${preview.plan.crossTypePlan.dialoguePlan.includedDialogueIds.length} 条；共享配音 ${
+                      preview.plan.crossTypePlan.dialoguePlan.splitAudioClipIds.length
+                    } 段按「${
+                      sharedClipPolicy === 'split'
+                        ? '拆分，未选对白留在原位'
+                        : '连同未选对白一起移动'
+                    }」处理`}
+                  </div>
+                ) : null}
+                {preview.plan.needsShotExtension &&
+                preview.plan.extensionToMs !== null ? (
+                  <label
+                    className="batch-time-extend-confirm"
+                    data-testid="batch-time-gap-extension"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={
+                        confirmedGapExtensionToMs ===
+                        preview.plan.extensionToMs
+                      }
+                      onChange={(event) =>
+                        setConfirmedGapExtensionToMs(
+                          event.target.checked
+                            ? preview.plan.extensionToMs
+                            : null,
+                        )
+                      }
+                    />
+                    <span>
+                      {`镜头需延长至 ${formatSeconds(preview.plan.extensionToMs)} 才能插入`}
+                    </span>
+                  </label>
+                ) : null}
+                {preview.plan.unsupported.length > 0 ? (
+                  <ul
+                    className="batch-time-skipped"
+                    data-testid="batch-time-gap-unsupported"
+                  >
+                    {preview.plan.unsupported.map((item) => (
+                      <li key={`${item.kind}:${item.layerId ?? item.label}`}>
+                        <AlertTriangle aria-hidden="true" size={13} />
+                        <span>{item.reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </>
+            ) : null}
             {preview.mode === 'shift' &&
             preview.frameSnapped &&
             preview.deltaFrames !== undefined ? (
@@ -742,12 +1172,12 @@ export function BatchTimeEditPanel({
                 已联选 {preview.includedDialogueIds.length} 条共享配音对白同步平移。
               </div>
             ) : null}
-            {preview.skipped.length > 0 ? (
+            {previewSkipped.length > 0 ? (
               <ul
                 className="batch-time-skipped"
                 data-testid="batch-time-skipped"
               >
-                {preview.skipped.map((item) => (
+                {previewSkipped.map((item) => (
                   <li key={item.itemId}>
                     <AlertTriangle aria-hidden="true" size={13} />
                     <span>{item.reason}</span>

@@ -622,7 +622,7 @@ describe('WF-07 TimelineEventBatchService: action batch shift, unified duration,
       .toMatchObject({ deltaMs: effectiveDelta, clamped: true });
   });
 
-  it('shifts move/scale/opacity/shake/character-action/graphic-playback preserving params, animationTimeLink, and skipping unsupported items locally', () => {
+  it('shifts move/scale/opacity/shake/character-action/graphic-playback preserving params and animationTimeLink', () => {
     const service = new TimelineEventBatchService();
     const project = buildActionProject();
 
@@ -635,15 +635,12 @@ describe('WF-07 TimelineEventBatchService: action batch shift, unified duration,
         EV_SHAKE,
         EV_CHAR_ACT,
         EV_GRAPHIC,
-        EV_EXPR, // unsupported instantaneous switch
       ],
       edit: { action: 'shift', deltaMs: 400 },
     });
 
     expect(plan.entries).toHaveLength(6);
-    expect(plan.skipped).toHaveLength(1);
-    expect(plan.skipped[0]!.itemId).toBe(EV_EXPR);
-    expect(plan.skipped[0]!.reasonCode).toBe('UNSUPPORTED_EVENT_TYPE');
+    expect(plan.skipped).toHaveLength(0);
 
     const shifted = service.apply(project, {
       shotId: IDS.shot,
@@ -654,7 +651,6 @@ describe('WF-07 TimelineEventBatchService: action batch shift, unified duration,
         EV_SHAKE,
         EV_CHAR_ACT,
         EV_GRAPHIC,
-        EV_EXPR,
       ],
       edit: { action: 'shift', deltaMs: 400 },
     });
@@ -671,7 +667,7 @@ describe('WF-07 TimelineEventBatchService: action batch shift, unified duration,
       endMs: 2400,
       playbackStartMs: 1200,
     });
-    // Expression event remained untouched.
+    // Unselected expression event remained untouched.
     expect(shot.timelineEvents.find((e) => e.id === EV_EXPR)).toMatchObject({
       startMs: 1200,
       endMs: 1200,
@@ -841,8 +837,8 @@ describe('WF-07 TimelineEventBatchService: action batch shift, unified duration,
       deltaMs: 200,
     });
     expect(preview.dialoguePlan?.entries).toHaveLength(3);
-    expect(preview.actionPlan?.entries).toHaveLength(2);
-    expect(preview.skipped).toHaveLength(1);
+    expect(preview.actionPlan?.entries).toHaveLength(3);
+    expect(preview.skipped).toHaveLength(0);
     expect(editorStore.getSnapshot()!.revision).toBe(0);
     expect(editorStore.getSnapshot()!.dirty).toBe(false);
 
@@ -866,6 +862,11 @@ describe('WF-07 TimelineEventBatchService: action batch shift, unified duration,
     expect(committedShot.timelineEvents.find((e) => e.id === EV_MOVE)).toMatchObject({
       startMs: 700,
       endMs: 1700,
+    });
+    expect(committedShot.timelineEvents.find((e) => e.id === EV_EXPR)).toMatchObject({
+      startMs: 1400,
+      endMs: 1400,
+      expressionId: IDS.expressionAngry,
     });
 
     // Save/reopen roundtrip via JSON + ProjectSchema.parse preserves everything and remains editable.

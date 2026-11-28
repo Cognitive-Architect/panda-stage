@@ -28,10 +28,16 @@ import {
   type DialogueDraftRowSeed,
   type StableDialogueDraftRow,
 } from '../services/AutoSubtitleAudioService';
+import {
+  DEFAULT_CAMERA_PRESET_DURATION_MS,
+  applyCameraMotionPreset,
+  planCameraMotionPreset,
+} from '../camera-motion-presets';
 import { upsertCharacterActionEvent } from '../services/CharacterActionEventService';
 import { DialogueService } from '../services/DialogueService';
+import { layerCompositeKeyTimes } from '../services/LayerMotionService';
 import { ShotService } from '../services/ShotService';
-import { snapToFrame } from '../timeline/frame-grid';
+import { frameDurationMs, snapToFrame } from '../timeline/frame-grid';
 import { userMotionPresetRange } from '../user-motion-presets';
 import { validatePresetApplication } from '../validators';
 import {
@@ -62,6 +68,7 @@ const PROPERTY_LABELS: Readonly<Record<string, string>> = {
   flip: '翻转',
   visibility: '可见性',
   'character-action': '角色动作',
+  camera: '运镜',
 };
 
 export interface ScriptDialogueAudioOverride {
@@ -137,6 +144,7 @@ export type PlannedPerformanceIssueCode =
   | 'RECIPE_DURATION_OVERRIDE_UNSUPPORTED'
   | 'OUT_OF_SHOT_BOUNDS'
   | 'PROPERTY_CONFLICT'
+  | 'CAMERA_PRESET_FAILED'
   | 'VALIDATION_FAILED';
 
 export interface PlannedPerformanceRow {
@@ -162,6 +170,11 @@ export interface PlannedPerformanceRow {
   readonly requiredShotDurationMs: number | null;
   readonly status: PlannedPerformanceStatus;
   readonly eventIds: readonly string[];
+  /** Real camera key times written by a camera-motion directive (not TimelineEvents). */
+  readonly cameraKeyTimes?: readonly number[];
+  readonly cameraPreset?: string;
+  /** Real root-motion key times written by a recipe motion step. */
+  readonly motionKeyTimes?: readonly number[];
   readonly issueCode: PlannedPerformanceIssueCode | null;
   readonly issueMessage: string | null;
 }
@@ -914,6 +927,183 @@ export function planScriptPerformance(
       continue;
     }
 
+    if (directive.action === 'camera-motion') {
+      const cameraShot = candidate.shots.find(
+        (entry) => entry.id === targetDialogue.shotId,
+      );
+      if (!cameraShot) {
+        pushIssue(
+          'TARGET_LAYER_UNRESOLVED',
+          `镜头「${sceneBlock.shotName}」在候选工程中不可用。`,
+        );
+        continue;
+      }
+      const anchorBaseMs =
+        directive.anchor === 'end' ? targetDialogue.endMs! : targetDialogue.startMs!;
+      const cameraStartMs = anchorBaseMs + directive.offsetMs;
+      const cameraDurationMs =
+        directive.durationMs ?? DEFAULT_CAMERA_PRESET_DURATION_MS;
+      const requestedEndMs = cameraStartMs + cameraDurationMs;
+      if (cameraStartMs < 0) {
+        pushIssue(
+          'OUT_OF_SHOT_BOUNDS',
+          `第 ${directive.dialogueOrdinal} 句的运镜起点 ${cameraStartMs}ms 小于 0ms。`,
+          { shotId: cameraShot.id, startMs: cameraStartMs, endMs: requestedEndMs },
+        );
+        continue;
+      }
+      // A scripted camera directive is an explicit authoring intent: convert
+      // static/speaker-focus shots to manual only when the directive runs.
+      const cameraReadyProject =
+        cameraShot.camera?.mode === 'manual' ||
+        cameraShot.camera?.mode === 'hybrid'
+          ? candidate
+          : ProjectSchema.parse({
+              ...candidate,
+              shots: candidate.shots.map((entry) =>
+                entry.id === cameraShot.id
+                  ? {
+                      ...entry,
+                      camera: {
+                        ...(entry.camera ?? { keys: [] }),
+                        mode: 'manual' as const,
+                      },
+                    }
+                  : entry,
+              ),
+            });
+      try {
+        const presetInput = {
+          preset: directive.cameraPreset ?? 'push-in',
+          startTimeMs: cameraStartMs,
+          durationMs: cameraDurationMs,
+          ...(directive.cameraAmplitude !== undefined
+            ? { amplitude: directive.cameraAmplitude }
+            : {}),
+        };
+        // Ask the official preset planner on a provisionally long shot so the
+        // real 24fps-snapped range decides whether extension is needed (e.g.
+        // start=21ms snaps up to 42ms, pushing 21+979=1000ms out to 1042ms).
+        const snapHeadroomMs = Math.ceil(frameDurationMs()) * 2 + 1;
+        const provisionalDurationMs = Math.max(
+          cameraShot.durationMs,
+          requestedEndMs + snapHeadroomMs,
+        );
+        const presetBase =
+          provisionalDurationMs > cameraShot.durationMs
+            ? shotService.setDuration(
+                cameraReadyProject,
+                cameraShot.id,
+                provisionalDurationMs,
+              )
+            : cameraReadyProject;
+        // Consume the official preset plan so the report reflects the real
+        // 24fps-snapped keys. Filtering the un-snapped request window used to
+        // drop legitimately snapped keys (e.g. 100ms -> 83ms at 24fps).
+        const presetPlan = planCameraMotionPreset(
+          presetBase,
+          cameraShot.id,
+          presetInput,
+        );
+        const requiredShotDurationMs = Math.max(
+          cameraShot.durationMs,
+          presetPlan.rangeEndMs,
+        );
+        const cameraNeedsExtension =
+          requiredShotDurationMs > cameraShot.durationMs;
+        // The authorized performance extension is the only way a directive may
+        // grow the shot; an unauthorized overflow stays a local diagnostic.
+        if (cameraNeedsExtension && !extendShotForPerformance) {
+          pushIssue(
+            'OUT_OF_SHOT_BOUNDS',
+            `第 ${directive.dialogueOrdinal} 句的运镜时段 ${presetPlan.startTimeMs}–${presetPlan.rangeEndMs}ms 超出镜头「${sceneBlock.shotName}」时长 ${cameraShot.durationMs}ms；可确认延长镜头至 ${requiredShotDurationMs}ms 或跳过此行。`,
+            {
+              shotId: cameraShot.id,
+              startMs: presetPlan.startTimeMs,
+              endMs: presetPlan.rangeEndMs,
+              requiredShotDurationMs,
+            },
+          );
+          continue;
+        }
+        const cameraTargetProject = cameraNeedsExtension
+          ? shotService.setDuration(
+              cameraReadyProject,
+              cameraShot.id,
+              requiredShotDurationMs,
+            )
+          : cameraReadyProject;
+        // Apply the **snapped** span, never the raw request: re-planning 2800ms
+        // +600ms against a shot that was only grown to the snapped 3375ms end
+        // would look out of bounds even though the real keys fit.
+        const applied = applyCameraMotionPreset(
+          cameraTargetProject,
+          cameraShot.id,
+          {
+            ...presetInput,
+            startTimeMs: presetPlan.startTimeMs,
+            durationMs: presetPlan.endTimeMs - presetPlan.startTimeMs,
+          },
+        );
+        const declaredKeyTimes = [
+          ...new Set(presetPlan.keysToWrite.map((key) => key.timeMs)),
+        ].sort((left, right) => left - right);
+        const appliedShot = applied.shots.find(
+          (entry) => entry.id === cameraShot.id,
+        )!;
+        const appliedKeyTimes = new Set(
+          (appliedShot.camera?.keys ?? []).map((key) => key.timeMs),
+        );
+        // Report only keys the real product actually holds; a plan key that did
+        // not land is never claimed as written.
+        const cameraKeyTimes = declaredKeyTimes.filter((timeMs) =>
+          appliedKeyTimes.has(timeMs),
+        );
+        candidate = applied;
+        if (requiredShotDurationMs > cameraShot.durationMs) {
+          extendedForPerformanceByBlock.add(directive.blockIndex);
+        }
+        plannedPerformances.push({
+          directiveId: directive.directiveId,
+          blockIndex: directive.blockIndex,
+          sourceLineNumber: directive.sourceLineNumber,
+          raw: directive.raw,
+          dialogueOrdinal: directive.dialogueOrdinal,
+          draftRowId: resolvedDraftRowId,
+          dialogueId: targetDialogue.dialogueId,
+          shotId: cameraShot.id,
+          shotName: sceneBlock.shotName ?? null,
+          layerId: null,
+          characterId: null,
+          speakerName: null,
+          action: directive.action,
+          actionLabel: directive.actionLabel,
+          property: 'camera',
+          startMs: presetPlan.startTimeMs,
+          endMs: presetPlan.rangeEndMs,
+          requiredShotDurationMs:
+            requiredShotDurationMs > cameraShot.durationMs
+              ? requiredShotDurationMs
+              : null,
+          status: 'ready',
+          eventIds: [],
+          cameraKeyTimes,
+          cameraPreset: directive.cameraPreset ?? 'push-in',
+          issueCode: null,
+          issueMessage: null,
+        });
+      } catch (error) {
+        pushIssue(
+          'CAMERA_PRESET_FAILED',
+          error instanceof Error
+            ? error.message
+            : `第 ${directive.dialogueOrdinal} 句运镜失败。`,
+          { shotId: cameraShot.id, startMs: cameraStartMs, endMs: cameraStartMs + cameraDurationMs },
+        );
+      }
+      continue;
+    }
+
     if (
       targetDialogue.speakerType === DIALOGUE_SPEAKER_NARRATOR ||
       !targetDialogue.characterId
@@ -1160,6 +1350,19 @@ export function planScriptPerformance(
         const createdIds = afterShot.timelineEvents
           .filter((e) => !beforeIds.has(e.id))
           .map((e) => e.id);
+        const beforeLayer = beforeShot.layers.find((entry) => entry.id === layerId);
+        const afterLayer = afterShot.layers.find((entry) => entry.id === layerId);
+        const beforeKeyTimes = new Set(
+          beforeLayer ? layerCompositeKeyTimes(beforeLayer) : [],
+        );
+        const motionKeyTimes = afterLayer
+          ? layerCompositeKeyTimes(afterLayer).filter(
+              (timeMs) =>
+                !beforeKeyTimes.has(timeMs) &&
+                timeMs >= rangeStartMs &&
+                timeMs <= endMs,
+            )
+          : [];
         plannedPerformances.push({
           directiveId: directive.directiveId,
           blockIndex: directive.blockIndex,
@@ -1181,6 +1384,7 @@ export function planScriptPerformance(
           requiredShotDurationMs: null,
           status: 'ready',
           eventIds: createdIds,
+          ...(motionKeyTimes.length > 0 ? { motionKeyTimes } : {}),
           issueCode: null,
           issueMessage: null,
         });
