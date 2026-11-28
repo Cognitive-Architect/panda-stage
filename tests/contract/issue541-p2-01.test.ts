@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -235,7 +235,7 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
     ).toBe('src/renderer/styles/shell/tools/view-mode.css');
   });
 
-  it('loads the semantic segment once at the original production position', () => {
+  it('keeps the surrounding production order after #1466 retires the view-mode segment', () => {
     const imports = importPaths();
     const semanticIndex = imports.indexOf('./styles/shell/tools/view-mode.css');
     const rightWorkspaceHostIndex = imports.indexOf(
@@ -256,19 +256,18 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
     const legacyIndex = imports.indexOf(
       './styles/compat/retained-task-surfaces/s11-10--landscape-tray-host-original.css',
     );
-    expect(semanticIndex).toBeGreaterThan(-1);
-    expect(actionPresetHostIndex).toBe(semanticIndex + 1);
+    expect(semanticIndex).toBe(-1);
+    expect(actionPresetHostIndex).toBeGreaterThan(-1);
     expect(rightWorkspaceHostIndex).toBe(actionPresetHostIndex + 1);
     expect(layerPropertiesIndex).toBe(rightWorkspaceHostIndex + 1);
     expect(resizeBoundaryIndex).toBe(layerPropertiesIndex + 1);
     expect(trackFoundationIndex).toBe(resizeBoundaryIndex + 1);
     expect(legacyIndex).toBe(trackFoundationIndex + 1);
-    expect(imports.filter((path) => path === './styles/shell/tools/view-mode.css')).toHaveLength(1);
   });
 
-  it('keeps the moved bytes exact and leaves the action-preset section in the legacy remainder', () => {
+  it('retains the action-preset section and removes the retired live view-mode stylesheet', () => {
     const relocation = manifest.semanticRelocations.find(({ id }) => id === 'S11-01')!;
-    const target = normalize(readFileSync(resolve(root, relocation.targetPath), 'utf8'));
+    expect(existsSync(resolve(root, relocation.targetPath))).toBe(false);
     const legacy = normalize(
       readFileSync(
         resolve(
@@ -287,7 +286,6 @@ describe('Issue #541 P2-01 semantic stylesheet continuation', () => {
         'utf8',
       ),
     );
-    expect(sha256(target)).toBe(relocation.sourceSha256);
     expect(legacy).not.toContain('.project-tools-view-mode-card');
     expect(actionPresetRemainder.startsWith('.project-tools-action-presets-view {')).toBe(true);
   });

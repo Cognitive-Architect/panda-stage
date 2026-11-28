@@ -107,7 +107,7 @@ export function useCanvasDrop({
     const rect = viewport.getBoundingClientRect();
     return mapClientPointToLayerPosition({
       client: { x: event.clientX, y: event.clientY },
-      viewportOrigin: { x: rect.left, y: rect.top },
+      viewportOrigin: { x: rect.left + viewport.clientLeft, y: rect.top + viewport.clientTop },
       scroll: {
         x: viewport.scrollLeft,
         y: viewport.scrollTop,

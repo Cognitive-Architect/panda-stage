@@ -214,7 +214,7 @@ describe('Issue #552 B13 P2-19 quick/history and P2-21 tools contract', () => {
     expect(tools).toContain('data-testid="project-tools-drawer"');
     expect(tools).toContain('data-testid="project-tools-action-presets"');
     expect(tools).toContain('data-testid="project-tools-back"');
-    expect(tools.match(/data-testid="project-tools-view-mode-card"/gu)).toHaveLength(1);
+    expect(tools).not.toContain("project-tools-view-mode-card");
     expect(tools).not.toContain('HistoryControls');
     expect(tools).not.toContain('updateProject');
     expect(legacy).toContain('<ActionPresetPanel');

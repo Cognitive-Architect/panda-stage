@@ -1,9 +1,8 @@
 import type { CurveMotionStageDraft } from '../features/canvas/CurveMotionStageOverlay';
-import { ArrowLeft, Bomb, Ghost, LayoutGrid, Maximize2, ScanLine, Sparkles, Spline } from 'lucide-react';
-import { useState, useSyncExternalStore } from 'react';
+import { ArrowLeft, Bomb, Ghost, LayoutGrid, Sparkles, Spline } from 'lucide-react';
+import { useState } from 'react';
 import { DecorativeIcon } from '../ui';
-import { canvasViewportStore } from '../stores/canvasViewportStore';
-import type { CanvasViewportMode, Project } from '../../domain';
+import type { Project } from '../../domain';
 import { AfterimagePanel } from '../features/tools/AfterimagePanel';
 import { BackgroundTilesPanel } from '../features/tools/BackgroundTilesPanel';
 import { GraphicBakePanel } from '../features/tools/GraphicBakePanel';
@@ -31,18 +30,6 @@ type ProjectToolsView =
   | 'afterimage'
   | 'radial-burst';
 
-interface ViewModeOption {
-  mode: CanvasViewportMode;
-  label: string;
-  testId: string;
-  icon: typeof Maximize2;
-}
-
-const VIEW_MODE_OPTIONS: readonly ViewModeOption[] = [
-  { mode: 'fit', label: '适应窗口', testId: 'canvas-mode-fit', icon: Maximize2 },
-  { mode: 'actual', label: '实际尺寸', testId: 'canvas-mode-actual', icon: ScanLine },
-] as const;
-
 /**
  * Project Tools is a presentation-level launcher. The ActionPreset business
  * owner remains unchanged; this component only composes its focused
@@ -54,10 +41,6 @@ export function ProjectToolsDrawer({
   onCurveMotionDraft,
 }: ProjectToolsDrawerProps): React.JSX.Element {
   const [view, setView] = useState<ProjectToolsView>('home');
-  const viewportMode = useSyncExternalStore(
-    canvasViewportStore.subscribe,
-    canvasViewportStore.getSnapshot,
-  ).mode;
 
   return (
     <section
@@ -115,45 +98,6 @@ export function ProjectToolsDrawer({
 
       {view === 'home' ? (
         <div className="project-tools-home" data-testid="project-tools-home">
-          <section
-            aria-labelledby="project-tools-view-mode-heading"
-            className="project-tools-view-mode-card"
-            data-testid="project-tools-view-mode-card"
-          >
-            <div className="project-tools-view-mode-heading">
-              <h3 id="project-tools-view-mode-heading">画布</h3>
-            </div>
-            <div
-              className="project-tools-view-mode-segmented"
-              data-testid="project-tools-view-mode-segmented"
-              role="group"
-              aria-label="画布视口模式"
-            >
-              {VIEW_MODE_OPTIONS.map((option) => {
-                const active = option.mode === viewportMode;
-                return (
-                  <button
-                    aria-pressed={active}
-                    className="ui-icon-label"
-                    data-testid={option.testId}
-                    key={option.mode}
-                    onClick={() => canvasViewportStore.setMode(option.mode)}
-                    type="button"
-                  >
-                    {option.icon === Maximize2 ? (
-                      <Maximize2
-                        aria-hidden="true"
-                        className="ui-icon"
-                        focusable="false"
-                        size={16}
-                      />
-                    ) : null}
-                    <span>{option.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
           <section
             aria-labelledby="project-tools-action-preset-heading"
             className="project-tools-action-preset-card"

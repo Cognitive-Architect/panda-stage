@@ -11,6 +11,8 @@ import {
   calculateViewportTransform,
   isStagePointInside,
   screenToStage,
+  stageToScreen,
+  type ViewportNavigation,
   type CanvasViewportMode,
   type Point,
   type ViewportTransform,
@@ -23,9 +25,12 @@ import {
   useCanvasDrop,
   type CanvasDropPreview,
 } from './useCanvasDrop';
+import { canvasViewportStore } from '../../stores/canvasViewportStore';
+import { isEditableKeyboardTarget, isMenuOrModalKeyboardTarget } from '../properties/LayerOrderControls';
 
 export interface CanvasViewportProps {
   mode: CanvasViewportMode;
+  navigation: ViewportNavigation;
   children: (transform: ViewportTransform) => ReactNode;
   viewportOverlay?: ReactNode;
   viewportChrome?: ReactNode;
@@ -40,22 +45,11 @@ export interface CanvasViewportProps {
   onViewportChromePointerDown?: () => void;
 }
 
-export interface ViewportPanStart {
+interface ViewportPanStart {
   clientX: number;
   clientY: number;
-  scrollLeft: number;
-  scrollTop: number;
+  pan: Point;
   pointerId: number;
-}
-
-export function calculateViewportPanScrollPosition(
-  start: ViewportPanStart,
-  current: Pick<ViewportPanStart, 'clientX' | 'clientY'>,
-): { left: number; top: number } {
-  return {
-    left: start.scrollLeft - (current.clientX - start.clientX),
-    top: start.scrollTop - (current.clientY - start.clientY),
-  };
 }
 
 export function isViewportChromePointerTarget<T>(
@@ -67,6 +61,7 @@ export function isViewportChromePointerTarget<T>(
 
 export function CanvasViewport({
   mode,
+  navigation,
   children,
   viewportOverlay = null,
   viewportChrome = null,
@@ -91,8 +86,8 @@ export function CanvasViewport({
   const spaceHeldRef = useRef(false);
   const panRef = useRef<ViewportPanStart | null>(null);
   const transform = useMemo(
-    () => calculateViewportTransform(container, mode),
-    [container, mode],
+    () => calculateViewportTransform(container, mode, undefined, navigation),
+    [container, mode, navigation],
   );
   const dropHandlers = useCanvasDrop({
     viewportRef,
@@ -130,10 +125,18 @@ export function CanvasViewport({
 
   useLayoutEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape' && panRef.current) {
+        endPan();
+        return;
+      }
       if (
         mode !== 'actual' ||
         (event.code !== 'Space' && event.key !== ' ') ||
-        isEditableTarget(event.target) ||
+        event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey ||
+        isEditableKeyboardTarget(event.target) || isMenuOrModalKeyboardTarget(event.target) ||
+        isViewportInteractiveChromePointerTarget(event.target) ||
+        (event.target instanceof Element && Boolean(event.target.closest('button, [role="button"]'))) ||
+        document.querySelector('dialog[open], [aria-modal="true"]:not([hidden])') !== null ||
         !pointerInsideRef.current
       ) {
         return;
@@ -161,7 +164,7 @@ export function CanvasViewport({
       window.removeEventListener('blur', onWindowBlur);
       releaseSpace();
     };
-  }, [mode, releaseSpace]);
+  }, [endPan, mode, releaseSpace]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -178,14 +181,42 @@ export function CanvasViewport({
     return () => observer.disconnect();
   }, []);
 
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.defaultPrevented || panRef.current || isViewportInteractiveChromePointerTarget(event.target) ||
+          isMenuOrModalKeyboardTarget(event.target) || isEditableKeyboardTarget(event.target) || event.deltaY === 0) return;
+      const { mode, navigation } = canvasViewportStore.getSnapshot();
+      const before = calculateViewportTransform(container, mode, undefined, navigation);
+      const rect = viewport.getBoundingClientRect();
+      const pointer = { x: event.clientX - rect.left - viewport.clientLeft, y: event.clientY - rect.top - viewport.clientTop };
+      const logicalPoint = screenToStage(pointer, before);
+      if (!logicalPoint) return;
+      event.preventDefault();
+      const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? container.height : 1);
+      const zoom = Math.min(16, Math.max(0.125, navigation.zoom * Math.exp(-delta * 0.002)));
+      if (zoom === navigation.zoom) return;
+      const after = calculateViewportTransform(container, mode, undefined, { ...navigation, zoom });
+      const projected = stageToScreen(logicalPoint, after);
+      canvasViewportStore.navigate(zoom, {
+        x: navigation.pan.x + pointer.x - projected.x,
+        y: navigation.pan.y + pointer.y - projected.y,
+      });
+      onStagePoint(isStagePointInside(logicalPoint, after) ? logicalPoint : null);
+    };
+    viewport.addEventListener('wheel', onWheel, { passive: false });
+    return () => viewport.removeEventListener('wheel', onWheel);
+  }, [container, onStagePoint]);
+
   const mapPointer = (event: PointerEvent<HTMLDivElement>): void => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const rect = viewport.getBoundingClientRect();
     const point = screenToStage(
       {
-        x: event.clientX - rect.left + viewport.scrollLeft,
-        y: event.clientY - rect.top + viewport.scrollTop,
+        x: event.clientX - rect.left - viewport.clientLeft,
+        y: event.clientY - rect.top - viewport.clientTop,
       },
       transform,
     );
@@ -213,14 +244,9 @@ export function CanvasViewport({
   const handlePointerDownCapture = (
     event: PointerEvent<HTMLDivElement>,
   ): void => {
-    if (isViewportInteractiveChromePointerTarget(event.target)) return;
-    if (
-      mode !== 'actual' ||
-      !spaceHeldRef.current ||
-      event.button !== 0 ||
-      event.pointerType !== 'mouse' ||
-      panRef.current
-    ) {
+    if (isViewportInteractiveChromePointerTarget(event.target) || isMenuOrModalKeyboardTarget(event.target)) return;
+    const panButton = event.button === 1 || (event.button === 0 && (event.altKey || (mode === 'actual' && spaceHeldRef.current)));
+    if (event.pointerType !== 'mouse' || !panButton || panRef.current) {
       return;
     }
     const viewport = viewportRef.current;
@@ -229,8 +255,7 @@ export function CanvasViewport({
       clientX: event.clientX,
       clientY: event.clientY,
       pointerId: event.pointerId,
-      scrollLeft: viewport.scrollLeft,
-      scrollTop: viewport.scrollTop,
+      pan: canvasViewportStore.getSnapshot().navigation.pan,
     };
     setPanActive(true);
     viewport.setPointerCapture(event.pointerId);
@@ -241,14 +266,14 @@ export function CanvasViewport({
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>): void => {
     const pan = panRef.current;
     if (pan?.pointerId === event.pointerId) {
-      const viewport = viewportRef.current;
-      if (viewport) {
-        const next = calculateViewportPanScrollPosition(pan, event);
-        viewport.scrollLeft = next.left;
-        viewport.scrollTop = next.top;
-      }
+      canvasViewportStore.navigate(canvasViewportStore.getSnapshot().navigation.zoom, {
+        x: pan.pan.x + event.clientX - pan.clientX,
+        y: pan.pan.y + event.clientY - pan.clientY,
+      });
+      onStagePoint(null);
       event.preventDefault();
       event.stopPropagation();
+      return;
     }
     mapPointer(event);
   };
@@ -270,6 +295,10 @@ export function CanvasViewport({
         dropHandlers.dragOver ? 'canvas-viewport-drag-over' : '',
       ].join(' ')}
       data-display-scale={transform.scale.toFixed(6)}
+      data-view-mode={mode}
+      data-view-zoom={navigation.zoom}
+      data-view-pan-x={navigation.pan.x}
+      data-view-pan-y={navigation.pan.y}
       data-drop-disabled={String(dropDisabled || dropInteractionDisabled)}
       data-logical-height={transform.logical.height}
       data-logical-width={transform.logical.width}
@@ -278,6 +307,7 @@ export function CanvasViewport({
       data-pan-active={String(panActive)}
       data-pan-available={String(mode === 'actual' && spaceHeld)}
       data-testid="project-canvas-viewport"
+      onAuxClick={event => { if (event.button === 1) event.preventDefault(); }}
       onDragEnter={dropHandlers.onDragEnter}
       onDragLeave={dropHandlers.onDragLeave}
       onDragOver={dropHandlers.onDragOver}
@@ -300,8 +330,8 @@ export function CanvasViewport({
       <div
         className="canvas-viewport-content"
         style={{
-          width: transform.contentWidth,
-          height: transform.contentHeight,
+          width: transform.container.width,
+          height: transform.container.height,
         }}
       >
         <div
@@ -310,6 +340,8 @@ export function CanvasViewport({
           style={{
             left: transform.offsetX,
             top: transform.offsetY,
+            width: transform.logical.width,
+            height: transform.logical.height,
             transform: `scale(${transform.scale})`,
           }}
         >
@@ -331,12 +363,4 @@ function isViewportInteractiveChromePointerTarget(
       ? target.parentElement
       : null;
   return Boolean(element?.closest('[data-canvas-interactive-chrome="true"]'));
-}
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  return (
-    target.isContentEditable ||
-    ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
-  );
 }

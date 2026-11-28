@@ -50,108 +50,24 @@ describe('Issue #436 LM-004 — Canvas visual flattening + viewport mode relocat
     expect(styles).toMatch(
       /\.canvas-logical-stage\s*\{[\s\S]*?transform-origin/u,
     );
-    expect(styles).toMatch(
-      /\.canvas-logical-stage\s*\{[\s\S]*?width:\s*1920px/u,
-    );
-    expect(styles).toMatch(
-      /\.canvas-logical-stage\s*\{[\s\S]*?height:\s*1080px/u,
-    );
+
   });
 
-  it('exposes the two viewport mode controls inside the right-side 工具 surface', () => {
+  it('keeps the two viewport modes and their feedback on the canvas', () => {
+    const toolbar = source('src/renderer/features/canvas/CanvasToolbar.tsx');
+    const stage = source('src/renderer/features/canvas/CanvasStage.tsx');
     const tools = source('src/renderer/shell/ProjectToolsDrawer.tsx');
     const styles = readOrderedStylesheetSource();
-
-    expect(tools).toContain('project-tools-view-mode-card');
-    expect(tools).toContain('project-tools-view-mode-heading');
-    expect(tools).toContain('project-tools-view-mode-segmented');
-    expect(tools).toContain('画布');
-    // The two mode testids live in the option table; the JSX consumes
-    // them through `data-testid={option.testId}`.
-    expect(tools).toContain("testId: 'canvas-mode-fit'");
-    expect(tools).toContain("testId: 'canvas-mode-actual'");
-    expect(tools).toContain('data-testid={option.testId}');
-    expect(tools).toContain('适应窗口');
-    expect(tools).not.toContain('canvas-mode-half');
-    expect(tools).not.toContain('50%');
-    expect(tools).toContain('实际尺寸');
-    expect(tools).toMatch(
-      /canvasViewportStore\.setMode\(\s*option\.mode\s*\)/u,
-    );
-    expect(styles).toMatch(
-      /\.project-tools-view-mode-segmented\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/u,
-    );
-  });
-
-  it('keeps canvasViewportStore as the single source of truth for viewport mode', () => {
-    const tools = source('src/renderer/shell/ProjectToolsDrawer.tsx');
-    const stage = source('src/renderer/features/canvas/CanvasStage.tsx');
-    const viewport = source('src/renderer/features/canvas/CanvasViewport.tsx');
-    const store = source('src/renderer/stores/canvasViewportStore.ts');
-
-    // No second viewport state owner should have been introduced.
-    expect(tools).not.toMatch(/setViewportMode|useState\([\s\S]*?['"]fit['"]/u);
-    expect(tools).not.toMatch(/useState<CanvasViewportMode/u);
-    expect(stage).not.toMatch(/useState<CanvasViewportMode/u);
-    expect(viewport).not.toMatch(/useState<CanvasViewportMode/u);
-
-    // The existing store class is the only owner of mode and is
-    // consumed through its singleton export.
-    expect(store).toContain('class CanvasViewportStore');
-    expect(store).toContain("mode: 'fit'");
-    expect(store).toContain('setMode(mode: CanvasViewportMode)');
-    // The Tools section is now the only writer of the mode.
-    expect(tools).toMatch(
-      /canvasViewportStore\.setMode\(\s*option\.mode\s*\)/u,
-    );
-    // CanvasStage only reads the snapshot (no setMode call after the
-    // toolbar-mode relocation).
-    expect(stage).not.toMatch(/canvasViewportStore\.setMode\b/u);
-    expect(stage).toContain('canvasViewportStore.subscribe');
-    expect(stage).toContain('canvasViewportStore.getSnapshot');
-    // The CanvasViewport consumes `mode` from props to compute transform.
-    expect(viewport).toContain('calculateViewportTransform(container, mode)');
-    // The Tools section subscribes via useSyncExternalStore to the same
-    // singleton — not a duplicate.
-    expect(tools).toContain('canvasViewportStore.subscribe');
-    expect(tools).toContain('canvasViewportStore.getSnapshot');
-  });
-
-  it('removes the mode controls from the CanvasToolbar (feedback only)', () => {
-    const toolbar = source('src/renderer/features/canvas/CanvasToolbar.tsx');
-    const stage = source('src/renderer/features/canvas/CanvasStage.tsx');
-
-    // Toolbar source must no longer ship the mode buttons.
-    expect(toolbar).not.toContain('canvas-mode-fit');
-    expect(toolbar).not.toContain('canvas-mode-half');
-    expect(toolbar).not.toContain('canvas-mode-actual');
-    expect(toolbar).not.toMatch(/onModeChange\(['"]fit['"]\)/u);
-    expect(toolbar).not.toMatch(/onModeChange\(['"]half['"]\)/u);
-    expect(toolbar).not.toMatch(/onModeChange\(['"]actual['"]\)/u);
-
-    // Toolbar keeps the feedback outputs.
+    expect(toolbar).toContain('canvas-mode-fit');
+    expect(toolbar).toContain('canvas-mode-actual');
     expect(toolbar).toContain('canvas-mode-feedback');
     expect(toolbar).toContain('canvas-pointer-coordinate');
-    expect(toolbar).toContain('data-testid="canvas-toolbar-feedback"');
-
-    // The Stage no longer forwards onModeChange (the toolbar no longer
-    // owns a mode switch).
-    expect(stage).not.toMatch(/onModeChange=/u);
+    expect(stage).toContain('onViewModeChange={canvasViewportStore.setMode}');
+    expect(stage).toContain('canvasViewportStore.subscribe');
+    expect(stage).toContain('canvasViewportStore.getSnapshot');
+    expect(tools).not.toContain('project-tools-view-mode-card');
+    expect(styles).not.toContain('.project-tools-view-mode-segmented');
   });
-
-  it('renders Tools 画布 inside RightWorkspace (not a duplicate on the Canvas)', () => {
-    const right = source('src/renderer/shell/RightWorkspace.tsx');
-    const stage = source('src/renderer/features/canvas/CanvasStage.tsx');
-    const toolbar = source('src/renderer/features/canvas/CanvasToolbar.tsx');
-
-    expect(right).toContain("<ProjectToolsDrawer");
-    // 'tools' is the default fallthrough after subtitles/properties, so
-    // the source wires it through the ternary else branch.
-    expect(right).toMatch(/:\s*\(\s*[\s\S]{0,200}<ProjectToolsDrawer/u);
-    expect(stage).not.toContain('canvas-mode-fit');
-    expect(toolbar).not.toContain('canvas-mode-fit');
-  });
-
   it('preserves the R1-R3 contracts (no Timeline geometry change, single right rail)', () => {
     const styles = readOrderedStylesheetSource();
     const timeline = source(

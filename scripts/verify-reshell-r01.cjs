@@ -19,12 +19,12 @@ app.setPath('userData', profile);
 process.env.VITE_DEV_SERVER_URL = '';
 const { LayerMotionService, LayerService, migrateProject, ProjectSchema, ShotService } = require(path.join(root, 'dist-electron/domain/index.js'));
 const example = migrateProject(require(path.join(root, 'demo-project/project-v1.example.json')));
-const regression = ['r02-regression', 'commands', 'dialogue-drop', 'curve-visibility', 'tools-visibility', 'inspector-focus'].includes(phase);
+const regression = ['r03-viewport', 'r02-regression', 'commands', 'dialogue-drop', 'curve-visibility', 'tools-visibility', 'inspector-focus'].includes(phase);
 const pandaLayerId = '60000000-0000-4000-8000-000000000002';
 const pendingId = '80000000-0000-4000-8000-000000000002';
 let project = ProjectSchema.parse({
   ...example,
-  shots: regression && !['commands', 'r02-regression'].includes(phase) ? example.shots.map((shot, i) => i === 0 ? {
+  shots: regression && !['commands', 'r02-regression', 'r03-viewport'].includes(phase) ? example.shots.map((shot, i) => i === 0 ? {
     ...shot,
     layers: [...shot.layers, { ...shot.layers.find(layer => layer.id === pandaLayerId), id: '60000000-0000-4000-8000-000000000003', name: 'Parent candidate', zIndex: 2 }],
     dialogues: [...shot.dialogues, { ...shot.dialogues[0], id: pendingId, startMs: 0, endMs: 0, audioClipId: undefined, text: 'R01 pending subtitle' }],
@@ -312,6 +312,120 @@ async function run() {
   assert.equal(original, 'ready', 'production canvas preload reads the real background');
   const panels = await js(() => [...document.querySelectorAll('.dv-tab')].map(el => el.textContent.trim()));
   console.log('panels:', JSON.stringify(panels));
+
+  if (phase === 'r03-viewport') {
+    await waitForOpeningPaint();
+    const viewport = '[data-testid="project-canvas-viewport"]';
+    const fit = '[data-testid="canvas-mode-fit"]';
+    const actual = '[data-testid="canvas-mode-actual"]';
+    const navigation = () => js(sel => {
+      const node = document.querySelector(sel);
+      const { left, top, width, height } = node.getBoundingClientRect();
+      return { left: left + node.clientLeft, top: top + node.clientTop, width, height,
+        scale: Number(node.dataset.displayScale), zoom: Number(node.dataset.viewZoom),
+        pan: { x: Number(node.dataset.viewPanX), y: Number(node.dataset.viewPanY) },
+        offset: { x: Number(node.dataset.offsetX), y: Number(node.dataset.offsetY) },
+        panning: node.dataset.panActive === 'true' };
+    }, viewport);
+    const logical = (point, view) => ({
+      x: (point.x - view.left - view.offset.x) / view.scale,
+      y: (point.y - view.top - view.offset.y) / view.scale,
+    });
+    const near = (left, right, tolerance = 1) => Math.abs(left - right) <= tolerance;
+    const assertCenter = async () => {
+      const view = await navigation();
+      assert(view.scale > 0);
+      assert(near(view.offset.x, (view.width - 1920 * view.scale) / 2));
+      assert(near(view.offset.y, (view.height - 1080 * view.scale) / 2));
+      assert.deepEqual(view.pan, { x: 0, y: 0 });
+    };
+    const chosen = '[data-testid="layer-list-row-' + pandaLayerId + '"] .workbench-layer-name';
+    await click(chosen);
+    const beforeEdit = await editingState();
+    const beforeView = await navigation();
+    assert(beforeView.offset.y >= 15);
+    await assertCenter();
+    const anchor = { x: Math.round(beforeView.left + beforeView.width * .38), y: Math.round(beforeView.top + beforeView.height * .42) };
+    const beforeAnchor = logical(anchor, beforeView);
+    const devtools = win.webContents.debugger;
+    devtools.attach('1.3');
+    try {
+      await devtools.sendCommand('Input.dispatchMouseEvent', { type: 'mouseWheel', ...anchor, deltaY: -180, deltaX: 0 });
+    } finally {
+      devtools.detach();
+    }
+    await waitFor(before => Number(document.querySelector('[data-testid="project-canvas-viewport"]').dataset.displayScale) > before, beforeView.scale);
+    const afterAnchor = logical(anchor, await navigation());
+    assert(near(beforeAnchor.x, afterAnchor.x, 0.05));
+    assert(near(beforeAnchor.y, afterAnchor.y, 0.05));
+
+    const pan = async (button, modifiers, distance) => {
+      const start = await pointInside(viewport, .42);
+      win.webContents.sendInputEvent({ type: 'mouseMove', ...start, button, modifiers });
+      win.webContents.sendInputEvent({ type: 'mouseDown', ...start, button, modifiers, clickCount: 1 });
+      await waitFor(() => document.querySelector('[data-testid="project-canvas-viewport"]').dataset.panActive === 'true');
+      win.webContents.sendInputEvent({ type: 'mouseMove', x: start.x + distance, y: start.y + 25, button,
+        modifiers: [...modifiers, button === 'middle' ? 'middleButtonDown' : 'leftButtonDown'] });
+      win.webContents.sendInputEvent({ type: 'mouseUp', x: start.x + distance, y: start.y + 25, button, modifiers, clickCount: 1 });
+      await waitFor(() => document.querySelector('[data-testid="project-canvas-viewport"]').dataset.panActive === 'false');
+      await delay(120);
+    };
+    const afterZoom = await navigation();
+    await pan('left', ['alt'], 45);
+    const alt = await navigation();
+    assert(near(alt.pan.x - afterZoom.pan.x, 45));
+    assert(near(alt.pan.y - afterZoom.pan.y, 25));
+    await pan('middle', [], -15);
+    const middle = await navigation();
+    assert(near(middle.pan.x - alt.pan.x, -15));
+    assert(near(middle.pan.y - alt.pan.y, 25));
+    win.setSize(930, 700);
+    await waitFor(previous => {
+      const rect = document.querySelector('[data-testid="project-canvas-viewport"]').getBoundingClientRect();
+      return Math.abs(rect.width - previous.width) > 1 || Math.abs(rect.height - previous.height) > 1;
+    }, middle);
+    const resized = await navigation();
+    assert.equal(resized.zoom, middle.zoom);
+    assert.deepEqual(resized.pan, middle.pan);
+    await click('[data-testid="workbench-window-menu"]');
+    await clickText('[role="menuitem"]', '恢复默认布局');
+    await waitFor(() => document.querySelector('[data-testid="project-canvas-viewport"]').getBoundingClientRect().height > 0);
+    assert.equal((await navigation()).zoom, middle.zoom);
+    assert.deepEqual((await navigation()).pan, middle.pan);
+    assert.deepEqual(await editingState(), beforeEdit);
+
+    await click(fit);
+    assert.equal((await navigation()).zoom, 1);
+    await assertCenter();
+    await click(actual);
+    assert.equal((await navigation()).scale, 1);
+    assert.equal(await js(() => document.querySelector('[data-testid="canvas-mode-feedback"]').textContent), '100.0%');
+    await clickText('.workbench-menu-bar button', '视图');
+    await clickText('[role="menuitem"]', '画布适合窗口');
+    await assertCenter();
+    assert.deepEqual(await editingState(), beforeEdit);
+    win.setSize(1440, 900);
+    await waitFor(previous => document.querySelector('[data-testid="project-canvas-viewport"]').getBoundingClientRect().height > previous, resized.height);
+    await pan('middle', [], 20);
+    const view = await navigation();
+    const end = { x: Math.round(view.left + view.width * .60), y: Math.round(view.top + view.height * .45) };
+    win.webContents.sendInputEvent({ type: 'mouseMove', ...end });
+    const expected = logical(end, view);
+    await waitFor(() => !document.querySelector('[data-testid="canvas-pointer-coordinate"]').hidden);
+    const feedback = await js(() => document.querySelector('[data-testid="canvas-pointer-coordinate"]').textContent);
+    assert(feedback.includes('x ' + expected.x.toFixed(1)) || near(Number(feedback.split(' ')[1]), expected.x));
+    const asset = project.assets.find(candidate => candidate.name === 'Panda neutral');
+    const origin = await pointInside('[data-asset-id="' + asset.id + '"]');
+    await dragDockTab(origin.x, origin.y, end.x, end.y);
+    const placed = await waitFor(() => JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]').dataset.layerJson).find(layer =>
+      layer.id !== '60000000-0000-4000-8000-000000000001' && layer.id !== '60000000-0000-4000-8000-000000000002'));
+    assert(near(placed.x, expected.x, 2));
+    assert(near(placed.y, expected.y, 2));
+    assert.equal((await editingState()).undo, '1');
+    await screenshot('r03-viewport.png');
+    console.log('R03-A pixel scale, anchored zoom, Alt and middle pan, resize and reset intent, true asset coordinates and one history edit passed');
+    return;
+  }
 
   if (phase === 'r02-regression') {
     const row = id => '[data-testid="layer-list-row-' + id + '"]';

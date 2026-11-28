@@ -1,10 +1,11 @@
 import { useId, type KeyboardEventHandler, type ReactNode } from 'react';
-import { ArrowLeft, Link2, LockKeyhole, LogIn } from 'lucide-react';
+import { ArrowLeft, Link2, LockKeyhole, LogIn, Maximize2, ScanLine } from 'lucide-react';
 import type {
   CanvasViewportMode,
   Point,
   ViewportTransform,
 } from '../../../domain';
+import { DecorativeIcon, IconButton } from '../../ui';
 import type { FlaGraphicEditMode } from './flaGraphicEditScope';
 
 export interface CanvasToolbarProps {
@@ -24,7 +25,8 @@ export interface CanvasToolbarProps {
   onEnterSelected?: () => void;
   onReturn?: () => void;
   onFlaGraphicEditKeyDownCapture?: KeyboardEventHandler<HTMLDivElement>;
-  onModeChange?: never;
+  onViewModeChange?: (mode: CanvasViewportMode) => void;
+  navigationCustomized?: boolean;
 }
 
 /**
@@ -48,6 +50,8 @@ export function CanvasToolbar({
   onEnterSelected = () => undefined,
   onReturn = () => undefined,
   onFlaGraphicEditKeyDownCapture,
+  onViewModeChange,
+  navigationCustomized = false,
 }: CanvasToolbarProps): React.JSX.Element {
   const returnTooltipId = `fla-group-edit-return-${useId()}`;
   const enterTooltipId = `fla-group-edit-enter-${useId()}`;
@@ -60,16 +64,27 @@ export function CanvasToolbar({
       data-testid="canvas-toolbar-feedback"
       aria-label="画布状态"
     >
+      {onViewModeChange ? (
+        <div className="canvas-viewport-navigation" role="group" aria-label="画布视口" data-canvas-interactive-chrome="true">
+          <IconButton variant="secondary" aria-label="适应窗口" title="适应窗口"
+            aria-pressed={mode === 'fit' && !navigationCustomized} data-testid="canvas-mode-fit"
+            icon={<DecorativeIcon icon={Maximize2} size={15} />} onClick={() => onViewModeChange('fit')} />
+          <IconButton variant="secondary" aria-label="1:1 像素" title="1:1 像素"
+            aria-pressed={mode === 'actual' && !navigationCustomized} data-testid="canvas-mode-actual"
+            icon={<DecorativeIcon icon={ScanLine} size={15} />} onClick={() => onViewModeChange('actual')} />
+          <output data-testid="canvas-mode-feedback" aria-label="画布显示倍率">{(transform.scale * 100).toFixed(1)}%</output>
+        </div>
+      ) : null}
       {showStatus ? (
         <>
-          <output
+          {!onViewModeChange && <output
             className="canvas-mode-feedback"
             data-testid="canvas-mode-feedback"
           >
             {mode === 'fit' ? '适应窗口' : '1:1 像素 · 可滚动查看'}
             {' · '}
             {(transform.scale * 100).toFixed(1)}%
-          </output>
+          </output>}
           <output
             data-testid="canvas-pointer-coordinate"
             hidden={!point}

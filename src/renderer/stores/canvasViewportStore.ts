@@ -1,17 +1,26 @@
 import type {
   CanvasViewportMode,
   Point,
+  ViewportNavigation,
 } from '../../domain';
 
 export interface CanvasViewportSnapshot {
   mode: CanvasViewportMode;
+  navigation: ViewportNavigation;
   lastStagePoint: Point | null;
 }
 
 type Listener = () => void;
 
+const DEFAULT_NAVIGATION: ViewportNavigation = {
+  zoom: 1,
+  pan: { x: 0, y: 0 },
+  padding: 16,
+};
+
 const INITIAL_SNAPSHOT: CanvasViewportSnapshot = {
   mode: 'fit',
+  navigation: DEFAULT_NAVIGATION,
   lastStagePoint: null,
 };
 
@@ -26,12 +35,16 @@ export class CanvasViewportStore {
     return () => this.listeners.delete(listener);
   };
 
-  setMode(mode: CanvasViewportMode): void {
-    if (mode === this.snapshot.mode) return;
-    this.snapshot = {
-      ...this.snapshot,
-      mode,
-    };
+  readonly setMode = (mode: CanvasViewportMode): void => {
+    if (mode === this.snapshot.mode && this.snapshot.navigation === DEFAULT_NAVIGATION) return;
+    this.snapshot = { ...this.snapshot, mode, navigation: DEFAULT_NAVIGATION };
+    this.emit();
+  };
+
+  navigate(zoom: number, pan: Point): void {
+    const current = this.snapshot.navigation;
+    if (zoom === current.zoom && pan.x === current.pan.x && pan.y === current.pan.y) return;
+    this.snapshot = { ...this.snapshot, navigation: { ...current, zoom, pan } };
     this.emit();
   }
 
@@ -52,6 +65,7 @@ export class CanvasViewportStore {
   reset(): void {
     if (
       this.snapshot.mode === INITIAL_SNAPSHOT.mode &&
+      this.snapshot.navigation === DEFAULT_NAVIGATION &&
       this.snapshot.lastStagePoint === null
     ) {
       return;

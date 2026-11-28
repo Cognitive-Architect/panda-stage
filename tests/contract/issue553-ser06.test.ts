@@ -658,9 +658,9 @@ describe('Issue #553 SER-06 B14/B15 compatibility and closure contract', () => {
       expect(relocation.targetPath).toBe(
         authorizedCanonicalTargetOverrides.get(row.id) ?? row.targetPath,
       );
-      const retiredDrawerStyles = ['G005', 'G077', 'G092', 'G121'].includes(relocation.id);
-      expect(existsSync(resolve(root, relocation.targetPath))).toBe(!retiredDrawerStyles);
-      if (retiredDrawerStyles) expect(importPaths()).not.toContain(entryImportPath(relocation.targetPath));
+      const retiredStyles = ['G005', 'G077', 'G092', 'G097', 'G121'].includes(relocation.segment);
+      expect(existsSync(resolve(root, relocation.targetPath))).toBe(!retiredStyles);
+      if (retiredStyles) expect(importPaths()).not.toContain(entryImportPath(relocation.targetPath));
     }
 
     const evidenceDirectories = [

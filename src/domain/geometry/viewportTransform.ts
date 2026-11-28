@@ -12,6 +12,12 @@ export interface Size {
   height: number;
 }
 
+export interface ViewportNavigation {
+  zoom: number;
+  pan: Point;
+  padding: number;
+}
+
 export interface ViewportTransform {
   mode: CanvasViewportMode;
   container: Size;
@@ -36,6 +42,7 @@ export function calculateViewportTransform(
     width: PROJECT_WIDTH,
     height: PROJECT_HEIGHT,
   },
+  navigation?: ViewportNavigation,
 ): ViewportTransform {
   const containerWidth = safeDimension(container.width);
   const containerHeight = safeDimension(container.height);
@@ -46,21 +53,25 @@ export function calculateViewportTransform(
     containerHeight > 0 &&
     logicalWidth > 0 &&
     logicalHeight > 0;
-  const scale =
+  const inset = navigation ? navigation.padding * 2 : 0;
+  const baseScale =
     mode === 'actual'
       ? logicalWidth > 0 && logicalHeight > 0
         ? 1
         : 0
       : canScale
         ? Math.min(
-            containerWidth / logicalWidth,
-            containerHeight / logicalHeight,
+            Math.max(navigation ? 1 : 0, containerWidth - inset) / logicalWidth,
+            Math.max(navigation ? 1 : 0, containerHeight - inset) / logicalHeight,
           )
         : 0;
+  const scale = baseScale * (navigation?.zoom ?? 1);
   const displayWidth = logicalWidth * scale;
   const displayHeight = logicalHeight * scale;
-  const offsetX = Math.max(0, (containerWidth - displayWidth) / 2);
-  const offsetY = Math.max(0, (containerHeight - displayHeight) / 2);
+  const centerX = (containerWidth - displayWidth) / 2;
+  const centerY = (containerHeight - displayHeight) / 2;
+  const offsetX = navigation ? centerX + navigation.pan.x : Math.max(0, centerX);
+  const offsetY = navigation ? centerY + navigation.pan.y : Math.max(0, centerY);
 
   return {
     mode,

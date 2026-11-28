@@ -1480,6 +1480,7 @@ export function CanvasStage({
             : null
         }
         mode={viewport.mode}
+        navigation={viewport.navigation}
         onAssetDrop={(payload, point) => {
           if (
             payload.type !== 'animation' &&
@@ -1562,6 +1563,8 @@ export function CanvasStage({
                       !selectedStructuredAuthoringState?.canEditTransform)),
               )}
               mode={viewport.mode}
+              onViewModeChange={canvasViewportStore.setMode}
+              navigationCustomized={viewport.navigation.zoom !== 1 || viewport.navigation.pan.x !== 0 || viewport.navigation.pan.y !== 0}
               onEnterSelected={enterSelectedFlaGraphicNode}
               onFlaGraphicEditKeyDownCapture={handleFlaGraphicEditKeyDownCapture}
               onReturn={exitOrPopFlaGraphicScope}

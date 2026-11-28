@@ -18,10 +18,12 @@ describe('CanvasViewportStore', () => {
 
     const viewport = new CanvasViewportStore();
     viewport.setMode('actual');
+    viewport.navigate(1.5, { x: -48, y: 32 });
     viewport.recordStagePoint({ x: 960, y: 540 });
 
     expect(viewport.getSnapshot()).toEqual({
       mode: 'actual',
+      navigation: { zoom: 1.5, pan: { x: -48, y: 32 }, padding: 16 },
       lastStagePoint: { x: 960, y: 540 },
     });
     expect(JSON.stringify(editor.getSnapshot()!.project)).toBe(
