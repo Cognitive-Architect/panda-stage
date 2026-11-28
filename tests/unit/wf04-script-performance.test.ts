@@ -817,6 +817,83 @@ describe('WF-04 shared script & performance planner and applier', () => {
     ).toEqual([83, 583]);
   });
 
+  it('refuses an overflowing camera directive without authorization and keeps the shot intact', () => {
+    const base = buildWf04Project();
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: base.shots.map((shot) => ({
+        ...shot,
+        camera: { mode: 'manual' as const, keys: [] },
+      })),
+    });
+    const script = [
+      '镜头：运镜测试',
+      '时长：3000ms',
+      '出场：师兄',
+      '对白：',
+      '师兄：第一句。',
+      '表演：',
+      '1｜运镜｜预设=推近｜时长=600ms｜偏移=2800ms',
+    ].join('\n');
+
+    const plan = planScriptPerformance(project, script);
+    const row = plan.performances[0]!;
+    expect(row.status).toBe('issue');
+    expect(row.issueCode).toBe('OUT_OF_SHOT_BOUNDS');
+    expect(row.requiredShotDurationMs).toBe(row.endMs);
+
+    const applied = applyScriptPerformancePlan(project, plan, {
+      allowPartialConfirm: true,
+    });
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) throw new Error(applied.message);
+    // Unauthorized overflow never grows the shot.
+    expect(applied.project.shots.at(-1)!.durationMs).toBe(3_000);
+    expect(applied.project.shots.at(-1)!.camera?.keys ?? []).toHaveLength(0);
+  });
+
+  it('extends the shot for an authorized camera directive using the real snapped range', () => {
+    const base = buildWf04Project();
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: base.shots.map((shot) => ({
+        ...shot,
+        camera: { mode: 'manual' as const, keys: [] },
+      })),
+    });
+    const script = [
+      '镜头：运镜测试',
+      '时长：3000ms',
+      '出场：师兄',
+      '对白：',
+      '师兄：第一句。',
+      '表演：',
+      '1｜运镜｜预设=推近｜时长=600ms｜偏移=2800ms',
+    ].join('\n');
+
+    const plan = planScriptPerformance({
+      ...project,
+    }, script, { extendShotForPerformance: true });
+    const row = plan.performances[0]!;
+    expect(row.status).toBe('ready');
+    expect(row.requiredShotDurationMs).toBeGreaterThan(3_000);
+    expect(row.requiredShotDurationMs).toBe(row.endMs);
+    expect(row.cameraKeyTimes).toEqual([row.startMs, row.endMs]);
+
+    const applied = applyScriptPerformancePlan(project, plan, {
+      allowPartialConfirm: false,
+    });
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) throw new Error(applied.message);
+    const shot = applied.project.shots.at(-1)!;
+    // The extension equals the preset plan's real (snapped) end, not the raw
+    // 3400ms request.
+    expect(shot.durationMs).toBe(row.requiredShotDurationMs);
+    expect(
+      [...(shot.camera?.keys ?? [])].map((key) => key.timeMs).sort((a, b) => a - b),
+    ).toEqual([row.startMs, row.endMs]);
+  });
+
   it('reports an unsupported camera parameter locally without blocking other directives', () => {
     const base = buildWf04Project();
     const project = ProjectSchema.parse({

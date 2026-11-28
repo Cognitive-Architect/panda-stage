@@ -37,7 +37,7 @@ import { upsertCharacterActionEvent } from '../services/CharacterActionEventServ
 import { DialogueService } from '../services/DialogueService';
 import { layerCompositeKeyTimes } from '../services/LayerMotionService';
 import { ShotService } from '../services/ShotService';
-import { snapToFrame } from '../timeline/frame-grid';
+import { frameDurationMs, snapToFrame } from '../timeline/frame-grid';
 import { userMotionPresetRange } from '../user-motion-presets';
 import { validatePresetApplication } from '../validators';
 import {
@@ -943,14 +943,28 @@ export function planScriptPerformance(
       const cameraStartMs = anchorBaseMs + directive.offsetMs;
       const cameraDurationMs =
         directive.durationMs ?? DEFAULT_CAMERA_PRESET_DURATION_MS;
-      if (
-        cameraStartMs < 0 ||
-        cameraStartMs + cameraDurationMs > cameraShot.durationMs
-      ) {
+      const requestedEndMs = cameraStartMs + cameraDurationMs;
+      if (cameraStartMs < 0) {
         pushIssue(
           'OUT_OF_SHOT_BOUNDS',
-          `第 ${directive.dialogueOrdinal} 句的运镜时段 ${cameraStartMs}–${cameraStartMs + cameraDurationMs}ms 超出镜头「${sceneBlock.shotName}」时长 ${cameraShot.durationMs}ms。`,
-          { shotId: cameraShot.id, startMs: cameraStartMs, endMs: cameraStartMs + cameraDurationMs },
+          `第 ${directive.dialogueOrdinal} 句的运镜起点 ${cameraStartMs}ms 小于 0ms。`,
+          { shotId: cameraShot.id, startMs: cameraStartMs, endMs: requestedEndMs },
+        );
+        continue;
+      }
+      // The authorized performance extension is the only way a directive may
+      // grow the shot; an unauthorized overflow stays a local diagnostic.
+      const cameraNeedsExtension = requestedEndMs > cameraShot.durationMs;
+      if (cameraNeedsExtension && !extendShotForPerformance) {
+        pushIssue(
+          'OUT_OF_SHOT_BOUNDS',
+          `第 ${directive.dialogueOrdinal} 句的运镜时段 ${cameraStartMs}–${requestedEndMs}ms 超出镜头「${sceneBlock.shotName}」时长 ${cameraShot.durationMs}ms；可确认延长镜头至 ${requestedEndMs}ms 或跳过此行。`,
+          {
+            shotId: cameraShot.id,
+            startMs: cameraStartMs,
+            endMs: requestedEndMs,
+            requiredShotDurationMs: requestedEndMs,
+          },
         );
         continue;
       }
@@ -983,18 +997,50 @@ export function planScriptPerformance(
             ? { amplitude: directive.cameraAmplitude }
             : {}),
         };
+        // An authorized overflow must be sized from the preset's own snapped
+        // range, so the official planner is asked on a provisionally long shot.
+        const provisionalDurationMs = cameraNeedsExtension
+          ? requestedEndMs + Math.ceil(frameDurationMs()) + 1
+          : cameraShot.durationMs;
+        const presetBase =
+          provisionalDurationMs > cameraShot.durationMs
+            ? shotService.setDuration(
+                cameraReadyProject,
+                cameraShot.id,
+                provisionalDurationMs,
+              )
+            : cameraReadyProject;
         // Consume the official preset plan so the report reflects the real
         // 24fps-snapped keys. Filtering the un-snapped request window used to
         // drop legitimately snapped keys (e.g. 100ms -> 83ms at 24fps).
         const presetPlan = planCameraMotionPreset(
-          cameraReadyProject,
+          presetBase,
           cameraShot.id,
           presetInput,
         );
+        const requiredShotDurationMs = Math.max(
+          cameraShot.durationMs,
+          presetPlan.rangeEndMs,
+        );
+        const cameraTargetProject =
+          requiredShotDurationMs > cameraShot.durationMs
+            ? shotService.setDuration(
+                cameraReadyProject,
+                cameraShot.id,
+                requiredShotDurationMs,
+              )
+            : cameraReadyProject;
+        // Apply the **snapped** span, never the raw request: re-planning 2800ms
+        // +600ms against a shot that was only grown to the snapped 3375ms end
+        // would look out of bounds even though the real keys fit.
         const applied = applyCameraMotionPreset(
-          cameraReadyProject,
+          cameraTargetProject,
           cameraShot.id,
-          presetInput,
+          {
+            ...presetInput,
+            startTimeMs: presetPlan.startTimeMs,
+            durationMs: presetPlan.endTimeMs - presetPlan.startTimeMs,
+          },
         );
         const declaredKeyTimes = [
           ...new Set(presetPlan.keysToWrite.map((key) => key.timeMs)),
@@ -1011,6 +1057,9 @@ export function planScriptPerformance(
           appliedKeyTimes.has(timeMs),
         );
         candidate = applied;
+        if (requiredShotDurationMs > cameraShot.durationMs) {
+          extendedForPerformanceByBlock.add(directive.blockIndex);
+        }
         plannedPerformances.push({
           directiveId: directive.directiveId,
           blockIndex: directive.blockIndex,
@@ -1029,7 +1078,10 @@ export function planScriptPerformance(
           property: 'camera',
           startMs: presetPlan.startTimeMs,
           endMs: presetPlan.rangeEndMs,
-          requiredShotDurationMs: null,
+          requiredShotDurationMs:
+            requiredShotDurationMs > cameraShot.durationMs
+              ? requiredShotDurationMs
+              : null,
           status: 'ready',
           eventIds: [],
           cameraKeyTimes,
