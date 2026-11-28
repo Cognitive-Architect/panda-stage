@@ -1,6 +1,6 @@
 import { ProjectSchema, type Project, type Shot } from '../models';
 import { TimelineEventSchema, type CharacterActionEvent } from '../models/timeline-event';
-import { LayeredCharacterActionSchema } from '../models/character';
+import { LayeredCharacterActionSchema, type CharacterAction } from '../models/character';
 import { characterFaceAndMouthPartIds } from '../character-part-animation';
 import { captureMotionTrackRange } from '../user-motion-presets';
 import { frameTimeMs, isValidFrameTime } from '../timeline/frame-grid';
@@ -72,8 +72,16 @@ export function upsertCharacterActionEvent(
 ): Project {
   const { shot, characterId } = selectedCharacterShot(project, shotId, layerId);
   const character = project.characters.find((candidate) => candidate.id === characterId);
-  if (!character?.actions?.some((action) => action.id === values.actionId)) {
+  const action: CharacterAction | undefined = character?.actions?.find(
+    (candidate) => candidate.id === values.actionId,
+  );
+  if (!action) {
     throw new Error('该动作不属于当前角色。');
+  }
+  // #1449: an instance-scoped copy is private to its owning Character Layer.
+  // Binding it from another layer would silently share a private copy.
+  if ('kind' in action && action.instanceScope && action.instanceScope.layerId !== layerId) {
+    throw new Error('该动作副本属于其他角色图层，不能绑定到当前图层。');
   }
   if (!Number.isSafeInteger(values.startMs) || !Number.isSafeInteger(values.endMs) ||
       values.startMs < 0 || values.startMs >= values.endMs || values.endMs > shot.durationMs) {

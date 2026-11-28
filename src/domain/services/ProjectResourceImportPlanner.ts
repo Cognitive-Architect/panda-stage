@@ -727,16 +727,30 @@ function remapCharacterActions(
   remapAnimation: (sourceId: string) => string,
   remapPartId: (sourceId: string) => string,
   allocateId: () => string,
+  targetLayerIds: ReadonlySet<string>,
   preallocatedActionIdMap?: ReadonlyMap<string, string>,
 ): { actions?: CharacterAction[]; actionIdMap: Map<string, string> } {
   const actionIdMap = new Map<string, string>();
   if (!actions) return { actionIdMap };
+  // Allocate every action id first so `originActionId` can be remapped no
+  // matter where the origin action sits in the authored order.
+  for (const action of actions) {
+    actionIdMap.set(action.id, preallocatedActionIdMap?.get(action.id) ?? allocateId());
+  }
   const mapped: CharacterAction[] = actions.map((action) => {
-    const nextId = preallocatedActionIdMap?.get(action.id) ?? allocateId();
-    actionIdMap.set(action.id, nextId);
+    const nextId = actionIdMap.get(action.id)!;
     if ('kind' in action) {
+      const { originActionId, instanceScope, ...layered } = action;
+      // #1449: an instance copy is private to the Layer that owns it. Importing
+      // a Character never brings the source Shot's Layers, so a scope that
+      // cannot exist in the target project must not survive as a dangling
+      // private owner: the copy degrades to an independent shared action.
+      const remappedOriginId = originActionId ? actionIdMap.get(originActionId) : undefined;
+      const keepInstanceScope = Boolean(
+        instanceScope && remappedOriginId && targetLayerIds.has(instanceScope.layerId),
+      );
       return {
-        ...action,
+        ...layered,
         id: nextId,
         tracks: action.tracks.map((track) => ({
           ...track,
@@ -753,6 +767,12 @@ function remapCharacterActions(
                 partId: remapPartId(entry.partId),
                 offset: { ...entry.offset },
               })),
+            }
+          : {}),
+        ...(keepInstanceScope && instanceScope && remappedOriginId
+          ? {
+              originActionId: remappedOriginId,
+              instanceScope: { layerId: instanceScope.layerId },
             }
           : {}),
       };
@@ -992,6 +1012,11 @@ export function buildImportedProjectCandidate(options: {
     }
     return targetId;
   };
+  // #1449: an instance-scoped action copy may keep its private owner only when
+  // that Layer instance still exists in the target project.
+  const targetLayerIds = new Set(
+    targetProject.shots.flatMap((shot) => shot.layers.map((layer) => layer.id)),
+  );
 
   // Phase 2: Rewrite all formal references.
   const importedAssets: Asset[] = [];
@@ -1127,6 +1152,7 @@ export function buildImportedProjectCandidate(options: {
         remapAnimation,
         remapPartId,
         allocateId,
+        targetLayerIds,
         characterActionIdMaps.get(character.id),
       );
       const bodyPoses: CharacterBodyPose[] | undefined = character.bodyPoses?.map(
@@ -1312,6 +1338,7 @@ export function buildImportedProjectCandidate(options: {
       remapAnimation,
       unusedPartRemapper,
       allocateId,
+      targetLayerIds,
       characterActionIdMaps.get(character.id),
     );
 

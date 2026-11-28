@@ -3,9 +3,11 @@ import {
   type Project,
   type Shot,
   type ShotCameraAutoFraming,
+  type TimelineEvent,
 } from '../models';
 import { SHOT_MIN_DURATION_MS } from '../constants';
 import { remapLayerMotionOwner } from '../layer-animation';
+import { resolveCharacterActionForLayer } from '../character-part-animation';
 import { setShotCameraAutoFraming } from '../shot-camera';
 import {
   applyCameraMotionPreset as applyCameraMotionPresetToProject,
@@ -296,6 +298,7 @@ export class ShotService {
       }),
       ...(camera !== undefined ? { camera } : {}),
     };
+    duplicate.timelineEvents = this.rebindDuplicatedCharacterActionEvents(project, duplicate);
     const shots = [...project.shots];
     shots.splice(sourceIndex + 1, 0, duplicate);
     return this.replaceShots(project, shots);
@@ -444,6 +447,35 @@ export class ShotService {
       'DUPLICATE_SHOT_NAME',
       `无法为镜头“${sourceName}”生成唯一副本名称。`,
     );
+  }
+
+  /**
+   * #1449: the duplicated Shot owns new Layer instances, so a cloned
+   * `character-action` segment may not keep a reference to the source Layer's
+   * instance-scoped copy. Rebind each segment to the copy's shared origin
+   * action and drop references that cannot be resolved, instead of silently
+   * sharing a private copy.
+   */
+  private rebindDuplicatedCharacterActionEvents(
+    project: Project,
+    shot: Shot,
+  ): TimelineEvent[] {
+    if (!shot.timelineEvents.some((event) => event.type === 'character-action')) {
+      return [...shot.timelineEvents];
+    }
+    const layersById = new Map(shot.layers.map((layer) => [layer.id, layer]));
+    return shot.timelineEvents.flatMap((event): TimelineEvent[] => {
+      if (event.type !== 'character-action') return [event];
+      const layer = layersById.get(event.layerId);
+      const source = layer?.source;
+      if (!layer || source?.kind !== 'character') return [];
+      const character = project.characters.find(
+        ({ id }) => id === source.characterId,
+      );
+      const action = resolveCharacterActionForLayer(character, event.actionId, layer.id);
+      if (!action) return [];
+      return action.id === event.actionId ? [event] : [{ ...event, actionId: action.id }];
+    });
   }
 
   private projectIds(project: Project): Set<string> {

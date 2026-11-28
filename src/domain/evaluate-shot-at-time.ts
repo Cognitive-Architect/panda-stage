@@ -56,6 +56,7 @@ import {
   resolveLayerAnimationBasis,
   type LayerBasePose,
 } from './layer-animation';
+import { resolveCharacterActionForLayer } from './character-part-animation';
 
 /**
  * A single evaluated layer at one exact moment. Its formal fields remain
@@ -904,8 +905,11 @@ export function evaluateShotAtTime(
       const character = characterId
         ? project.characters.find((candidate) => candidate.id === characterId)
         : undefined;
+      // #1449: an instance-scoped action copy is only playable by the Layer
+      // that owns it. A foreign reference degrades to the shared origin action
+      // and never silently shares the private copy.
       const characterAction = actionEvent?.type === 'character-action'
-        ? character?.actions?.find((candidate) => candidate.id === actionEvent.actionId)
+        ? resolveCharacterActionForLayer(character, actionEvent.actionId, layer.id)
         : undefined;
       const bakedAction = characterAction && 'animationId' in characterAction ? characterAction : undefined;
       const actionAnimation = bakedAction

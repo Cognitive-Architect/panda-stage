@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   resolveTimelineFrameTime,
+  type CharacterAction,
   type CharacterActionEvent,
   type Layer,
   type Project,
@@ -37,7 +38,11 @@ export function CharacterActionAtTimeControl({
   const { currentTimeMs } = useTimelineUi();
   const characterId = layer.source.kind === 'character' ? layer.source.characterId : null;
   const character = characterId ? project.characters.find((candidate) => candidate.id === characterId) : null;
-  const actions = character?.actions ?? [];
+  const allActions: readonly CharacterAction[] = character?.actions ?? [];
+  // #1449: another layer's instance-scoped copy is private to that layer and
+  // must never be offered here; same-layer copies stay selectable.
+  const actions = allActions.filter((action) =>
+    !('instanceScope' in action) || action.instanceScope?.layerId === layer.id);
   const [selectedActionId, setSelectedActionId] = useState(actions[0]?.id ?? '');
   const [editing, setEditing] = useState<{ id: string; actionId: string } | null>(null);
   const [manualRange, setManualRange] = useState<{ startMs: number; endMs: number } | null>(null);
@@ -113,8 +118,14 @@ export function CharacterActionAtTimeControl({
       {events.length > 0 ? <div className="expression-at-time-events">
         <ul aria-label="角色动作段">
           {events.map((event) => {
-            const eventAction = actions.find((action) => action.id === event.actionId);
-            const name = eventAction?.name ?? '未知动作';
+            const eventAction = allActions.find((action) => action.id === event.actionId);
+            // A reference to another layer's private copy degrades to the
+            // shared origin action for display and playback alike.
+            const displayAction = eventAction && 'kind' in eventAction && eventAction.instanceScope &&
+                eventAction.instanceScope.layerId !== layer.id
+              ? allActions.find((action) => action.id === eventAction.originActionId)
+              : eventAction;
+            const name = displayAction?.name ?? '未知动作';
             const baked = eventAction !== undefined && !('kind' in eventAction);
             const instanceCopy = eventAction !== undefined && 'kind' in eventAction &&
               'instanceScope' in eventAction && Boolean(eventAction.instanceScope);

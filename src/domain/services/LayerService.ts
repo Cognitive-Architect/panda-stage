@@ -122,6 +122,7 @@ import {
   type FlaShapeTweenTarget,
   type FlaShapeTweenTrack,
 } from '../models/flaShapeTween';
+import { resolveCharacterActionForLayer } from '../character-part-animation';
 import type { AssetDropPayload } from '../assetDropPayload';
 import { resolveBackgroundSourceDimensions } from '../selectors/canvasLayers';
 import {
@@ -3566,7 +3567,10 @@ export class LayerService {
     const nextShot = {
       ...destination,
       layers: [...destination.layers, duplicate],
-      timelineEvents: [...destination.timelineEvents, ...duplicatedEvents],
+      timelineEvents: [
+        ...destination.timelineEvents,
+        ...this.rebindDuplicatedCharacterActionEvents(project, duplicate, duplicatedEvents),
+      ],
     };
     return {
       project: this.replaceShot(project, nextShot),
@@ -5083,6 +5087,41 @@ export class LayerService {
         };
       }
       return { ...cloned, id, layerId: targetLayerId };
+    });
+  }
+
+  /**
+   * #1449: an instance-scoped action copy is private to the Layer that owns it.
+   * A duplicated Layer is a new instance, so its cloned action segments must
+   * not inherit the source Layer's private copy: each reference is rebound to
+   * that copy's shared origin action, and an unresolvable reference is dropped
+   * instead of silently sharing the private copy.
+   */
+  private rebindDuplicatedCharacterActionEvents(
+    project: Project,
+    duplicatedLayer: Layer,
+    events: readonly TimelineEvent[],
+  ): TimelineEvent[] {
+    const source = duplicatedLayer.source;
+    if (
+      source.kind !== 'character' ||
+      !events.some((event) => event.type === 'character-action')
+    ) {
+      return [...events];
+    }
+    const character = project.characters.find(
+      ({ id }) => id === source.characterId,
+    );
+    if (!character?.actions?.length) return [...events];
+    return events.flatMap((event): TimelineEvent[] => {
+      if (event.type !== 'character-action') return [event];
+      const action = resolveCharacterActionForLayer(
+        character,
+        event.actionId,
+        duplicatedLayer.id,
+      );
+      if (!action) return [];
+      return action.id === event.actionId ? [event] : [{ ...event, actionId: action.id }];
     });
   }
 
