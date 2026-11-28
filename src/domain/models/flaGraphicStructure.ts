@@ -3,6 +3,11 @@ import { multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine
 import { FlaSupportedBlendModeSchema, type FlaSupportedBlendMode } from '../../shared/fla-blend-mode';
 import { FlaRgbaTransformSchema, type FlaRgbaTransform } from '../../shared/fla-instance-color';
 import { FlaGraphicInternalTimelineV1Schema } from './flaGraphicTimeline';
+import {
+  FLA_SHAPE_TWEEN_MAX_TRACKS,
+  FlaShapeTweenTrackSchema,
+  flaShapeTweenTargetKey,
+} from './flaShapeTween';
 import { FlaGraphicEditableTextSchema, type FlaGraphicEditableText } from './flaGraphicInstanceText';
 
 /**
@@ -280,9 +285,35 @@ export const FlaGraphicStructureV1Schema = z
     symbolDefinitions: z.record(SourceTextSchema, FlaGraphicNestedSymbolDefinitionV1Schema).optional(),
     frames: z.array(FlaGraphicStructureFrameV1Schema).min(1).max(256),
     timeline: FlaGraphicInternalTimelineV1Schema.optional(),
+    /** Author-created native Shape Tweens (#1457); additive so older files load unchanged. */
+    shapeTweenTracks: z
+      .array(FlaShapeTweenTrackSchema)
+      .max(FLA_SHAPE_TWEEN_MAX_TRACKS)
+      .optional(),
   })
   .strict()
   .superRefine((structure, context) => {
+    const seenTweenIds = new Set<string>();
+    const seenTweenTargets = new Set<string>();
+    for (const [tweenIndex, track] of (structure.shapeTweenTracks ?? []).entries()) {
+      if (seenTweenIds.has(track.tweenId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['shapeTweenTracks', tweenIndex, 'tweenId'],
+          message: 'Shape tween ids must be unique.',
+        });
+      }
+      seenTweenIds.add(track.tweenId);
+      const targetKey = flaShapeTweenTargetKey(track.target);
+      if (seenTweenTargets.has(targetKey)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['shapeTweenTracks', tweenIndex, 'target'],
+          message: 'One region can own only one shape tween.',
+        });
+      }
+      seenTweenTargets.add(targetKey);
+    }
     const seenIds = new Set<string>();
     let count = 0;
     let maskPathBytes = 0;
@@ -512,6 +543,28 @@ export function canonicalizeFlaGraphicStructure(structure: FlaGraphicStructure):
       })),
     })),
     ...(structure.timeline ? { timeline: structure.timeline } : {}),
+    ...(structure.shapeTweenTracks?.length
+      ? {
+          shapeTweenTracks: structure.shapeTweenTracks.map((track) => ({
+            tweenId: track.tweenId,
+            target: {
+              nodeTrackId: track.target.nodeTrackId,
+              ownerKind: track.target.ownerKind,
+              ...(track.target.ownerSymbolDefId
+                ? { ownerSymbolDefId: track.target.ownerSymbolDefId }
+                : {}),
+              regionRef: track.target.regionRef,
+              sourceFrameOrdinal: track.target.sourceFrameOrdinal,
+              sourceNodePath: [...track.target.sourceNodePath],
+            },
+            startTimeMs: track.startTimeMs,
+            endTimeMs: track.endTimeMs,
+            easing: track.easing,
+            from: track.from,
+            to: track.to,
+          })),
+        }
+      : {}),
   };
 }
 

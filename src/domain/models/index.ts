@@ -5,6 +5,7 @@ export * from './character';
 export * from './dialogue';
 export * from './flaGraphicStructure';
 export * from './flaGraphicTimeline';
+export * from './flaShapeTween';
 export * from './flaGraphicInstanceOverrides';
 export * from './layer';
 export * from './project';

@@ -9,6 +9,7 @@ import {
   type AnimationPlaybackInput,
   type FlaEditableShapeRegion,
   type FlaGraphicTransformEasing,
+  type FlaShapeTweenEasing,
   type FlaShapeVertexTarget,
   type GridArrayInput,
   type Layer,
@@ -532,6 +533,7 @@ export class LayerStore {
     readonly x: number;
     readonly y: number;
     readonly svgText?: string;
+    readonly internalTimeMs?: number;
   }): Project {
     const { project, shotId } = this.context();
     const next = this.service.moveFlaGraphicShapeRegionVertex(project, {
@@ -540,6 +542,63 @@ export class LayerStore {
     });
     if (next !== project) {
       this.editorStore.updateProject(next, '编辑路径顶点');
+    }
+    return next;
+  }
+
+  createFlaGraphicShapeTween(input: {
+    readonly layerId: string;
+    readonly frameOrdinal: number;
+    readonly nodePath: readonly string[];
+    readonly regionRef?: string;
+    readonly mode: 'instance' | 'definition';
+    readonly svgText?: string;
+    readonly startTimeMs: number;
+    readonly durationMs: number;
+    readonly easing?: FlaShapeTweenEasing;
+  }): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.createFlaGraphicShapeTween(project, {
+      shotId,
+      ...input,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '创建形状补间');
+    }
+    return next;
+  }
+
+  updateFlaGraphicShapeTween(input: {
+    readonly layerId: string;
+    readonly tweenId: string;
+    readonly pose?: 'from' | 'to';
+    readonly region?: FlaEditableShapeRegion;
+    readonly startTimeMs?: number;
+    readonly endTimeMs?: number;
+    readonly easing?: FlaShapeTweenEasing;
+  }): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.updateFlaGraphicShapeTween(project, {
+      shotId,
+      ...input,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '修改形状补间');
+    }
+    return next;
+  }
+
+  deleteFlaGraphicShapeTween(input: {
+    readonly layerId: string;
+    readonly tweenId: string;
+  }): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.deleteFlaGraphicShapeTween(project, {
+      shotId,
+      ...input,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '删除形状补间');
     }
     return next;
   }

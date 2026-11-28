@@ -31,15 +31,21 @@ import {
   type FlaGraphicInternalTimeline,
 } from './models/flaGraphicTimeline';
 import {
+  evaluateFlaShapeTweenTrack,
+  withFlaShapeTweenContours,
+  type FlaShapeTweenTrack,
+} from './models/flaShapeTween';
+import {
   flaGraphicInstanceNodePathKey,
   getFlaGraphicInstanceTransformOverride,
   type FlaGraphicInstanceTransformOverrides,
 } from './models/flaGraphicInstanceOverrides';
-import type {
-  FlaEditableShapeRegion,
-  FlaEditableStroke,
-  FlaGraphicShapeNodeOverride,
-  FlaGraphicShapeOverrides,
+import {
+  cloneFlaGraphicShapeNodeOverride,
+  type FlaEditableShapeRegion,
+  type FlaEditableStroke,
+  type FlaGraphicShapeNodeOverride,
+  type FlaGraphicShapeOverrides,
 } from './fla-shape-vector';
 
 const identity: AffineMatrix2D = {
@@ -298,6 +304,114 @@ function resolveEffectiveShapeNodeOverride(
   return definition.flaGraphicSharedShapeOverrides?.[frameKey]?.[pathKey];
 }
 
+const EMPTY_SHAPE_TWEEN_TRACKS: readonly FlaShapeTweenTrack[] = [];
+
+function flaShapeTweenOwnerKey(
+  ownerKind: 'frame' | 'symbol',
+  ownerSymbolDefId: string | null,
+): string {
+  return `${ownerKind}\u0000${ownerSymbolDefId ?? ''}`;
+}
+
+interface FlaShapeTweenTrackIndex {
+  readonly byOwner: ReadonlyMap<string, readonly FlaShapeTweenTrack[]>;
+  readonly byOwnerAndNode: ReadonlyMap<string, readonly FlaShapeTweenTrack[]>;
+}
+
+/**
+ * Indexes author Shape Tween tracks by timeline owner and by the same stable
+ * node identity the internal timeline uses. Tracks whose target no longer
+ * exists simply never match a node and stay inert.
+ */
+function indexFlaShapeTweenTracks(
+  tracks: readonly FlaShapeTweenTrack[] | undefined,
+): FlaShapeTweenTrackIndex {
+  const byOwner = new Map<string, FlaShapeTweenTrack[]>();
+  const byOwnerAndNode = new Map<string, FlaShapeTweenTrack[]>();
+  for (const track of tracks ?? []) {
+    const ownerKey = flaShapeTweenOwnerKey(
+      track.target.ownerKind,
+      track.target.ownerSymbolDefId ?? null,
+    );
+    const ownerTracks = byOwner.get(ownerKey);
+    if (ownerTracks) ownerTracks.push(track);
+    else byOwner.set(ownerKey, [track]);
+    const nodeKey = `${ownerKey}\u0000${track.target.nodeTrackId}`;
+    const nodeTracks = byOwnerAndNode.get(nodeKey);
+    if (nodeTracks) nodeTracks.push(track);
+    else byOwnerAndNode.set(nodeKey, [track]);
+  }
+  return { byOwner, byOwnerAndNode };
+}
+
+/**
+ * Recover the authored node override that a tween was created from when the
+ * currently evaluated source frame does not carry one. The stable target
+ * identity still decides which node the tween applies to; this only supplies
+ * the surrounding override content (region order, residue strokes, defs).
+ */
+function resolveFlaShapeTweenSourceOverride(
+  definition: FlaGraphicDefinition,
+  mode: FlaGraphicEvaluationMode,
+  tracks: readonly FlaShapeTweenTrack[],
+  instanceShapeOverrides?: FlaGraphicShapeOverrides,
+): FlaGraphicShapeNodeOverride | undefined {
+  for (const track of tracks) {
+    const frameKey = String(track.target.sourceFrameOrdinal);
+    const pathKey = flaGraphicInstanceNodePathKey(track.target.sourceNodePath);
+    if (mode === 'instance') {
+      const instanceEntry = instanceShapeOverrides?.[frameKey]?.[pathKey];
+      if (instanceEntry) return instanceEntry;
+    }
+    const sharedEntry = definition.flaGraphicSharedShapeOverrides?.[frameKey]?.[pathKey];
+    if (sharedEntry) return sharedEntry;
+  }
+  return undefined;
+}
+
+/**
+ * Replaces the targeted region's contours with the evaluated shape-tween
+ * geometry. Pure: works on a clone, never mutates the structure's stored
+ * geometry. Unsupported / stale targets degrade to the authored override.
+ */
+function applyFlaShapeTweensToShapeNodeOverride(input: {
+  readonly nodeOverride: FlaGraphicShapeNodeOverride | undefined;
+  readonly fallbackSourceOverride: FlaGraphicShapeNodeOverride | undefined;
+  readonly tracks: readonly FlaShapeTweenTrack[];
+  readonly internalTimeMs: number;
+}): FlaGraphicShapeNodeOverride | undefined {
+  if (input.tracks.length === 0) return input.nodeOverride;
+  const base = input.nodeOverride ?? input.fallbackSourceOverride;
+  if (!base) return input.nodeOverride;
+  let augmented: FlaGraphicShapeNodeOverride | undefined;
+  for (const track of input.tracks) {
+    const evaluation = evaluateFlaShapeTweenTrack(track, input.internalTimeMs);
+    if (!evaluation.ok) continue;
+    const current = augmented ?? base;
+    const regionIndex = current.regions.findIndex(
+      (region) => region.regionRef === track.target.regionRef,
+    );
+    const extractedIndex =
+      regionIndex < 0
+        ? current.extractedRegions.findIndex(
+            (entry) => entry.regionRef === track.target.regionRef,
+          )
+        : -1;
+    if (regionIndex < 0 && extractedIndex < 0) continue;
+    if (!augmented) augmented = cloneFlaGraphicShapeNodeOverride(current);
+    if (regionIndex >= 0) {
+      augmented.regions[regionIndex] = withFlaShapeTweenContours(
+        augmented.regions[regionIndex]!,
+        evaluation.contours,
+      );
+    } else {
+      const entry = augmented.extractedRegions[extractedIndex]!;
+      entry.region = withFlaShapeTweenContours(entry.region, evaluation.contours);
+    }
+  }
+  return augmented ?? input.nodeOverride;
+}
+
 function visualCacheFor(input: {
   readonly definition: FlaGraphicDefinition;
   readonly frameOrdinal: number;
@@ -516,6 +630,7 @@ export function evaluateFlaGraphicVisual(input: {
     ? input.instanceShapeOverrides
     : undefined;
   const structure = definition.structure!;
+  const shapeTweenIndex = indexFlaShapeTweenTracks(structure.shapeTweenTracks);
   interface TimelineEvaluationContext {
     readonly ownerKind: 'frame' | 'symbol';
     readonly ownerSymbolDefId: string | null;
@@ -535,30 +650,38 @@ export function evaluateFlaGraphicVisual(input: {
       .sort((left, right) => left.drawOrder - right.drawOrder)
       .flatMap((node): readonly EvaluatedFlaGraphicNode[] => {
         const path = [...parentPath, node.id];
+        const nodeTrackId = isFlaGraphicNodeTransformable(node)
+          ? resolveFlaGraphicStableNodeIdentity(
+              node,
+              structure,
+              timelineContext.ownerKind,
+              timelineContext.ownerSymbolDefId,
+              timelineContext.containerRootNodes,
+            )
+          : null;
+        const shapeTweenTracksForNode = nodeTrackId
+          ? shapeTweenIndex.byOwnerAndNode.get(
+              `${flaShapeTweenOwnerKey(
+                timelineContext.ownerKind,
+                timelineContext.ownerSymbolDefId,
+              )}\u0000${nodeTrackId}`,
+            ) ?? EMPTY_SHAPE_TWEEN_TRACKS
+          : EMPTY_SHAPE_TWEEN_TRACKS;
         const replacement = textOverrides?.[String(frameOrdinal)]?.[flaGraphicInstanceNodePathKey(path)];
         const editableText = node.type === 'opaque' && node.opaqueKind === 'text' ? node.editableText : undefined;
         const staticText = editableText && replacement !== undefined
           ? { ...editableText, runs: [{ ...editableText.runs[0], characters: replacement }] }
           : undefined;
         let authoredLocalTransform = node.localTransform;
-        if (isFlaGraphicNodeTransformable(node) && timelineContext.timeline) {
-          const trackId = resolveFlaGraphicStableNodeIdentity(
-            node,
-            structure,
-            timelineContext.ownerKind,
-            timelineContext.ownerSymbolDefId,
-            timelineContext.containerRootNodes,
+        if (nodeTrackId && timelineContext.timeline) {
+          const track = timelineContext.timeline.tracks.find(
+            (candidate) => candidate.trackId === nodeTrackId,
           );
-          if (trackId) {
-            const track = timelineContext.timeline.tracks.find(
-              (candidate) => candidate.trackId === trackId,
-            );
-            const evaluatedMatrix = track
-              ? evaluateFlaGraphicTrackAtTime(track, timelineContext.internalTimeMs)
-              : null;
-            if (evaluatedMatrix) {
-              authoredLocalTransform = evaluatedMatrix;
-            }
+          const evaluatedMatrix = track
+            ? evaluateFlaGraphicTrackAtTime(track, timelineContext.internalTimeMs)
+            : null;
+          if (evaluatedMatrix) {
+            authoredLocalTransform = evaluatedMatrix;
           }
         }
         if (
@@ -646,7 +769,7 @@ export function evaluateFlaGraphicVisual(input: {
             childTimelineContext,
           );
         }
-        const shapeNodeOverride =
+        const authoredShapeNodeOverride =
           node.type === 'opaque'
             ? resolveEffectiveShapeNodeOverride(
                 definition,
@@ -656,6 +779,20 @@ export function evaluateFlaGraphicVisual(input: {
                 instanceShapeOverrides,
               )
             : undefined;
+        const shapeNodeOverride =
+          node.type === 'opaque' && shapeTweenTracksForNode.length > 0
+            ? applyFlaShapeTweensToShapeNodeOverride({
+                nodeOverride: authoredShapeNodeOverride,
+                fallbackSourceOverride: resolveFlaShapeTweenSourceOverride(
+                  definition,
+                  mode,
+                  shapeTweenTracksForNode,
+                  instanceShapeOverrides,
+                ),
+                tracks: shapeTweenTracksForNode,
+                internalTimeMs: timelineContext.internalTimeMs,
+              })
+            : authoredShapeNodeOverride;
         const excludedRegionRefs = shapeNodeOverride
           ? new Set(shapeNodeOverride.excludedRegionRefs)
           : null;

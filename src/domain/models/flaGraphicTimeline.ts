@@ -246,6 +246,9 @@ export function collectFlaGraphicTimelineDurationMs(
     }
   };
   scan(timeline);
+  for (const track of structure?.shapeTweenTracks ?? []) {
+    if (track.endTimeMs > maxTimeMs) maxTimeMs = track.endTimeMs;
+  }
   if (structure?.symbolDefinitions) {
     for (const def of Object.values(structure.symbolDefinitions)) {
       scan(def.timeline);
