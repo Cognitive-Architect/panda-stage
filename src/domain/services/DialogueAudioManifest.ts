@@ -48,6 +48,7 @@ export type DialogueAudioManifestIssueCode =
   | 'DUPLICATE_LINE_KEY'
   | 'PROJECT_MISMATCH'
   | 'SHOT_MISMATCH'
+  | 'DIALOGUE_ID_MISSING'
   | 'INVALID_SOURCE_RANGE'
   | 'TEXT_HASH_MISMATCH';
 
@@ -147,6 +148,30 @@ function parseCsvRows(text: string): string[][] {
     rows.push(row);
   }
   return rows;
+}
+
+/**
+ * Picks a line-break placeholder that provably never occurs in the imported
+ * text, so packing a multi-line CSV cell into one dialogue line is lossless and
+ * no real character (including a literal U+E000) is ever rewritten.
+ */
+export function pickDialogueAudioManifestLineBreak(
+  texts: readonly string[],
+): string {
+  let marker = '\uE000';
+  while (texts.some((text) => text.includes(marker))) {
+    marker += '\uE000';
+  }
+  return marker;
+}
+
+/** Exact inverse of {@link pickDialogueAudioManifestLineBreak}. */
+export function restoreDialogueAudioManifestLineBreaks(
+  text: string,
+  marker: string | null,
+): string {
+  if (!marker || !text.includes(marker)) return text;
+  return text.replaceAll(marker, '\n');
 }
 
 export function dialogueAudioManifestTextHash(
@@ -361,6 +386,60 @@ export function parseDialogueAudioManifestCsv(
   }
 
   return { rows, issues };
+}
+
+export interface ResolvedDialogueAudioManifestRow {
+  /** Row after in-scope sanitizing (unknown formal dialogue ids are dropped). */
+  readonly row: DialogueAudioManifestRow;
+  /** False when the row targets another project or shot; keep text, bind nothing. */
+  readonly inScope: boolean;
+  readonly issues: readonly DialogueAudioManifestIssue[];
+}
+
+/**
+ * Per-row scope resolution. A single foreign/unknown row must never reject the
+ * whole CSV: healthy rows stay importable, bad rows degrade to plain text with
+ * an explicit diagnostic and no identity or audio binding.
+ */
+export function resolveDialogueAudioManifestRows(
+  rows: readonly DialogueAudioManifestRow[],
+  projectId: string,
+  shotId: string,
+  knownDialogueIds: ReadonlySet<string>,
+): ResolvedDialogueAudioManifestRow[] {
+  return rows.map((row) => {
+    const issues: DialogueAudioManifestIssue[] = [];
+    let inScope = true;
+    if (row.projectId !== projectId) {
+      inScope = false;
+      issues.push({
+        code: 'PROJECT_MISMATCH',
+        message: `清单属于其他工程（${row.projectId}），此行不绑定音频、不覆盖正式对白。`,
+        lineKey: row.lineKey,
+      });
+    } else if (row.shotId !== shotId) {
+      inScope = false;
+      issues.push({
+        code: 'SHOT_MISMATCH',
+        message: `清单属于其他镜头（${row.shotId}），此行不绑定音频、不覆盖正式对白。`,
+        lineKey: row.lineKey,
+      });
+    }
+    let resolved = row;
+    if (inScope && row.dialogueId && !knownDialogueIds.has(row.dialogueId)) {
+      const rest: DialogueAudioManifestRow & { dialogueId?: string } = {
+        ...row,
+      };
+      delete rest.dialogueId;
+      resolved = rest;
+      issues.push({
+        code: 'DIALOGUE_ID_MISSING',
+        message: `清单引用的正式对白 ${row.dialogueId} 已不存在，此行按新台词处理。`,
+        lineKey: row.lineKey,
+      });
+    }
+    return { row: resolved, inScope, issues };
+  });
 }
 
 export function validateDialogueAudioManifestScope(

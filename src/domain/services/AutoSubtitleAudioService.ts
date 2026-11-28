@@ -250,6 +250,47 @@ export function audioAssetDisplayFileName(asset: AudioAsset): string {
   return normalized.slice(normalized.lastIndexOf('/') + 1) || asset.name;
 }
 
+/**
+ * Name index for manifest imports. Values are candidate **sets** so two assets
+ * sharing a name stay ambiguous instead of resolving to whichever was indexed
+ * last, which would silently bind the wrong recording.
+ */
+export type AudioAssetFileNameIndex = ReadonlyMap<
+  string,
+  ReadonlyMap<string, AudioAsset>
+>;
+
+export function buildAudioAssetFileNameIndex(
+  assets: readonly AudioAsset[],
+): AudioAssetFileNameIndex {
+  const index = new Map<string, Map<string, AudioAsset>>();
+  for (const asset of assets) {
+    for (const raw of [asset.name, audioAssetDisplayFileName(asset)]) {
+      if (!raw) continue;
+      for (const key of new Set([raw, raw.toLocaleLowerCase()])) {
+        const bucket = index.get(key) ?? new Map<string, AudioAsset>();
+        bucket.set(asset.id, asset);
+        index.set(key, bucket);
+      }
+    }
+  }
+  return index;
+}
+
+/** Distinct candidates across raw/display/case-normalized name lookups. */
+export function resolveAudioAssetFileNameCandidates(
+  index: AudioAssetFileNameIndex,
+  fileName: string,
+): AudioAsset[] {
+  const merged = new Map<string, AudioAsset>();
+  for (const key of new Set([fileName, fileName.toLocaleLowerCase()])) {
+    for (const [id, asset] of index.get(key) ?? []) {
+      merged.set(id, asset);
+    }
+  }
+  return [...merged.values()];
+}
+
 export function formatAudioDurationMs(milliseconds: number): string {
   if (!Number.isSafeInteger(milliseconds) || milliseconds < 0) return '—';
   const seconds = (milliseconds / 1_000).toFixed(3).replace(/\.?0+$/u, '');
@@ -431,11 +472,17 @@ export function reconcileDialogueDraftRows(
     return {
       ...seed,
       draftRowId: prev.draftRowId,
-      ...(seed.existingDialogueId ?? prev.existingDialogueId
-        ? { existingDialogueId: seed.existingDialogueId ?? prev.existingDialogueId }
+      // An already-matched draft row keeps its own portable identity. A later
+      // seed (e.g. positional manifest lookup after partial commit) must never
+      // overwrite it onto another dialogue/lineKey.
+      ...(prev.existingDialogueId ?? seed.existingDialogueId
+        ? {
+            existingDialogueId:
+              prev.existingDialogueId ?? seed.existingDialogueId,
+          }
         : {}),
-      ...(seed.lineKey ?? prev.lineKey
-        ? { lineKey: seed.lineKey ?? prev.lineKey }
+      ...(prev.lineKey ?? seed.lineKey
+        ? { lineKey: prev.lineKey ?? seed.lineKey }
         : {}),
       ...(confirmedAudioAssetId !== undefined
         ? { confirmedAudioAssetId, confirmedSpeakerKey: speakerKey }
