@@ -28,6 +28,10 @@ import {
   type DialogueDraftRowSeed,
   type StableDialogueDraftRow,
 } from '../services/AutoSubtitleAudioService';
+import {
+  DEFAULT_CAMERA_PRESET_DURATION_MS,
+  applyCameraMotionPreset,
+} from '../camera-motion-presets';
 import { upsertCharacterActionEvent } from '../services/CharacterActionEventService';
 import { DialogueService } from '../services/DialogueService';
 import { ShotService } from '../services/ShotService';
@@ -62,6 +66,7 @@ const PROPERTY_LABELS: Readonly<Record<string, string>> = {
   flip: '翻转',
   visibility: '可见性',
   'character-action': '角色动作',
+  camera: '运镜',
 };
 
 export interface ScriptDialogueAudioOverride {
@@ -137,6 +142,7 @@ export type PlannedPerformanceIssueCode =
   | 'RECIPE_DURATION_OVERRIDE_UNSUPPORTED'
   | 'OUT_OF_SHOT_BOUNDS'
   | 'PROPERTY_CONFLICT'
+  | 'CAMERA_PRESET_FAILED'
   | 'VALIDATION_FAILED';
 
 export interface PlannedPerformanceRow {
@@ -162,6 +168,9 @@ export interface PlannedPerformanceRow {
   readonly requiredShotDurationMs: number | null;
   readonly status: PlannedPerformanceStatus;
   readonly eventIds: readonly string[];
+  /** Real camera key times written by a camera-motion directive (not TimelineEvents). */
+  readonly cameraKeyTimes?: readonly number[];
+  readonly cameraPreset?: string;
   readonly issueCode: PlannedPerformanceIssueCode | null;
   readonly issueMessage: string | null;
 }
@@ -911,6 +920,119 @@ export function planScriptPerformance(
         'TARGET_LAYER_UNRESOLVED',
         `第 ${directive.blockIndex} 镜头未生成，无法应用表演「${directive.actionLabel}」。`,
       );
+      continue;
+    }
+
+    if (directive.action === 'camera-motion') {
+      const cameraShot = candidate.shots.find(
+        (entry) => entry.id === targetDialogue.shotId,
+      );
+      if (!cameraShot) {
+        pushIssue(
+          'TARGET_LAYER_UNRESOLVED',
+          `镜头「${sceneBlock.shotName}」在候选工程中不可用。`,
+        );
+        continue;
+      }
+      const anchorBaseMs =
+        directive.anchor === 'end' ? targetDialogue.endMs! : targetDialogue.startMs!;
+      const cameraStartMs = anchorBaseMs + directive.offsetMs;
+      const cameraDurationMs =
+        directive.durationMs ?? DEFAULT_CAMERA_PRESET_DURATION_MS;
+      if (
+        cameraStartMs < 0 ||
+        cameraStartMs + cameraDurationMs > cameraShot.durationMs
+      ) {
+        pushIssue(
+          'OUT_OF_SHOT_BOUNDS',
+          `第 ${directive.dialogueOrdinal} 句的运镜时段 ${cameraStartMs}–${cameraStartMs + cameraDurationMs}ms 超出镜头「${sceneBlock.shotName}」时长 ${cameraShot.durationMs}ms。`,
+          { shotId: cameraShot.id, startMs: cameraStartMs, endMs: cameraStartMs + cameraDurationMs },
+        );
+        continue;
+      }
+      const beforeKeyTimes = new Set(
+        (cameraShot.camera?.keys ?? []).map((key) => key.timeMs),
+      );
+      // A scripted camera directive is an explicit authoring intent: convert
+      // static/speaker-focus shots to manual only when the directive runs.
+      const cameraReadyProject =
+        cameraShot.camera?.mode === 'manual' ||
+        cameraShot.camera?.mode === 'hybrid'
+          ? candidate
+          : ProjectSchema.parse({
+              ...candidate,
+              shots: candidate.shots.map((entry) =>
+                entry.id === cameraShot.id
+                  ? {
+                      ...entry,
+                      camera: {
+                        ...(entry.camera ?? { keys: [] }),
+                        mode: 'manual' as const,
+                      },
+                    }
+                  : entry,
+              ),
+            });
+      try {
+        const applied = applyCameraMotionPreset(
+          cameraReadyProject,
+          cameraShot.id,
+          {
+            preset: directive.cameraPreset ?? 'push-in',
+            startTimeMs: cameraStartMs,
+            durationMs: cameraDurationMs,
+            ...(directive.cameraAmplitude !== undefined
+              ? { amplitude: directive.cameraAmplitude }
+              : {}),
+          },
+        );
+        const appliedShot = applied.shots.find(
+          (entry) => entry.id === cameraShot.id,
+        )!;
+        const cameraKeyTimes = (appliedShot.camera?.keys ?? [])
+          .filter(
+            (key) =>
+              !beforeKeyTimes.has(key.timeMs) &&
+              key.timeMs >= cameraStartMs &&
+              key.timeMs <= cameraStartMs + cameraDurationMs,
+          )
+          .map((key) => key.timeMs);
+        candidate = applied;
+        plannedPerformances.push({
+          directiveId: directive.directiveId,
+          blockIndex: directive.blockIndex,
+          sourceLineNumber: directive.sourceLineNumber,
+          raw: directive.raw,
+          dialogueOrdinal: directive.dialogueOrdinal,
+          draftRowId: resolvedDraftRowId,
+          dialogueId: targetDialogue.dialogueId,
+          shotId: cameraShot.id,
+          shotName: sceneBlock.shotName ?? null,
+          layerId: null,
+          characterId: null,
+          speakerName: null,
+          action: directive.action,
+          actionLabel: directive.actionLabel,
+          property: 'camera',
+          startMs: cameraStartMs,
+          endMs: cameraStartMs + cameraDurationMs,
+          requiredShotDurationMs: null,
+          status: 'ready',
+          eventIds: [],
+          cameraKeyTimes,
+          cameraPreset: directive.cameraPreset ?? 'push-in',
+          issueCode: null,
+          issueMessage: null,
+        });
+      } catch (error) {
+        pushIssue(
+          'CAMERA_PRESET_FAILED',
+          error instanceof Error
+            ? error.message
+            : `第 ${directive.dialogueOrdinal} 句运镜失败。`,
+          { shotId: cameraShot.id, startMs: cameraStartMs, endMs: cameraStartMs + cameraDurationMs },
+        );
+      }
       continue;
     }
 

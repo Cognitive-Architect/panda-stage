@@ -733,4 +733,69 @@ describe('WF-04 shared script & performance planner and applier', () => {
     });
     expect(applied).toMatchObject({ ok: false, errorCode: 'STALE_PLAN' });
   });
+
+  it('applies one existing camera preset from the script and reports real camera key times', () => {
+    const base = buildWf04Project();
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: base.shots.map((shot) => ({
+        ...shot,
+        camera: { mode: 'manual' as const, keys: [] },
+      })),
+    });
+    const script = [
+      '镜头：运镜测试',
+      '时长：3000ms',
+      '出场：师兄',
+      '对白：',
+      '师兄：第一句。',
+      '表演：',
+      '1｜运镜｜预设=推近｜时长=600ms',
+    ].join('\n');
+
+    const plan = planScriptPerformance(project, script);
+    expect(plan.performances[0]).toMatchObject({
+      status: 'ready',
+      property: 'camera',
+      startMs: 0,
+      endMs: 600,
+      cameraPreset: 'push-in',
+    });
+    expect(plan.performances[0]!.cameraKeyTimes?.length).toBeGreaterThan(0);
+
+    const applied = applyScriptPerformancePlan(project, plan, {
+      allowPartialConfirm: false,
+    });
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) throw new Error(applied.message);
+    const shot = applied.project.shots.at(-1)!;
+    expect(shot.camera?.mode).toBe('manual');
+    expect(shot.camera?.keys.length).toBeGreaterThan(0);
+    expect(shot.timelineEvents).toHaveLength(0);
+  });
+
+  it('reports an unsupported camera parameter locally without blocking other directives', () => {
+    const base = buildWf04Project();
+    const project = ProjectSchema.parse({
+      ...base,
+      shots: base.shots.map((shot) => ({
+        ...shot,
+        camera: { mode: 'manual' as const, keys: [] },
+      })),
+    });
+    const script = [
+      '镜头：运镜测试',
+      '时长：3000ms',
+      '出场：师兄',
+      '对白：',
+      '师兄：第一句。',
+      '表演：',
+      '1｜运镜｜乱写=1',
+    ].join('\n');
+    const plan = planScriptPerformance(project, script);
+    expect(plan.performances[0]).toMatchObject({
+      status: 'issue',
+      issueCode: 'PARSE_ISSUE',
+    });
+  });
 });
