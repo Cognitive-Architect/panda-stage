@@ -52,6 +52,7 @@ import { CharacterMotionTemplateControl } from '../features/properties/Character
 import { CharacterBodyPoseControl } from '../features/properties/CharacterBodyPoseControl';
 import { CharacterArmChainControl } from '../features/properties/CharacterArmChainControl';
 import { CharacterBoneControl } from '../features/properties/CharacterBoneControl';
+import { CharacterVectorSkinControl } from '../features/properties/CharacterVectorSkinControl';
 import { CharacterMotionMappingControl } from '../features/properties/CharacterMotionMappingControl';
 import { GraphicFacePreview } from '../features/characters/GraphicFacePicker';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
@@ -796,6 +797,8 @@ export function RightInspector({
         <CharacterArmChainControl key={`arm-chain:${currentShot.id}:${selection.layer.id}`}
           snapshot={snapshot} shot={currentShot} layer={selection.layer} />
         <CharacterBoneControl key={`bone:${currentShot.id}:${selection.layer.id}`}
+          snapshot={snapshot} shot={currentShot} layer={selection.layer} />
+        <CharacterVectorSkinControl key={`vector-skin:${currentShot.id}:${selection.layer.id}`}
           snapshot={snapshot} shot={currentShot} layer={selection.layer} />
         <CharacterMotionMappingControl key={`motion-mapping:${currentShot.id}:${selection.layer.id}`}
           snapshot={snapshot} shot={currentShot} layer={selection.layer} />

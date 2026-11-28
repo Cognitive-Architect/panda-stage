@@ -12,6 +12,7 @@ import {
   characterBoneWorldRestTransforms,
   resolveCharacterBoneTree,
 } from '../character-bone-pose';
+import { pruneCharacterVectorSkins } from '../character-vector-skin';
 import { characterPartSourceBounds } from '../geometry/characterPartLayout';
 import {
   CharacterPoseAnimationClipV0Schema,
@@ -323,9 +324,18 @@ export class CharacterBoneService {
       }
     }
     const bones = tree.bones.filter((bone) => !descendants.has(bone.id));
+    // #1459: a deleted Bone must not leave a dangling vector skin behind.
+    const remainingBoneIds = new Set(bones.map((bone) => bone.id));
+    const prunedSkins = pruneCharacterVectorSkins(character, {
+      partIds: new Set(character.parts.map((part) => part.partId)),
+      boneIds: remainingBoneIds,
+    });
     const nextCharacter = AdaptivePartsCharacterSchema.parse({
       ...character,
       ...(bones.length === 0 ? { bones: undefined } : { bones }),
+      ...(prunedSkins.changed
+        ? { vectorSkins: prunedSkins.skins.length > 0 ? prunedSkins.skins : undefined }
+        : {}),
     });
     // #1456: a deleted Bone must not leave an unsolvable end-effector lock behind.
     const affectedLayerIds = new Set(project.shots.flatMap((shot) =>
