@@ -38,6 +38,7 @@ import {
   type EvaluatedCharacterNodePose,
 } from './character-node-animation';
 import {
+  characterBonePoseMap,
   characterBoneProtectedPartIds,
   evaluateCharacterBonePose,
   evaluatedCharacterBonePoseList,
@@ -47,7 +48,9 @@ import {
   applyCharacterEndEffectorLocksToValues,
   characterEndEffectorLayerStageMatrix,
   characterEndEffectorLockActiveAt,
+  resolveCharacterEndEffectorResidualsFromPose,
   type CharacterEndEffectorResidual,
+  type CharacterEndEffectorResidualReason,
 } from './character-end-effector-lock';
 import {
   composeAnimatedLayerTransform,
@@ -1114,7 +1117,10 @@ function applyEndEffectorLocks(
 
   let currentLayers = baseLayers;
   let parented = parentedLayers;
-  let solvedAny = false;
+  const structuralReasonsByLayerId = new Map<
+    string,
+    ReadonlyMap<string, CharacterEndEffectorResidualReason>
+  >();
   for (let pass = 0; pass < 2; pass += 1) {
     const spacesById = new Map(parented.map((layer) => [layer.id, layer.parentSpace]));
     let solvedThisPass = false;
@@ -1134,10 +1140,8 @@ function applyEndEffectorLocks(
         protectedPartIds: characterBoneProtectedPartIds(candidate.character),
         timeMs,
       });
-      const residuals = applied.residuals.length > 0 ? applied.residuals : undefined;
-      if (applied.solvedBoneIds.length === 0) {
-        return residuals ? { ...layer, endEffectorResiduals: [...residuals] } : layer;
-      }
+      structuralReasonsByLayerId.set(layer.id, applied.structuralReasons);
+      if (applied.solvedBoneIds.length === 0) return layer;
       solvedThisPass = true;
       const poses = evaluateCharacterBonePose({
         character: candidate.character,
@@ -1148,11 +1152,9 @@ function applyEndEffectorLocks(
         ...layer,
         animationValues: applied.values,
         characterBonePose: evaluatedCharacterBonePoseList(poses),
-        ...(residuals ? { endEffectorResiduals: [...residuals] } : {}),
       };
     });
     if (!solvedThisPass) break;
-    solvedAny = true;
     const nextParented = applyLayerParenting(project, shot, currentLayers, timeMs);
     const nextSpaces = new Map(nextParented.map((layer) => [layer.id, layer.parentSpace]));
     let spacesStable = true;
@@ -1165,16 +1167,33 @@ function applyEndEffectorLocks(
     parented = nextParented;
     if (spacesStable) break;
   }
-  if (solvedAny) return parented;
-  // Nothing solvable: keep the authored pose and only surface honest diagnostics.
-  const residualByLayerId = new Map(
-    currentLayers.flatMap((layer) =>
-      layer.endEffectorResiduals ? [[layer.id, layer.endEffectorResiduals] as const] : []),
-  );
-  return residualByLayerId.size === 0
-    ? parented
-    : parented.map((layer) => {
-        const residuals = residualByLayerId.get(layer.id);
-        return residuals ? { ...layer, endEffectorResiduals: [...residuals] } : layer;
-      });
+  // #1469: re-measure every active lock against the FINAL returned Layers,
+  // i.e. the final FK pose in the final parent space. The solve loop above may
+  // run a second parent-space pass, so a residual measured mid-loop would
+  // otherwise describe a superseded position.
+  const finalSpacesById = new Map(parented.map((layer) => [layer.id, layer.parentSpace]));
+  return parented.map((layer): EvaluatedLayer => {
+    const candidate = candidates.get(layer.id);
+    if (!candidate) return layer;
+    const localToStage = characterEndEffectorLayerStageMatrix(
+      { ...layer, parentSpace: finalSpacesById.get(layer.id) },
+      candidate.fixedCharacterCenter,
+    );
+    const poses = layer.characterBonePose
+      ? characterBonePoseMap(layer.characterBonePose)
+      : evaluateCharacterBonePose({
+          character: candidate.character,
+          values: layer.animationValues ?? [],
+          layerId: layer.id,
+        });
+    const residuals = resolveCharacterEndEffectorResidualsFromPose({
+      character: candidate.character,
+      poses,
+      locks: candidate.locks,
+      localToStage,
+      timeMs,
+      structuralReasons: structuralReasonsByLayerId.get(layer.id),
+    });
+    return residuals.length > 0 ? { ...layer, endEffectorResiduals: residuals } : layer;
+  });
 }
