@@ -39,17 +39,17 @@ export interface IconButtonProps
 }
 
 /** An icon-only button with an explicit accessible name. */
-export function IconButton({
+export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton({
   icon,
   ...props
-}: IconButtonProps): React.JSX.Element {
+}, ref): React.JSX.Element {
   if (!props['aria-label'].trim()) {
     throw new Error('IconButton requires a non-empty aria-label.');
   }
 
   return (
-    <Button {...props} data-ui-size="icon">
+    <Button {...props} data-ui-size="icon" ref={ref}>
       <span aria-hidden="true">{icon}</span>
     </Button>
   );
-}
+});

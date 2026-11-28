@@ -26,7 +26,7 @@ describe('Issue #457 Canvas-first workspace contract', () => {
     );
     expect(viewport).toContain('viewportChrome?: ReactNode');
     expect(viewport).toContain('{viewportChrome}');
-    expect(viewport).toContain('new ResizeObserver(update)');
+    expect(viewport).toContain('new ResizeObserver(measureViewport)');
     expect(viewport).toContain('screenToStage(');
   });
 

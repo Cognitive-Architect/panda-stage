@@ -4,6 +4,7 @@ import { CanvasStage } from '../features/canvas/CanvasStage';
 import type { AnimationCurveDraft } from '../features/timeline/AnimationCurveDraft';
 
 export interface CanvasWorkspaceProps {
+  objectToolbarSuspended?: boolean;
   curveDraft?: AnimationCurveDraft | null;
   curveMotionDraft?: CurveMotionStageDraft | null;
   dialogueSilence?: DialogueSilence;
@@ -24,6 +25,7 @@ export function CanvasWorkspace({
   curveMotionDraft,
   dialogueSilence,
   showHeading = true,
+  objectToolbarSuspended,
   showToolbar = true,
   onCharacterPartSelected,
 }: CanvasWorkspaceProps = {}): React.JSX.Element {
@@ -38,6 +40,7 @@ export function CanvasWorkspace({
         curveMotionDraft={curveMotionDraft}
         dialogueSilence={dialogueSilence}
         showHeading={showHeading}
+        objectToolbarSuspended={objectToolbarSuspended}
         showToolbar={showToolbar}
         onCharacterPartSelected={onCharacterPartSelected}
       />

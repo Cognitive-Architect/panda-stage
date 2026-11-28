@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent,
   type ReactNode,
 } from 'react';
@@ -166,20 +167,31 @@ export function CanvasViewport({
     };
   }, [endPan, mode, releaseSpace]);
 
+  const measureViewport = useCallback(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const width = viewport.clientWidth;
+    const height = viewport.clientHeight;
+    setContainer(current => current.width === width && current.height === height ? current : { width, height });
+  }, []);
+
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const update = (): void => {
-      setContainer({
-        width: viewport.clientWidth,
-        height: viewport.clientHeight,
-      });
-    };
-    const observer = new ResizeObserver(update);
+    const observer = new ResizeObserver(measureViewport);
     observer.observe(viewport);
-    update();
-    return () => observer.disconnect();
-  }, []);
+    measureViewport();
+    window.addEventListener('resize', measureViewport);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measureViewport);
+    };
+  }, [measureViewport]);
+
+  useLayoutEffect(() => {
+    // Dockview can attach a panel after its first React commit.
+    if (!container.width || !container.height) measureViewport();
+  });
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -230,7 +242,7 @@ export function CanvasViewport({
       '.canvas-logical-stage',
     );
     const target = event.target;
-    if (!logicalStage || !(target instanceof Node)) return;
+    if (!logicalStage || !(target instanceof Node) || !event.currentTarget.contains(target)) return;
     if (isViewportInteractiveChromePointerTarget(target)) return;
     if (
       isViewportChromePointerTarget(target, (candidate) =>
@@ -244,7 +256,8 @@ export function CanvasViewport({
   const handlePointerDownCapture = (
     event: PointerEvent<HTMLDivElement>,
   ): void => {
-    if (isViewportInteractiveChromePointerTarget(event.target) || isMenuOrModalKeyboardTarget(event.target)) return;
+    if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target) ||
+      isViewportInteractiveChromePointerTarget(event.target) || isMenuOrModalKeyboardTarget(event.target)) return;
     const panButton = event.button === 1 || (event.button === 0 && (event.altKey || (mode === 'actual' && spaceHeldRef.current)));
     if (event.pointerType !== 'mouse' || !panButton || panRef.current) {
       return;
@@ -326,14 +339,12 @@ export function CanvasViewport({
       onPointerCancel={finishPan}
       onLostPointerCapture={() => endPan()}
       ref={viewportRef}
+      style={{
+        '--canvas-viewport-width': container.width + 'px',
+        '--canvas-viewport-height': container.height + 'px',
+      } as CSSProperties}
     >
-      <div
-        className="canvas-viewport-content"
-        style={{
-          width: transform.container.width,
-          height: transform.container.height,
-        }}
-      >
+      <div className="canvas-viewport-content">
         <div
           className="canvas-logical-stage"
           data-testid="canvas-logical-stage"

@@ -3000,6 +3000,7 @@ export function EditorShell({
                         data-character-assembly-inactive={assemblyActive ? 'true' : 'false'}
                         inert={Boolean(characterFloatMode) || assemblyActive || undefined}>
                         <CanvasWorkspace showHeading={false} dialogueSilence={dialogueSilence}
+                          objectToolbarSuspended={productPreviewOpen || assemblyActive || Boolean(characterFloatMode)}
                           onCharacterPartSelected={() => workbench.current?.show('props')}
                           curveDraft={animationCurveDraft ?? (panelVisibility.curve ? dockedCurveDraft : null)}
                           curveMotionDraft={panelVisibility.props ? curveMotionStageDraft : null} />

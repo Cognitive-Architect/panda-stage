@@ -1,5 +1,5 @@
 import { readCanvasControlColor } from './canvasControlColors';
-import { useEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import Konva from 'konva';
 import { Transformer } from 'react-konva';
 import {
@@ -79,6 +79,7 @@ export interface LayerTransformerProps {
   locked: boolean;
   scale: number;
   scaleY?: number;
+  viewportScale?: number;
 }
 
 export function LayerTransformer({
@@ -88,10 +89,11 @@ export function LayerTransformer({
   locked,
   scale,
   scaleY = scale,
+  viewportScale = 1,
 }: LayerTransformerProps): React.JSX.Element | null {
   const transformerRef = useRef<Konva.Transformer>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const transformer = transformerRef.current;
     const node = nodeRef.current;
     if (!transformer) return;
@@ -100,13 +102,16 @@ export function LayerTransformer({
   }, [locked, nodeBindingKey, nodeRef, selected]);
 
   if (!selected || locked) return null;
+  const pixel = 1 / Math.max(0.001, viewportScale);
   return (
     <Transformer
       anchorFill={readCanvasControlColor('text-primary')}
-      anchorSize={18}
+      anchorSize={11 * pixel}
+      anchorStrokeWidth={1.5 * pixel}
+      anchorCornerRadius={2 * pixel}
       anchorStroke={readCanvasControlColor('action-primary')}
       borderStroke={readCanvasControlColor('action-primary')}
-      borderStrokeWidth={3}
+      borderStrokeWidth={1.5 * pixel}
       boundBoxFunc={(oldBox, newBox) =>
         isTransformerBoxAllowed(oldBox, newBox, scale, scaleY)
           ? newBox
@@ -119,10 +124,11 @@ export function LayerTransformer({
         'bottom-right',
       ]}
       flipEnabled={false}
+      ignoreStroke
       keepRatio
       name="layer-transformer"
       ref={transformerRef}
-      rotateAnchorOffset={42}
+      rotateAnchorOffset={22 * pixel}
       rotateEnabled
     />
   );

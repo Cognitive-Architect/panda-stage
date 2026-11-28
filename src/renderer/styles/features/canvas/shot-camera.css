@@ -21,8 +21,8 @@
   position: absolute;
   right: 0;
   bottom: calc(100% + 6px);
-  width: min(300px, 78vw);
-  max-height: min(74vh, 560px);
+  width: min(300px, max(0px, calc(var(--canvas-viewport-width, 324px) - 24px)));
+  max-height: min(560px, max(0px, calc(var(--canvas-viewport-height, 612px) - 52px)));
   overflow-y: auto;
   display: grid;
   gap: 8px;

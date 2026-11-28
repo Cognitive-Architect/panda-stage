@@ -46,7 +46,7 @@ describe('Issue #436 LM-004 — Canvas visual flattening + viewport mode relocat
     // The viewport, content wrapper, and logical stage must all still be
     // defined (fit calc, scroll, drop, transform, hit test).
     expect(styles).toMatch(/\.canvas-viewport\s*\{[\s\S]*?overflow/u);
-    expect(styles).toMatch(/\.canvas-viewport-content\s*\{[\s\S]*?min-height/u);
+    expect(styles).toMatch(/\.canvas-viewport-content\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;/u);
     expect(styles).toMatch(
       /\.canvas-logical-stage\s*\{[\s\S]*?transform-origin/u,
     );

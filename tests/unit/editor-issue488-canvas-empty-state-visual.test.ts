@@ -58,7 +58,7 @@ describe('Issue #488 Canvas empty-state visual pass', () => {
     );
 
     expect(canvas).toContain(
-      'viewportOverlay={empty ? <CanvasEmptyState /> : null}',
+      'viewportOverlay={empty ? <CanvasEmptyState />',
     );
     expect(viewport).toContain('viewportOverlay?: ReactNode');
     expect(viewport).toContain('viewportOverlay = null');

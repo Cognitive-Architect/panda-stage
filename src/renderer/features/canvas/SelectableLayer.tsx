@@ -1,5 +1,5 @@
 import { readCanvasControlColor } from './canvasControlColors';
-import { Fragment } from 'react';
+import { Fragment, useLayoutEffect, useRef } from 'react';
 import Konva from 'konva';
 import { CharacterMotionPart, type CharacterMotionCanvas } from './CharacterMotionPart';
 import {
@@ -70,9 +70,11 @@ export interface SelectableLayerProps {
   nodeRef: React.RefObject<Konva.Group | null>;
   render: StageLayerRenderInstruction;
   selected: boolean;
+  transformerVisible?: boolean;
+  gestureContext?: string;
+  viewportScale?: number;
   directEditingEnabled?: boolean;
   inheritedSpace?: boolean;
-  projected?: boolean;
   onSelect: (layerId: string, nodeId?: CharacterNodeId) => void;
   onCommitPosition: (
     layerId: string,
@@ -105,6 +107,57 @@ function stopAndSelect(
   onSelect(layerId);
 }
 
+interface LayerGesture {
+  node: Konva.Node;
+  kind: 'drag' | 'transform';
+  cancelled: boolean;
+}
+
+function restoreLayerNode(node: Konva.Node, render: StageLayerRenderInstruction): void {
+  node.position({ x: render.x, y: render.y });
+  node.scale({ x: render.scaleX, y: render.scaleY });
+  node.rotation(render.rotationDeg);
+}
+
+export function InteractiveSelectableLayer(props: SelectableLayerProps): React.JSX.Element {
+  const { gestureContext, nodeRef, render, positionAuthoringSession } = props;
+  const cancelledNode = useRef<Konva.Node | null>(null);
+  const activeGesture = useRef<LayerGesture | null>(null);
+  useLayoutEffect(() => {
+    if (cancelledNode.current && cancelledNode.current === nodeRef.current) restoreLayerNode(cancelledNode.current, render);
+    cancelledNode.current = null;
+    const cancel = () => {
+      const active = activeGesture.current;
+      if (!active || active.cancelled) return;
+      active.cancelled = true;
+      const { node, kind } = active;
+      restoreLayerNode(node, render);
+      if (kind === 'drag') node.stopDrag();
+      else {
+        const transformer = node.getStage()?.findOne<Konva.Transformer>('.layer-transformer');
+        if (transformer?.nodes().includes(node)) transformer.stopTransform();
+      }
+      positionAuthoringSession?.cancel();
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') cancel(); };
+    window.addEventListener('blur', cancel);
+    window.addEventListener('pointercancel', cancel, true);
+    window.addEventListener('lostpointercapture', cancel, true);
+    window.addEventListener('keydown', escape, true);
+    return () => {
+      cancelledNode.current = activeGesture.current?.node ?? null;
+      cancel();
+      window.removeEventListener('blur', cancel);
+      window.removeEventListener('pointercancel', cancel, true);
+      window.removeEventListener('lostpointercapture', cancel, true);
+      window.removeEventListener('keydown', escape, true);
+    };
+    // The context identifies the baseline evaluated values for the active gesture.
+  }, [gestureContext, positionAuthoringSession]);
+
+  return <SelectableLayer {...props} gesture={activeGesture} />;
+}
+
 export function SelectableLayer({
   characterMotion,
   effects,
@@ -117,11 +170,13 @@ export function SelectableLayer({
   nodeRef,
   render,
   selected,
+  transformerVisible = false,
+  gesture,
+  viewportScale = 1,
   visual,
   visualSourceKeys,
   directEditingEnabled = true,
   inheritedSpace = false,
-  projected = false,
   onSelect,
   onCommitPosition,
   onCommitTransform,
@@ -131,7 +186,8 @@ export function SelectableLayer({
   flaGraphicEditProjection = null,
   onPositionAuthoringCommit = () => undefined,
   onError,
-}: SelectableLayerProps): React.JSX.Element {
+}: SelectableLayerProps & { gesture?: React.RefObject<LayerGesture | null> }): React.JSX.Element {
+  const pixel = 1 / Math.max(0.001, viewportScale);
   const selectionStroke = readCanvasControlColor('action-primary');
   const guideStroke = readCanvasControlColor('text-secondary');
   const headGroupRef: { current: Konva.Group | null } = { current: null };
@@ -478,11 +534,8 @@ export function SelectableLayer({
     });
   };
 
-  const resetNode = (node: Konva.Node): void => {
-    node.position({ x: render.x, y: render.y });
-    node.scale({ x: render.scaleX, y: render.scaleY });
-    node.rotation(render.rotationDeg);
-  };
+  const resetNode = (node: Konva.Node): void => restoreLayerNode(node, render);
+
 
   return (
     <Group
@@ -491,7 +544,8 @@ export function SelectableLayer({
       listening={canSelect}
       name="selectable-canvas-layer"
       onDragStart={(event) => {
-        if (!projected && !inheritedSpace && layer.source.kind !== 'animation') return;
+        if (gesture && event.target !== nodeRef.current) return;
+        if (gesture) gesture.current = { node: event.target, kind: 'drag', cancelled: false };
         event.cancelBubble = true;
         onSelect(layer.id);
       }}
@@ -499,6 +553,12 @@ export function SelectableLayer({
         stopAndSelect(event, layer.id, onSelect)
       }
       onDragEnd={(event) => {
+        if (gesture && event.target !== nodeRef.current) return;
+        if (gesture) {
+          const active = gesture.current;
+          gesture.current = null;
+          if (!active || active.cancelled) return;
+        }
         if (positionAuthoringSession) {
           clampPositionAuthoringNode(event.target);
           const result = positionAuthoringSession.commit(
@@ -517,6 +577,7 @@ export function SelectableLayer({
           return;
         }
         clampNode(event.target);
+        if (Math.abs(event.target.x() - render.x) < 1e-5 && Math.abs(event.target.y() - render.y) < 1e-5) return;
         try {
           onCommitPosition(layer.id, {
             x: event.target.x(),
@@ -532,6 +593,7 @@ export function SelectableLayer({
         }
       }}
       onDragMove={(event) => {
+        if (gesture && (event.target !== nodeRef.current || gesture.current?.cancelled)) return;
         if (positionAuthoringSession) {
           clampPositionAuthoringNode(event.target);
         } else {
@@ -550,7 +612,16 @@ export function SelectableLayer({
         stopAndSelect(event, layer.id, onSelect)
       }
       opacity={render.opacity}
+      onTransformStart={(event) => {
+        if (gesture && event.target === nodeRef.current) gesture.current = { node: event.target, kind: 'transform', cancelled: false };
+      }}
       onTransformEnd={(event) => {
+        if (gesture && event.target !== nodeRef.current) return;
+        if (gesture) {
+          const active = gesture.current;
+          gesture.current = null;
+          if (!active || active.cancelled) return;
+        }
         const node = event.target as Konva.Group;
         if (positionAuthoringSession || !directEditingEnabled || flaGraphicEditProjection) {
           resetNode(node);
@@ -558,6 +629,9 @@ export function SelectableLayer({
         }
         const scaleX = Math.abs(node.scaleX());
         const scaleY = Math.abs(node.scaleY());
+        if (Math.abs(node.x() - render.x) < 1e-5 && Math.abs(node.y() - render.y) < 1e-5 &&
+          Math.abs(node.rotation() - render.rotationDeg) < 1e-5 &&
+          Math.abs(scaleX - Math.abs(render.scaleX)) < 1e-5 && Math.abs(scaleY - Math.abs(render.scaleY)) < 1e-5) return;
         try {
           if (onCommitAxisTransform) {
             node.scaleX(layer.flipX ? -scaleX : scaleX);
@@ -641,13 +715,14 @@ export function SelectableLayer({
             y={visualBounds.y}
           />
         ) : null}
-        {selected && completeVisualReady && !flaGraphicEditProjection && !editingPart ? (
+        {selected && !transformerVisible && completeVisualReady && !flaGraphicEditProjection && !editingPart ? (
           <Rect
-          dash={layer.locked ? [18, 12] : undefined}
+          dash={layer.locked ? [6 * pixel, 4 * pixel] : undefined}
           height={visualBounds.height}
           listening={false}
-          stroke={layer.locked ? '#ffd166' : selectionStroke}
-          strokeWidth={4}
+          stroke={selectionStroke}
+          strokeScaleEnabled={false}
+          strokeWidth={1.5 * pixel}
           width={visualBounds.width}
           x={visualBounds.x}
           y={visualBounds.y}

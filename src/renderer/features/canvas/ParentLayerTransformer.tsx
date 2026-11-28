@@ -1,5 +1,5 @@
 import { readCanvasControlColor } from './canvasControlColors';
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type Konva from 'konva';
 import { Circle, Group, Rect } from 'react-konva';
 import type { LayerDisplayTransformPatch, Point } from '../../../domain';
@@ -8,11 +8,12 @@ import type { StageLayerRenderInstruction } from '../../../shared/stage/layer-re
 import type { VisualLocalRect } from '../../../domain';
 
 /** Transform handles operate in the evaluated parent plane, keeping its affine shear intact. */
-export function ParentLayerTransformer({ nodeRef, render, rootScale, bounds, onCommit }: {
+export function ParentLayerTransformer({ nodeRef, render, rootScale, bounds, viewportScale, onCommit }: {
   nodeRef: React.RefObject<Konva.Group | null>;
   render: StageLayerRenderInstruction;
   rootScale: Pick<StageLayerRenderInstruction, 'scaleX' | 'scaleY'>;
   bounds: VisualLocalRect;
+  viewportScale: number;
   onCommit: (patch: LayerDisplayTransformPatch) => void;
 }): React.JSX.Element {
   const controls = useRef<Konva.Group>(null);
@@ -20,6 +21,7 @@ export function ParentLayerTransformer({ nodeRef, render, rootScale, bounds, onC
   const gesture = useRef<{
     pointer: number; mode: 'rotate' | 'scale'; start: Point;
     angle: number; turn: number; scale: number;
+    target: Element | null; shape: Konva.Shape;
   } | null>(null);
   const local = () => controls.current?.getParent()?.getRelativePointerPosition();
   const bearing = (p: Point) => Math.atan2(p.y - render.y, p.x - render.x);
@@ -28,20 +30,43 @@ export function ParentLayerTransformer({ nodeRef, render, rootScale, bounds, onC
     node?.scale({ x: render.scaleX, y: render.scaleY });
     node?.rotation(render.rotationDeg);
   };
-  useEffect(() => () => {
-    if (!gesture.current) return;
-    const node = nodeRef.current;
-    node?.scale({ x: render.scaleX, y: render.scaleY });
-    node?.rotation(render.rotationDeg);
+  const release = (active: NonNullable<typeof gesture.current>) => {
+    if (active.target?.hasPointerCapture(active.pointer)) active.target.releasePointerCapture(active.pointer);
+    if (active.shape.hasPointerCapture(active.pointer)) active.shape.releaseCapture(active.pointer);
+  };
+  useLayoutEffect(() => {
+    const cancel = () => {
+      const active = gesture.current;
+      if (!active) return;
+      gesture.current = null;
+      restore();
+      setDraft({ scale: 1, turn: 0 });
+      release(active);
+      nodeRef.current?.fire('canvasgestureend');
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') cancel(); };
+    window.addEventListener('blur', cancel);
+    window.addEventListener('lostpointercapture', cancel, true);
+    window.addEventListener('keydown', escape, true);
+    return () => {
+      window.removeEventListener('blur', cancel);
+      window.removeEventListener('lostpointercapture', cancel, true);
+      window.removeEventListener('keydown', escape, true);
+      cancel();
+    };
+    // Cancelling restores the pose captured for this parent-space edit.
   }, [nodeRef, render.rotationDeg, render.scaleX, render.scaleY]);
   const begin = (event: Konva.KonvaEventObject<PointerEvent>, mode: 'rotate' | 'scale') => {
     const start = local();
     if (!start || event.evt.button !== 0 || gesture.current) return;
     event.cancelBubble = true;
     const pointer = event.evt.pointerId;
-    (event.target as Konva.Shape).setPointerCapture(pointer);
-    (event.evt.target as Element | null)?.setPointerCapture?.(pointer);
-    gesture.current = { pointer, mode, start, angle: bearing(start), scale: 1, turn: 0 };
+    const shape = event.target as Konva.Shape;
+    const target = event.evt.target instanceof Element ? event.evt.target : null;
+    shape.setPointerCapture(pointer);
+    target?.setPointerCapture(pointer);
+    gesture.current = { pointer, mode, start, angle: bearing(start), scale: 1, turn: 0, shape, target };
+    nodeRef.current?.fire('canvasgesturestart');
   };
   const move = (event: Konva.KonvaEventObject<PointerEvent>) => {
     const active = gesture.current;
@@ -63,6 +88,7 @@ export function ParentLayerTransformer({ nodeRef, render, rootScale, bounds, onC
     nodeRef.current?.scale({ x: render.scaleX * active.scale, y: render.scaleY * active.scale });
     nodeRef.current?.rotation(render.rotationDeg + active.turn);
     setDraft({ scale: active.scale, turn: active.turn });
+    nodeRef.current?.fire('canvasgesturemove');
   };
   const end = (event: Konva.KonvaEventObject<PointerEvent>, commit: boolean) => {
     const active = gesture.current;
@@ -70,6 +96,8 @@ export function ParentLayerTransformer({ nodeRef, render, rootScale, bounds, onC
     gesture.current = null;
     restore();
     setDraft({ scale: 1, turn: 0 });
+    release(active);
+    nodeRef.current?.fire('canvasgestureend');
     if (!commit) return;
     if (active.mode === 'rotate' && Math.abs(active.turn) > 1e-6) {
       onCommit({ rotationDeg: render.rotationDeg + active.turn });
@@ -77,6 +105,9 @@ export function ParentLayerTransformer({ nodeRef, render, rootScale, bounds, onC
       onCommit({ scaleX: Math.abs(render.scaleX) * active.scale, scaleY: Math.abs(render.scaleY) * active.scale });
     }
   };
+  const absoluteScale = controls.current?.getAbsoluteScale();
+  const pixelX = 1 / Math.max(0.001, viewportScale * Math.abs(absoluteScale?.x ?? 1));
+  const pixelY = 1 / Math.max(0.001, viewportScale * Math.abs(absoluteScale?.y ?? 1));
   const width = Math.abs(render.scaleX) * bounds.width * draft.scale;
   const height = Math.abs(render.scaleY) * bounds.height * draft.scale;
   const left = Math.min(bounds.x * render.scaleX, (bounds.x + bounds.width) * render.scaleX) * draft.scale;
@@ -85,11 +116,11 @@ export function ParentLayerTransformer({ nodeRef, render, rootScale, bounds, onC
     <Group ref={controls} x={render.x} y={render.y} rotation={render.rotationDeg + draft.turn}
       name="parent-layer-transformer" onPointerMove={move} onPointerUp={(event) => end(event, true)}
       onPointerCancel={(event) => end(event, false)}>
-      <Rect x={left} y={top} width={width} height={height} stroke={readCanvasControlColor('action-primary')} strokeWidth={3} listening={false} />
-      <Rect name="parent-layer-scale" x={left + width - 12} y={top + height - 12} width={24} height={24} fill={readCanvasControlColor('text-primary')}
-        stroke={readCanvasControlColor('action-primary')} strokeWidth={3} onPointerDown={(event) => begin(event, 'scale')} />
-      <Circle name="parent-layer-rotate" x={left + width / 2} y={top - 42} radius={13} fill={readCanvasControlColor('text-primary')}
-        stroke={readCanvasControlColor('action-primary')} strokeWidth={3} onPointerDown={(event) => begin(event, 'rotate')} />
+      <Rect x={left} y={top} width={width} height={height} stroke={readCanvasControlColor('action-primary')} strokeWidth={1.5 * 1 / Math.max(0.001, viewportScale)} strokeScaleEnabled={false} listening={false} />
+      <Rect name="parent-layer-scale" x={left + width - 6 * pixelX} y={top + height - 6 * pixelY} width={12 * pixelX} height={12 * pixelY} fill={readCanvasControlColor('text-primary')}
+        stroke={readCanvasControlColor('action-primary')} strokeWidth={1.5 * viewportScale ** -1} strokeScaleEnabled={false} onPointerDown={(event) => begin(event, 'scale')} />
+      <Circle name="parent-layer-rotate" x={left + width / 2} y={top - 22 * pixelY} radius={6} scaleX={pixelX} scaleY={pixelY} fill={readCanvasControlColor('text-primary')}
+        stroke={readCanvasControlColor('action-primary')} strokeWidth={1.5 * viewportScale ** -1} strokeScaleEnabled={false} onPointerDown={(event) => begin(event, 'rotate')} />
     </Group>
   );
 }

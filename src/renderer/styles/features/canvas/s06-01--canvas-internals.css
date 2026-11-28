@@ -69,9 +69,8 @@
 }
 
 .canvas-viewport-content {
-  position: relative;
-  min-width: 100%;
-  min-height: 100%;
+  position: absolute;
+  inset: 0;
 }
 
 .canvas-logical-stage {
@@ -190,9 +189,7 @@
   font-size: 11px;
 }
 
-/* Issue #457: feedback is viewport chrome, not a third project-canvas grid
-   row. It is deliberately non-interactive so Canvas hit testing and drag/drop
-   remain owned by the existing viewport/stage path. */
+/* Keep the viewport controls above the stage. Each control opts into pointer events. */
 .canvas-viewport-chrome {
   position: absolute;
   z-index: 5;
@@ -207,10 +204,17 @@
 
 .canvas-viewport-chrome output {
   min-width: 0;
-  color: rgb(213 230 218 / 78%);
+  color: var(--ui-color-text-secondary);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
+}
+
+.canvas-viewport-chrome [data-testid='canvas-pointer-coordinate'] {
+  position: absolute;
+  inset-inline-end: 56px;
+  inset-block-end: 20px;
+  pointer-events: none;
 }
 
 .canvas-viewport-chrome output[hidden] {
@@ -248,3 +252,52 @@
   background: var(--ui-color-selected-surface);
 }
 .canvas-viewport-navigation output { padding-inline: 3px; }
+
+.canvas-object-toolbar {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 2px 3px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-overlay);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 34%);
+}
+
+.canvas-object-toolbar button[data-ui-button] {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.canvas-object-toolbar-error {
+  position: absolute;
+  z-index: 1;
+  inset-inline-start: 0;
+  inset-block-start: calc(100% + 4px);
+  width: max-content;
+  max-width: min(240px, 50vw);
+  padding: var(--ui-space-2);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+}
+
+.canvas-object-preset-dialog {
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: var(--ui-space-4);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  color: var(--ui-color-text-primary);
+  background: var(--ui-color-surface-overlay);
+}
+
+.canvas-object-preset-dialog::backdrop { background: rgb(0 0 0 / 40%); }

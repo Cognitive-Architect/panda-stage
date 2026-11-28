@@ -8,8 +8,8 @@ const designV2Revisions: Record<string, { sha: string; length: number }> = {
   G049: { sha: '8209abc1be91eaece924cf0a8fd4af542a5e53e7361e228d8735cb2e6c2c4aed', length: 6882 },
   G056: { sha: '60a62e8f85c6af7a39a844cf265c5fcbee2be826c3393a5e8c5b2836d0a69fa8', length: 7320 },
   G122: { sha: '850d61a12fd8ba9fbb7b7b9b05c74594692712ab5cf7574f57e5c1e44056720a', length: 1148 },
-  // Issue #1466 moves viewport controls to the canvas.
-  G044: { sha: 'd91b8dedcbe45d235ce335f653f01f9861323f0d9bfa2f4a9784964250832dbe', length: 5301 },
+  // Issues #1466 and #1468 add viewport and object controls to the canvas.
+  G044: { sha: '511fb4e28f082e716497d025542a4548e3a02d1a3a77a686e0952bcb045273a7', length: 6614 },
   // Issue #1427 retains these approved design token revisions.
   G001: { sha: '890146dc15d36c3913ac573462afc2f9acbf88b5833923cfe879041bf3597011', length: 461 },
   G002: { sha: '005126f042474c2dfeb1d96ed1ff4825180d353440f28da9fa35830a9c945444', length: 234 },

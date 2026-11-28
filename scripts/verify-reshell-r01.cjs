@@ -13,18 +13,19 @@ const projectRoot = path.join(acceptance, 'r01.pandastage');
 const profile = path.join(acceptance, 'profile');
 const phase = process.env.PANDA_R01_PHASE || 'layout';
 const key = 'panda-stage:editor-workbench:v1';
+if (process.env.PANDA_R01_SOFTWARE_RENDERING === '1') app.disableHardwareAcceleration();
 fs.mkdirSync(projectRoot, { recursive: true });
 fs.mkdirSync(profile, { recursive: true });
 app.setPath('userData', profile);
 process.env.VITE_DEV_SERVER_URL = '';
 const { LayerMotionService, LayerService, migrateProject, ProjectSchema, ShotService } = require(path.join(root, 'dist-electron/domain/index.js'));
 const example = migrateProject(require(path.join(root, 'demo-project/project-v1.example.json')));
-const regression = ['r03-viewport', 'r02-regression', 'commands', 'dialogue-drop', 'curve-visibility', 'tools-visibility', 'inspector-focus'].includes(phase);
+const regression = ['r03-object-toolbar', 'r03-selection', 'r03-viewport', 'r02-regression', 'commands', 'dialogue-drop', 'curve-visibility', 'tools-visibility', 'inspector-focus'].includes(phase);
 const pandaLayerId = '60000000-0000-4000-8000-000000000002';
 const pendingId = '80000000-0000-4000-8000-000000000002';
 let project = ProjectSchema.parse({
   ...example,
-  shots: regression && !['commands', 'r02-regression', 'r03-viewport'].includes(phase) ? example.shots.map((shot, i) => i === 0 ? {
+  shots: regression && !['commands', 'r02-regression', 'r03-viewport', 'r03-selection'].includes(phase) ? example.shots.map((shot, i) => i === 0 ? {
     ...shot,
     layers: [...shot.layers, { ...shot.layers.find(layer => layer.id === pandaLayerId), id: '60000000-0000-4000-8000-000000000003', name: 'Parent candidate', zIndex: 2 }],
     dialogues: [...shot.dialogues, { ...shot.dialogues[0], id: pendingId, startMs: 0, endMs: 0, audioClipId: undefined, text: 'R01 pending subtitle' }],
@@ -41,7 +42,7 @@ if (phase === 'commands') {
 }
 let curveLayerId;
 let curveFrameSvg;
-if (['curve-visibility', 'tools-visibility', 'r02-regression'].includes(phase)) {
+if (['curve-visibility', 'tools-visibility', 'r02-regression', 'r03-object-toolbar'].includes(phase)) {
   const animationId = '91000000-0000-4000-8000-000000001429';
   const frameId = '92000000-0000-4000-8000-000000001429';
   const size = { width: 160, height: 120 };
@@ -60,7 +61,7 @@ if (['curve-visibility', 'tools-visibility', 'r02-regression'].includes(phase)) 
   });
   if (phase !== 'r02-regression') {
     const shotId = project.shots[0].id;
-    const placed = new LayerService().createFromAnimation(project, shotId, { animationId, position: { x: 500, y: 350 }, startTimeMs: 0 });
+    const placed = new LayerService().createFromAnimation(project, shotId, { animationId, position: phase === 'r03-object-toolbar' ? { x: 1100, y: 475 } : { x: 500, y: 350 }, startTimeMs: 0 });
     project = placed.project;
     curveLayerId = placed.layer.id;
     const motion = new LayerMotionService();
@@ -279,6 +280,9 @@ async function run() {
     if (!win) await delay();
   }
   assert(win, 'Production window started');
+  if (phase.startsWith('r03-')) win.webContents.on('console-message', details => {
+    if (details.level === 'error') console.error(details.message);
+  });
   win.setSize(...(phase === 'storage-unavailable' ? [1280, 768] : [1440, 900]));
   if (regression) {
     win.show();
@@ -312,6 +316,226 @@ async function run() {
   assert.equal(original, 'ready', 'production canvas preload reads the real background');
   const panels = await js(() => [...document.querySelectorAll('.dv-tab')].map(el => el.textContent.trim()));
   console.log('panels:', JSON.stringify(panels));
+
+  if (phase === 'r03-object-toolbar') {
+    await waitFor(() => document.querySelector('[data-testid="project-canvas-stage"]')?.dataset.backgroundReady === 'true');
+    const toolbar = '[data-testid="canvas-object-toolbar"]';
+    const undoCount = count => waitFor(n => document.querySelector('[data-testid="history-controls"]').dataset.undoCount === String(n), count);
+    const button = (name) => toolbar + ' [aria-label="' + name + '"]';
+    const choose = id => click('[data-testid="layer-list-row-' + id + '"] .workbench-layer-name');
+    const target = id => waitFor((selector, layerId) => document.querySelector(selector)?.dataset.layerId === layerId, toolbar, id);
+    await choose(curveLayerId);
+    await target(curveLayerId);
+    const clickPoint = async ({ x, y }) => {
+      const devtools = win.webContents.debugger;
+      devtools.attach('1.3');
+      try {
+        await devtools.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        await devtools.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+        await devtools.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
+      } finally { devtools.detach(); }
+    };
+    await click('[aria-label="台词查找替换"]');
+    await click('.dialogue-find-replace input');
+    await win.webContents.insertText(project.shots[0].dialogues[0].text);
+    await click('.dialogue-find-results button');
+    await click('[aria-label="关闭台词查找替换"]');
+    await choose(curveLayerId);
+    await target(curveLayerId);
+    await waitFor(() => Number(document.querySelector('[data-testid="timeline-timecode"]').dataset.currentTime) > 0);
+    const frame = Number(await shotClock());
+    assert(frame < 1000);
+    await click(button('添加关键帧'));
+    await undoCount(1);
+    assert(await js(sel => document.querySelector(sel).disabled, button('添加关键帧')));
+    const graphLayer = (await js(id => JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]').dataset.layerJson).find(layer => layer.id === id), curveLayerId));
+    assert(JSON.stringify(graphLayer).includes('"timeMs":' + frame), 'the current playhead was written to the formal layer motion tracks');
+    const parentPoint = await js(() => {
+      const v = document.querySelector('[data-testid="project-canvas-viewport"]');
+      const r = v.getBoundingClientRect();
+      const bounds = JSON.parse(document.querySelector('[data-testid="canvas-selection-geometry"]').dataset.bounds);
+      return { x: Math.round(r.left + v.clientLeft + bounds.x + bounds.width / 2),
+        y: Math.round(r.top + v.clientTop + bounds.y + bounds.height / 2) };
+    });
+    await choose(pandaLayerId);
+    await target(pandaLayerId);
+    await click(button('添加动作'));
+    await waitFor(() => Boolean(document.activeElement.closest('[role="menu"]')));
+    await clickText('[role="menuitem"]', '抖动…');
+    await waitFor(() => !!document.querySelector('dialog.canvas-object-preset-dialog[open]'));
+    await click('dialog.canvas-object-preset-dialog button[type="submit"]');
+    await undoCount(2);
+    await waitFor(() => !document.querySelector('dialog.canvas-object-preset-dialog[open]'));
+    await click(button('上移图层'));
+    await undoCount(3);
+    await click(button('锁定图层'));
+    await undoCount(4);
+    assert(await js(sel => !document.querySelector(sel), button('隐藏图层')));
+    assert(await js(sel => Boolean(document.querySelector(sel)), button('解锁图层')));
+    await click(button('解锁图层'));
+    await undoCount(5);
+    await click('[data-testid="quick-action-play"]');
+    await waitFor(() => document.querySelector('[data-testid="product-preview-overlay"]'));
+    assert(await js(sel => !document.querySelector(sel), toolbar));
+    const previewExit = await waitFor(() => {
+      const overlay = document.querySelector('[data-testid="product-preview-overlay"]');
+      if (overlay?.dataset.previewSurface === 'active') return '[data-testid="product-preview-close"]';
+      return overlay?.querySelector('[data-testid="product-preview-cancel"]') ? '[data-testid="product-preview-cancel"]' : false;
+    });
+    await click(previewExit);
+    await target(pandaLayerId);
+    await screenshot('r03-object-toolbar.png');
+    await click(button('隐藏图层'));
+    await undoCount(6);
+    await waitFor(sel => !document.querySelector(sel), toolbar);
+    await click('[aria-label="撤销"]');
+    await undoCount(5);
+    await choose(pandaLayerId);
+    await target(pandaLayerId);
+    const beforeParent = Number((await editingState()).undo);
+    const parentButton = await waitFor(() => {
+      const button = [...document.querySelectorAll('button[data-canvas-interactive-chrome="true"]')].find(item => item.textContent === '在舞台选父级');
+      if (!button) return false;
+      const rect = button.getBoundingClientRect();
+      const x = Math.round(rect.left + rect.width / 2), y = Math.round(rect.top + rect.height / 2);
+      return document.elementFromPoint(x, y)?.closest('button') === button ? { x, y } : false;
+    });
+    await clickPoint(parentButton);
+    await waitFor(() => [...document.querySelectorAll('button[aria-pressed="true"]')].some(button => button.textContent === '在舞台选父级'));
+    await waitFor(sel => !document.querySelector(sel), toolbar);
+    await clickPoint(parentPoint);
+    await undoCount(beforeParent + 1);
+    await target(pandaLayerId);
+    const child = () => js(id => JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]').dataset.layerJson).find(layer => layer.id === id), pandaLayerId);
+    const bound = await child();
+    assert(bound.parentLayerId === curveLayerId || bound.parentKeys?.some(key => key.parentLayerId === curveLayerId));
+    await click('summary[aria-label="镜头相机"]');
+    await js(() => {
+      const choice = document.querySelector('select[aria-label="相机模式"]');
+      choice.value = 'manual';
+      choice.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await undoCount(beforeParent + 2);
+    const cameraButton = async (label) => {
+      const coordinates = await waitFor(name => {
+        const control = [...document.querySelectorAll('.shot-camera-actions button')].find(button => button.textContent === name);
+        if (!control) return false;
+        control.scrollIntoView({ block: 'nearest' });
+        const { left, top, width, height } = control.getBoundingClientRect();
+        const x = Math.round(left + width / 2), y = Math.round(top + height / 2);
+        const target = document.elementFromPoint(x, y)?.closest('button');
+        return { x, y, target: target?.textContent, open: control.closest('details')?.open };
+      }, label);
+      assert.equal(coordinates.target, label, JSON.stringify(coordinates));
+      await clickPoint(coordinates);
+    };
+    await waitFor(() => document.querySelector('[data-testid="project-canvas-stage"]').dataset.cameraView);
+    await cameraButton('相机视角');
+    await waitFor(() => !document.querySelector('[data-testid="project-canvas-stage"]').dataset.cameraView);
+    await cameraButton('相机视角');
+    await waitFor(() => document.querySelector('[data-testid="project-canvas-stage"]').dataset.cameraView);
+    await target(pandaLayerId);
+    const captured = await editingState();
+    await click('[data-testid="canvas-mode-actual"]');
+    await click('[data-testid="canvas-mode-fit"]');
+    assert.deepEqual(await editingState(), captured);
+    await cameraButton('编辑相机框');
+    await waitFor(() => document.querySelector('[data-testid="project-canvas-stage"]').dataset.cameraTool === 'active');
+    await waitFor(sel => !document.querySelector(sel), toolbar);
+    await click('summary[aria-label="镜头相机"]');
+    const cameraCenter = await pointInside('[data-testid="canvas-logical-stage"]');
+    await drag(cameraCenter.x, cameraCenter.y, cameraCenter.x + 24, cameraCenter.y - 14);
+    await undoCount(beforeParent + 3);
+    console.log('R03-C timeline key, real preset, layer order, lock, unlock, hide, undo, preview, parent binding, and camera tool isolation passed');
+    return;
+  }
+
+  if (phase === 'r03-selection') {
+    await waitForOpeningPaint();
+    const geometry = '[data-testid="canvas-selection-geometry"]';
+    const viewport = '[data-testid="project-canvas-viewport"]';
+    const selectedBounds = () => js((g, v) => {
+      const data = document.querySelector(g);
+      if (!data) return null;
+      const element = document.querySelector(v);
+      const rect = element.getBoundingClientRect();
+      const bounds = JSON.parse(data.dataset.bounds);
+      const left = rect.left + element.clientLeft, top = rect.top + element.clientTop;
+      const rotation = data.dataset.rotationHandle ? JSON.parse(data.dataset.rotationHandle) : null;
+      return { ...bounds, x: bounds.x + left, y: bounds.y + top, target: data.dataset.layerId,
+        rotation: rotation ? { x: rotation.x + left, y: rotation.y + top } : null };
+    }, geometry, viewport);
+    const ready = () => waitFor(sel => !!document.querySelector(sel), geometry);
+    const model = () => js(id => JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]').dataset.layerJson).find(layer => layer.id === id), pandaLayerId);
+    const cursor = (x, y) => ({ x: Math.round(x), y: Math.round(y) });
+    const input = (type, x, y, modifiers = []) => win.webContents.sendInputEvent({ type, ...cursor(x, y), button: 'left', modifiers, clickCount: 1 });
+    const undoCount = n => waitFor(count => document.querySelector('[data-testid="history-controls"]').dataset.undoCount === String(count), n);
+    await click('[data-testid="layer-list-row-' + pandaLayerId + '"] .workbench-layer-name');
+    await ready();
+    const initial = await selectedBounds();
+    assert.equal(initial.target, pandaLayerId);
+    assert(initial.width > 20 && initial.height > 20);
+    const x = initial.x + initial.width / 2, y = initial.y + initial.height * .54;
+    let old = await model();
+
+    input('mouseMove', x, y);
+    input('mouseDown', x, y);
+    input('mouseMove', x + 48, y - 24, ['leftButtonDown']);
+    await waitFor(sel => !document.querySelector(sel), geometry);
+    input('mouseUp', x + 48, y - 24);
+    await undoCount(1);
+    await ready();
+    const moved = await selectedBounds();
+    const current = await model();
+    assert(current.x > old.x && current.y < old.y);
+    assert(Math.abs(moved.x - initial.x - 48) < 2 && Math.abs(moved.y - initial.y + 24) < 2);
+    await click('[aria-label="撤销"]');
+    await undoCount(0);
+    assert.deepEqual(await model(), old);
+    await click('[aria-label="重做"]');
+    await undoCount(1);
+    assert.deepEqual(await model(), current);
+    const b = await selectedBounds();
+    const right = b.x + b.width, bottom = b.y + b.height;
+    input('mouseMove', right, bottom);
+    input('mouseDown', right, bottom);
+    input('mouseMove', right + 30, bottom + 42, ['leftButtonDown']);
+    await waitFor(sel => !document.querySelector(sel), geometry);
+    input('mouseUp', right + 30, bottom + 42);
+    await undoCount(2);
+    await ready();
+    const scaled = await selectedBounds();
+    assert(scaled.width > b.width && scaled.height > b.height);
+    assert(scaled.rotation, 'Konva provides a real rotation handle');
+    const { x: rotX, y: rotY } = scaled.rotation;
+    input('mouseMove', rotX, rotY);
+    await delay(180);
+
+    input('mouseDown', rotX, rotY);
+    input('mouseMove', rotX + 54, rotY + 14, ['leftButtonDown']);
+    await waitFor(sel => !document.querySelector(sel), geometry);
+    input('mouseUp', rotX + 54, rotY + 14);
+    await undoCount(3);
+    await ready();
+    old = await model();
+    assert(Math.abs(old.rotationDeg) > 5);
+    const rotated = await selectedBounds();
+    assert(rotated.rotation);
+    const center = rotated.rotation;
+    input('mouseMove', center.x, center.y);
+    await delay(180);
+    input('mouseDown', center.x, center.y);
+    input('mouseMove', center.x + 38, center.y + 16, ['leftButtonDown']);
+    await waitFor(sel => !document.querySelector(sel), geometry);
+    for (const type of ['keyDown', 'keyUp']) win.webContents.sendInputEvent({ type, keyCode: 'Escape' });
+    input('mouseUp', center.x + 38, center.y + 16);
+    await ready();
+    assert.equal((await editingState()).undo, '3');
+    assert.deepEqual(await model(), old);
+    await screenshot('r03-selection.png');
+    console.log('R03-B real move, scale, rotate, undo, redo, Escape cancellation, and live projected selection passed');
+    return;
+  }
 
   if (phase === 'r03-viewport') {
     await waitForOpeningPaint();
