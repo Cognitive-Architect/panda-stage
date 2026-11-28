@@ -408,14 +408,32 @@ async function run() {
     await target(pandaLayerId);
     const child = () => js(id => JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]').dataset.layerJson).find(layer => layer.id === id), pandaLayerId);
     const bound = await child();
-    assert(bound.parentLayerId === curveLayerId || bound.parentKeys?.some(key => key.parentLayerId === curveLayerId));
+    assert.equal(bound.parentLayerId, curveLayerId);
+    const parentRotate = await waitFor(() => {
+      const layer = document.querySelector('[data-testid="canvas-selection-geometry"]');
+      if (!layer?.dataset.rotationHandle) return false;
+      const viewport = document.querySelector('[data-testid="project-canvas-viewport"]');
+      const rect = viewport.getBoundingClientRect();
+      const handle = JSON.parse(layer.dataset.rotationHandle);
+      return { x: Math.round(rect.left + viewport.clientLeft + handle.x),
+        y: Math.round(rect.top + viewport.clientTop + handle.y) };
+    });
+    await waitFor(({ x, y }) => {
+      const stage = window.Konva.stages.find(item => item.container().closest('[data-testid="project-canvas-stage"]'));
+      const rect = stage.content.getBoundingClientRect();
+      const hit = stage.getIntersection({ x: (x - rect.left) * 1920 / rect.width, y: (y - rect.top) * 1080 / rect.height });
+      return hit?.name() === 'parent-layer-rotate';
+    }, parentRotate);
+    await drag(parentRotate.x, parentRotate.y, parentRotate.x + 40, parentRotate.y + 10);
+    await undoCount(beforeParent + 2);
+    assert.notEqual((await child()).rotationDeg, bound.rotationDeg);
     await click('summary[aria-label="镜头相机"]');
     await js(() => {
       const choice = document.querySelector('select[aria-label="相机模式"]');
       choice.value = 'manual';
       choice.dispatchEvent(new Event('change', { bubbles: true }));
     });
-    await undoCount(beforeParent + 2);
+    await undoCount(beforeParent + 3);
     const cameraButton = async (label) => {
       const coordinates = await waitFor(name => {
         const control = [...document.querySelectorAll('.shot-camera-actions button')].find(button => button.textContent === name);
@@ -445,8 +463,8 @@ async function run() {
     await click('summary[aria-label="镜头相机"]');
     const cameraCenter = await pointInside('[data-testid="canvas-logical-stage"]');
     await drag(cameraCenter.x, cameraCenter.y, cameraCenter.x + 24, cameraCenter.y - 14);
-    await undoCount(beforeParent + 3);
-    console.log('R03-C timeline key, real preset, layer order, lock, unlock, hide, undo, preview, parent binding, and camera tool isolation passed');
+    await undoCount(beforeParent + 4);
+    console.log('R03-C timeline key, real preset, layer order, lock, unlock, hide, undo, preview, parent binding and rotation, and real camera frame edit passed');
     return;
   }
 
