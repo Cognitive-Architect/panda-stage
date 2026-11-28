@@ -1,9 +1,9 @@
 import {
   isFlaGraphicDefinition,
-  type AnimationDefinition,
   type Asset,
   type Character,
   type Project,
+  type ProjectAnimationDefinition,
 } from '../models';
 import { resolveBackgroundVisualDimensions } from '../selectors/canvasLayers';
 
@@ -77,14 +77,28 @@ function collectNonAdaptiveExpressionAssetIds(project: Project): Set<string> {
 
 function isAnimationFramesValid(
   project: Project,
-  animation: AnimationDefinition,
+  animation: ProjectAnimationDefinition,
 ): { valid: boolean; reason?: string } {
   if (animation.frames.length === 0) {
     return { valid: false, reason: '动画缺少有效帧数据。' };
   }
+  const nativeStructured =
+    isFlaGraphicDefinition(animation) && animation.source.origin === 'native';
+  if (nativeStructured) {
+    // Native Definitions own editable structure instead of baked frame media.
+    if (!animation.structure) {
+      return { valid: false, reason: '原生元件缺少可编辑结构。' };
+    }
+    for (const frame of animation.frames) {
+      if (!animation.structure.frames.some((candidate) => candidate.ordinal === frame.ordinal)) {
+        return { valid: false, reason: '原生元件的帧缺少对应结构。' };
+      }
+    }
+    return { valid: true };
+  }
   const assetsById = new Map(project.assets.map((asset) => [asset.id, asset]));
   for (const frame of animation.frames) {
-    const frameAsset = assetsById.get(frame.assetId);
+    const frameAsset = frame.assetId ? assetsById.get(frame.assetId) : undefined;
     if (
       !frameAsset ||
       frameAsset.kind !== 'image' ||

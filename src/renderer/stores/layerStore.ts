@@ -1,6 +1,13 @@
 import {
   LayerMotionService,
   LayerService,
+  createNativeGraphicDefinitionFromNodes,
+  deleteNativeGraphicDefinition,
+  duplicateNativeGraphicDefinition,
+  addNativeGraphicNode,
+  moveNativeGraphicNode,
+  removeNativeGraphicNode,
+  replaceNativeGraphicNode,
   type AfterimageInput,
   type BackgroundTileInput,
   type ConvergingFlightInput,
@@ -507,6 +514,108 @@ export class LayerStore {
       nodePath,
     );
     if (next !== project) this.editorStore.updateProject(next, '解除节点关联');
+    return next;
+  }
+
+  /** Creates a reusable native Graphic Definition from 2+ staged editable nodes. */
+  createNativeGraphicFromSelection(input: {
+    readonly shotId: string;
+    readonly layerId: string;
+    readonly frameOrdinal: number;
+    readonly nodePaths: readonly (readonly string[])[];
+    readonly name?: string;
+  }): { readonly animationId: string; readonly name: string } {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = createNativeGraphicDefinitionFromNodes(snapshot.project, {
+      ...input,
+      createId: () => crypto.randomUUID(),
+    });
+    this.editorStore.updateProject(result.project, '创建原生元件');
+    return { animationId: result.animationId, name: result.name };
+  }
+
+  duplicateNativeGraphicDefinition(animationId: string): { animationId: string; name: string } {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = duplicateNativeGraphicDefinition(snapshot.project, {
+      animationId,
+      createId: () => crypto.randomUUID(),
+    });
+    this.editorStore.updateProject(result.project, '独立副本');
+    return { animationId: result.animationId, name: result.name };
+  }
+
+  deleteNativeGraphicDefinition(animationId: string): readonly { assetId: string; name: string }[] {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = deleteNativeGraphicDefinition(snapshot.project, { animationId });
+    this.editorStore.updateProject(result.project, '删除原生元件');
+    return result.releasedAssets;
+  }
+
+  removeNativeGraphicNode(
+    animationId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+  ): Project {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const next = removeNativeGraphicNode(snapshot.project, {
+      animationId,
+      frameOrdinal,
+      nodePath,
+    });
+    if (next !== snapshot.project) this.editorStore.updateProject(next, '删除元件节点');
+    return next;
+  }
+
+  moveNativeGraphicNode(
+    animationId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    direction: 1 | -1,
+  ): Project {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const next = moveNativeGraphicNode(snapshot.project, {
+      animationId,
+      frameOrdinal,
+      nodePath,
+      direction,
+    });
+    if (next !== snapshot.project) this.editorStore.updateProject(next, '调整元件节点顺序');
+    return next;
+  }
+
+  addNativeGraphicNode(input: {
+    readonly animationId: string;
+    readonly frameOrdinal: number;
+    readonly source: { readonly animationId: string; readonly frameOrdinal: number; readonly nodePath: readonly string[] };
+    readonly afterNodePath?: readonly string[];
+  }): readonly string[] {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = addNativeGraphicNode(snapshot.project, {
+      ...input,
+      createId: () => crypto.randomUUID(),
+    });
+    if (result.project !== snapshot.project) {
+      this.editorStore.updateProject(result.project, '添加元件节点');
+    }
+    return result.nodePath;
+  }
+
+  replaceNativeGraphicNode(input: {
+    readonly animationId: string;
+    readonly frameOrdinal: number;
+    readonly nodePath: readonly string[];
+    readonly source: { readonly animationId: string; readonly frameOrdinal: number; readonly nodePath: readonly string[] };
+  }): Project {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const next = replaceNativeGraphicNode(snapshot.project, input);
+    if (next !== snapshot.project) this.editorStore.updateProject(next, '替换元件节点内容');
     return next;
   }
 

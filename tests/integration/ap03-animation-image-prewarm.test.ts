@@ -1494,7 +1494,9 @@ async function runApReal02Scenario(options: ApReal02ScenarioOptions): Promise<{
       : { includeSecond: false },
   );
   const shot = project.shots[0]!;
-  const frameAssetIds = project.animations[0]!.frames.map((frame) => frame.assetId);
+  const frameAssetIds = project.animations[0]!.frames.flatMap((frame) =>
+    frame.assetId ? [frame.assetId] : [],
+  );
   const frameIndexByAssetId = new Map(
     frameAssetIds.map((assetId, index) => [assetId, index] as const),
   );

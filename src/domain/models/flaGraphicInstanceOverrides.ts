@@ -181,7 +181,10 @@ function updateNodeTransformInList(
   if (index < 0) return null;
   const target = nodes[index]!;
   if (rest.length === 0) {
-    if (target.type === 'opaque') return null;
+    // Imported opaque nodes keep their display in a fallback SVG and are never
+    // authored through the structure; authored-native shape nodes own their
+    // vector regions and are the only opaque nodes whose transform lives here.
+    if (target.type === 'opaque' && target.authored !== 'native') return null;
     if (matricesEqual(target.localTransform, localTransform)) return null;
     const nextNodes = [...nodes];
     nextNodes[index] = { ...target, localTransform: { ...localTransform } };

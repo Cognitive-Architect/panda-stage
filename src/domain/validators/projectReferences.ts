@@ -156,7 +156,7 @@ export function validateProjectReferences(
         return;
       }
 
-      const asset = assets.get(frame.assetId);
+      const asset = frame.assetId ? assets.get(frame.assetId) : undefined;
       if (!asset || asset.kind !== 'image') {
         addIssue(
           context,

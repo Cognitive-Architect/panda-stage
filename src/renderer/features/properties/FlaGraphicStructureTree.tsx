@@ -8,6 +8,7 @@ import {
   isFlaGraphicDefinition,
   isFlaGraphicEditableSubtreeShapeNode,
   isFlaGraphicNodeTransformable,
+  isNativeFlaGraphicDefinition,
   type FlaEditableShapeRegion,
   type FlaGraphicSubtreeCandidateAssessment,
 } from '../../../domain';
@@ -65,6 +66,7 @@ export function FlaGraphicStructureTree(): React.JSX.Element | null {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [stagedSubtrees, setStagedSubtrees] = useState<readonly StagedSubtreeSelection[]>([]);
   const [extractError, setExtractError] = useState<string | null>(null);
+  const [nativeNotice, setNativeNotice] = useState<string | null>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const selectedKey = path ? JSON.stringify(path) : null;
   const revealPath = path ?? scope?.path;
@@ -75,6 +77,7 @@ export function FlaGraphicStructureTree(): React.JSX.Element | null {
   useEffect(() => {
     setStagedSubtrees([]);
     setExtractError(null);
+    setNativeNotice(null);
   }, [target?.sessionKey, target?.frameOrdinal]);
   useEffect(() => {
     if (!revealPath?.length) return;
@@ -296,6 +299,89 @@ export function FlaGraphicStructureTree(): React.JSX.Element | null {
           : selectedAssessment?.reason ?? null);
   const hasInvalidStaged = stagedAssessments.some((entry) => !entry.assessment.extractable);
   const canCreateAdaptiveCharacter = stagedSubtrees.length >= 2 && !hasInvalidStaged;
+  const isNativeDefinition = isNativeFlaGraphicDefinition(target.animation);
+  const stagedHasRegionSelection = stagedSubtrees.some(
+    (item) => item.regionRef !== undefined || item.regionVector !== undefined,
+  );
+  const canCreateNativeGraphic =
+    stagedSubtrees.length >= 2 && !hasInvalidStaged && !stagedHasRegionSelection;
+  const selectedStructureNode = path?.length
+    ? getFlaGraphicNodeAtPath(target.frame, path, target.animation.structure)
+    : null;
+  const selectedNativeNodeEditable =
+    isNativeDefinition &&
+    selectedStructureNode !== null &&
+    selectedStructureNode.authored === 'native' &&
+    !target.layer.locked;
+
+  const handleCreateNativeGraphic = (): void => {
+    if (!canCreateNativeGraphic) return;
+    setExtractError(null);
+    setNativeNotice(null);
+    try {
+      const result = layerStore.createNativeGraphicFromSelection({
+        shotId: target.shotId,
+        layerId: target.layerId,
+        frameOrdinal: target.frameOrdinal,
+        nodePaths: stagedSubtrees.map((item) => item.nodePath),
+      });
+      setStagedSubtrees([]);
+      setNativeNotice(`已创建原生元件“${result.name}”，可在素材库中放置多个实例。`);
+    } catch (error) {
+      setExtractError(
+        error instanceof Error ? error.message : '创建原生元件失败。',
+      );
+    }
+  };
+
+  const handleNativeNodeDelete = (): void => {
+    if (!path?.length) return;
+    setExtractError(null);
+    setNativeNotice(null);
+    try {
+      layerStore.removeNativeGraphicNode(target.animation.id, target.frameOrdinal, path);
+      selectionStore.setSelectedStructuredNodeSelection(null, null);
+      setNativeNotice('已删除节点及其子节点。');
+    } catch (error) {
+      setExtractError(error instanceof Error ? error.message : '删除节点失败。');
+    }
+  };
+
+  const handleNativeNodeMove = (direction: 1 | -1): void => {
+    if (!path?.length) return;
+    setExtractError(null);
+    setNativeNotice(null);
+    try {
+      layerStore.moveNativeGraphicNode(target.animation.id, target.frameOrdinal, path, direction);
+      setNativeNotice(direction > 0 ? '已前移节点。' : '已后移节点。');
+    } catch (error) {
+      setExtractError(error instanceof Error ? error.message : '调整节点顺序失败。');
+    }
+  };
+
+  const handleNativeNodeDuplicate = (): void => {
+    if (!path?.length) return;
+    setExtractError(null);
+    setNativeNotice(null);
+    try {
+      const createdPath = layerStore.addNativeGraphicNode({
+        animationId: target.animation.id,
+        frameOrdinal: target.frameOrdinal,
+        source: {
+          animationId: target.animation.id,
+          frameOrdinal: target.frameOrdinal,
+          nodePath: path,
+        },
+        afterNodePath: path,
+      });
+      if (createdPath.length > 0) {
+        selectionStore.setSelectedStructuredNodeSelection(createdPath, null);
+      }
+      setNativeNotice('已把所选节点复制为新节点。');
+    } catch (error) {
+      setExtractError(error instanceof Error ? error.message : '复制节点失败。');
+    }
+  };
 
   const handleExtractIndependentRegion = (): void => {
     if (!path?.length || !activeRegionForSelection || shapeEditInfo?.isExtractedSibling) {
@@ -435,6 +521,42 @@ export function FlaGraphicStructureTree(): React.JSX.Element | null {
                 提取为独立区域
               </button>
             ) : null}
+            {isNativeDefinition && selectedNativeNodeEditable ? (
+              <>
+                <button
+                  type="button"
+                  className="fla-subtree-stage-button"
+                  data-testid="native-node-move-backward"
+                  onClick={() => handleNativeNodeMove(-1)}
+                >
+                  后移
+                </button>
+                <button
+                  type="button"
+                  className="fla-subtree-stage-button"
+                  data-testid="native-node-move-forward"
+                  onClick={() => handleNativeNodeMove(1)}
+                >
+                  前移
+                </button>
+                <button
+                  type="button"
+                  className="fla-subtree-stage-button"
+                  data-testid="native-node-duplicate"
+                  onClick={handleNativeNodeDuplicate}
+                >
+                  复制为节点
+                </button>
+                <button
+                  type="button"
+                  className="fla-subtree-stage-button"
+                  data-testid="native-node-delete"
+                  onClick={handleNativeNodeDelete}
+                >
+                  删除节点
+                </button>
+              </>
+            ) : null}
             <span className="fla-subtree-selection-name" title={selectedDisplayLabel}>
               {selectedDisplayLabel}
             </span>
@@ -478,18 +600,34 @@ export function FlaGraphicStructureTree(): React.JSX.Element | null {
               >
                 创建角色
               </button>
+              <button
+                type="button"
+                className="fla-subtree-create-button"
+                data-testid="native-graphic-create"
+                disabled={!canCreateNativeGraphic}
+                onClick={handleCreateNativeGraphic}
+              >
+                创建原生元件
+              </button>
               <span className="fla-subtree-create-hint">
                 {stagedSubtrees.length < 2
                   ? '再选 1 个零件即可创建'
-                  : hasInvalidStaged
-                    ? '请先移除失效节点'
-                    : `已选 ${stagedSubtrees.length} 个独立零件`}
+                  : stagedHasRegionSelection
+                    ? '创建原生元件需选择整节点，不支持区域级选择'
+                    : hasInvalidStaged
+                      ? '请先移除失效节点'
+                      : `已选 ${stagedSubtrees.length} 个独立零件`}
               </span>
             </div>
           </div>
         ) : null}
         {extractError ? (
           <p className="fla-subtree-error" role="alert">{extractError}</p>
+        ) : null}
+        {nativeNotice ? (
+          <p className="fla-subtree-note" role="status" data-testid="native-graphic-notice">
+            {nativeNotice}
+          </p>
         ) : null}
       </div>
     ) : null}

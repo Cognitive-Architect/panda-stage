@@ -331,7 +331,9 @@ export function flaGraphicNodeCanSelect(
   node: FlaGraphicStructureNode,
 ): boolean {
   return node.type !== 'opaque' || Boolean(
-    node.fallbackAssetId && node.fallbackScope && node.fallbackViewBox,
+    (node.fallbackAssetId && node.fallbackScope && node.fallbackViewBox) ||
+    // Authored-native Shapes own editable vector regions instead of a fallback asset.
+    (node.authored === 'native' && node.opaqueKind === 'shape' && node.fallbackViewBox),
   );
 }
 
@@ -351,6 +353,9 @@ export function flaGraphicNodeHasReadyVisual(
     return Boolean(node.assetId && images.has(node.assetId) && assets.has(node.assetId));
   }
   if (node.type === 'opaque') {
+    // Authored-native Shapes render from editable vector regions, not from a
+    // fallback SVG asset, so their content is ready without one.
+    if (node.authored === 'native') return Boolean(node.fallbackViewBox);
     return Boolean(
       node.fallbackAssetId &&
         node.fallbackScope &&

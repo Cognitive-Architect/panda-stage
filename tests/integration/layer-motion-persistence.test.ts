@@ -258,7 +258,8 @@ describe('Layer Target V0 Character=0 tracer bullet E2E & persistence (#1140)', 
       expect(library.animations).toEqual(migrated.project.animations);
       expect(library.assets).toEqual(migrated.project.assets);
       const assetId = library.animations[0]!.frames[1]!.assetId;
-      expect(scanAssetReferences(library, assetId).some((ref) => ref.kind === 'animation-frame')).toBe(true);
+      expect(assetId).toBeTruthy();
+      expect(scanAssetReferences(library, assetId as string).some((ref) => ref.kind === 'animation-frame')).toBe(true);
       const segmentId = library.animationSegments![0]!.id;
       const loop = layers.placeAnimationSegment(library, IDS.shot, segmentId, 500);
       const updated = layers.saveAnimationSegment(loop.project, {

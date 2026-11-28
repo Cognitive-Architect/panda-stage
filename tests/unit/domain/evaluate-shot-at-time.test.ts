@@ -4,7 +4,7 @@ import {
   evaluateShotAtTime,
   resolveLayerVisualParts,
 } from '../../../src/domain';
-import type { EvaluatedLayer, Layer, Project, Shot, TimelineEvent } from '../../../src/domain';
+import type { AnimationDefinition, EvaluatedLayer, Layer, Project, Shot, TimelineEvent } from '../../../src/domain';
 import { resolveAnimationPlaybackFrameState } from '../../../src/domain/evaluate-shot-at-time';
 import { buildProject, buildProjectWithAnimation, IDS } from './testProject';
 
@@ -185,7 +185,7 @@ describe('T02 evaluateShotAtTime', () => {
 
   it('uses source-frame counts for fractional-millisecond loop periods and one-frame cycles', () => {
     const original = buildProjectWithAnimation();
-    const originalAnimation = original.animations[0]!;
+    const originalAnimation = original.animations[0] as AnimationDefinition;
     const frameDurationMs = 1_000 / 30;
     const fractionalCycleProject: Project = {
       ...original,
@@ -208,6 +208,7 @@ describe('T02 evaluateShotAtTime', () => {
       }],
     };
     const shot = fractionalCycleProject.shots[0]!;
+    const fractionalAnimation = fractionalCycleProject.animations[0] as AnimationDefinition;
     const layer: Layer = {
       id: IDS.animationLayer,
       name: 'fractional cycle',
@@ -246,13 +247,13 @@ describe('T02 evaluateShotAtTime', () => {
     const oneFrameProject: Project = {
       ...fractionalCycleProject,
       animations: [{
-        ...fractionalCycleProject.animations[0]!,
+        ...fractionalAnimation,
         source: {
-          ...fractionalCycleProject.animations[0]!.source,
+          ...fractionalAnimation.source,
           endFrameIndex: 0,
         },
         durationMs: frameDurationMs,
-        frames: fractionalCycleProject.animations[0]!.frames.slice(0, 1),
+        frames: fractionalAnimation.frames.slice(0, 1),
       }],
     };
     const oneFrame = evaluateShotAtTime(

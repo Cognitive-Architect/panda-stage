@@ -86,10 +86,11 @@ export function resolveTalkingAnimationFace(
       asset: { width, height, flaGraphic, ...(flaGraphic.structureFrame ? {} : { assetId: flaGraphic.frameAssetId }) },
     };
   }
-  if (isUnavailable(frame.assetId)) return null;
+  const sourceFrame = frame as AnimationFrame;
+  if (!sourceFrame.assetId || isUnavailable(sourceFrame.assetId)) return null;
   return {
-    source: { kind: 'image', assetId: frame.assetId },
-    asset: { width, height, assetId: frame.assetId, rasterFrame: frame },
+    source: { kind: 'image', assetId: sourceFrame.assetId },
+    asset: { width, height, assetId: sourceFrame.assetId, rasterFrame: sourceFrame },
   };
 }
 
@@ -101,7 +102,12 @@ export function listTalkingAnimationImageIds(definition: ProjectAnimationDefinit
   const ids = new Set<string>();
   const structure = isFlaGraphicDefinition(definition) ? definition.structure : undefined;
   for (const frame of definition.frames) {
-    if (!structure?.frames.some((candidate) => candidate.ordinal === frame.ordinal)) ids.add(frame.assetId);
+    if (
+      frame.assetId &&
+      !structure?.frames.some((candidate) => candidate.ordinal === frame.ordinal)
+    ) {
+      ids.add(frame.assetId);
+    }
   }
   if (structure) {
     for (const frame of structure.frames) {

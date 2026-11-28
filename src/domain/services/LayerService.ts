@@ -250,7 +250,20 @@ export type LayerServiceErrorCode =
   | 'NODE_IDENTITY_ALIAS_CONFLICT'
   | 'NODE_IDENTITY_ALIAS_TRACKED'
   | 'NODE_IDENTITY_ALIAS_ATTACHED'
-  | 'NODE_IDENTITY_ALIAS_GENERATION_FAILED';
+  | 'NODE_IDENTITY_ALIAS_GENERATION_FAILED'
+  | 'NATIVE_GRAPHIC_SOURCE_REQUIRED'
+  | 'NATIVE_GRAPHIC_FRAME_REQUIRED'
+  | 'NATIVE_GRAPHIC_SELECTION_EMPTY'
+  | 'NATIVE_GRAPHIC_SELECTION_INVALID'
+  | 'NATIVE_GRAPHIC_SELECTION_OVERLAP'
+  | 'NATIVE_GRAPHIC_MEDIA_UNRESOLVED'
+  | 'NATIVE_GRAPHIC_DEFINITION_NOT_FOUND'
+  | 'NATIVE_GRAPHIC_NOT_NATIVE'
+  | 'NATIVE_GRAPHIC_IN_USE'
+  | 'NATIVE_GRAPHIC_NODE_NOT_FOUND'
+  | 'NATIVE_GRAPHIC_LAST_NODE'
+  | 'NATIVE_GRAPHIC_SOURCE_NODE_NOT_EDITABLE'
+  | 'NATIVE_GRAPHIC_NAME_CONFLICT';
 
 export class LayerServiceError extends Error {
   constructor(
@@ -640,6 +653,9 @@ export class LayerService {
       );
     }
     for (const frame of animation.frames) {
+      // Native FLA Graphic Definitions render from their authored structure and
+      // intentionally carry no baked frame media asset.
+      if (!frame.assetId) continue;
       const frameAsset = project.assets.find(
         (candidate) => candidate.id === frame.assetId,
       );
