@@ -373,6 +373,29 @@ export function BatchTimeEditPanel({
     );
   }, [activeDialogueIds, shot.dialogues]);
 
+  /** Shared clip between a dialogue that moves and one that stays put. */
+  const hasSharedClipAcrossInsertPoint = useMemo(() => {
+    if (mode !== 'insert-gap') return false;
+    const atMs = timelineUi.currentTimeMs;
+    const moving = new Set(
+      shot.dialogues
+        .filter((dialogue) => dialogue.startMs >= atMs && dialogue.endMs > dialogue.startMs)
+        .map((dialogue) => dialogue.id),
+    );
+    if (moving.size === 0) return false;
+    const movingClipIds = new Set(
+      shot.dialogues
+        .filter((dialogue) => moving.has(dialogue.id) && dialogue.audioClipId)
+        .map((dialogue) => dialogue.audioClipId!),
+    );
+    return shot.dialogues.some(
+      (dialogue) =>
+        !moving.has(dialogue.id) &&
+        dialogue.audioClipId &&
+        movingClipIds.has(dialogue.audioClipId),
+    );
+  }, [mode, shot.dialogues, timelineUi.currentTimeMs]);
+
   const parsedDeltaMs = parseSecondsToMs(deltaInput);
   const parsedDurationMs = parseSecondsToMs(durationInput);
   const parsedGapDurationMs = parseSecondsToMs(gapDurationInput);
@@ -394,6 +417,7 @@ export function BatchTimeEditPanel({
             atMs: timelineUi.currentTimeMs,
             durationMs: parsedGapDurationMs,
             layerIds: gapLayerIds,
+            sharedClipPolicy,
           }),
         };
       } catch (error) {
@@ -582,6 +606,7 @@ export function BatchTimeEditPanel({
           atMs: timelineUi.currentTimeMs,
           durationMs: preview.plan.durationMs,
           layerIds: gapLayerIds,
+          sharedClipPolicy,
         });
         onClose();
         return;
@@ -774,7 +799,8 @@ export function BatchTimeEditPanel({
         </div>
       )}
 
-      {mode === 'shift' && hasSharedClipWithUnselected ? (
+      {(mode === 'shift' && hasSharedClipWithUnselected) ||
+      (mode === 'insert-gap' && hasSharedClipAcrossInsertPoint) ? (
         <div
           className="batch-time-shared-clip-policy"
           data-testid="batch-time-shared-clip-policy"
@@ -1026,6 +1052,30 @@ export function BatchTimeEditPanel({
             </div>
             {preview.mode === 'insert-gap' ? (
               <>
+                {preview.plan.effectiveDeltaMs !== preview.plan.durationMs ? (
+                  <div
+                    className="batch-time-gap-effective"
+                    data-testid="batch-time-gap-effective"
+                  >
+                    {`关键帧按 24fps 对齐，实际后移 ${formatSeconds(
+                      preview.plan.effectiveDeltaMs,
+                    )}（请求 ${formatSeconds(preview.plan.durationMs)}）`}
+                  </div>
+                ) : null}
+                {preview.plan.crossTypePlan?.dialoguePlan ? (
+                  <div
+                    className="batch-time-gap-shared-audio"
+                    data-testid="batch-time-gap-shared-audio"
+                  >
+                    {`移动对白 ${preview.plan.crossTypePlan.dialoguePlan.includedDialogueIds.length} 条；共享配音 ${
+                      preview.plan.crossTypePlan.dialoguePlan.splitAudioClipIds.length
+                    } 段按「${
+                      sharedClipPolicy === 'split'
+                        ? '拆分，未选对白留在原位'
+                        : '连同未选对白一起移动'
+                    }」处理`}
+                  </div>
+                ) : null}
                 {preview.plan.needsShotExtension &&
                 preview.plan.extensionToMs !== null ? (
                   <label

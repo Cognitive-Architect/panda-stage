@@ -343,6 +343,10 @@ export interface InsertTimeGapPlan {
   readonly shotId: string;
   readonly atMs: number;
   readonly durationMs: number;
+  /** Delta the supported content actually moves; frame-snapped when keys participate. */
+  readonly effectiveDeltaMs: number;
+  readonly deltaFrames?: number;
+  readonly frameSnapped?: boolean;
   readonly dialogueIds: readonly string[];
   readonly eventIds: readonly string[];
   readonly layerMotionSpans: readonly BatchLayerMotionSpanRef[];
@@ -1494,14 +1498,40 @@ export class TimelineEventBatchService {
     const hasSupported =
       dialogueIds.length > 0 ||
       eventIds.length > 0 ||
-      layerMotionSpans.length > 0;
-    let maxEndMs = atMs;
+      layerMotionSpans.length > 0;    let maxEndMs = atMs;
     if (hasSupported) {
       for (const dialogueId of dialogueIds) {
         const dialogue = shot.dialogues.find(
           (candidate) => candidate.id === dialogueId,
         );
         if (dialogue) maxEndMs = Math.max(maxEndMs, dialogue.endMs);
+      }
+      // "Move linked dialogues too" must never quietly drag content that sits
+      // before the insert point; that would move crossed-over material the
+      // preview does not account for. Require the explicit split policy here.
+      if ((input.sharedClipPolicy ?? 'split') === 'include') {
+        const movingSet = new Set(dialogueIds);
+        const movingClipIds = new Set(
+          shot.dialogues
+            .filter(
+              (dialogue) =>
+                movingSet.has(dialogue.id) && dialogue.audioClipId,
+            )
+            .map((dialogue) => dialogue.audioClipId!),
+        );
+        const blocked = shot.dialogues.filter(
+          (dialogue) =>
+            !movingSet.has(dialogue.id) &&
+            dialogue.audioClipId &&
+            movingClipIds.has(dialogue.audioClipId) &&
+            dialogue.startMs < atMs,
+        );
+        if (blocked.length > 0) {
+          throw new TimelineEventBatchError(
+            'TIMELINE_EVENT_UNSUPPORTED',
+            `共享配音的未选对白位于插入点之前（${blocked.length} 条），连同移动会把插入点前的内容整体后移；请改用「拆分共享配音」。`,
+          );
+        }
       }
       for (const eventId of eventIds) {
         const event = shot.timelineEvents.find(
@@ -1514,16 +1544,36 @@ export class TimelineEventBatchService {
       }
     }
     const requiredEndMs = maxEndMs + durationMs;
-    const needsShotExtension = hasSupported && requiredEndMs > shot.durationMs;
-    const extensionToMs = needsShotExtension ? requiredEndMs : null;
-    const planningProject = needsShotExtension
-      ? this.shotService.setDuration(project, shot.id, requiredEndMs)
-      : project;
-
+    // Keyframe shifts are quantized to the 24fps grid, so the real result may
+    // land later than `maxEndMs + requestedDelta` (e.g. 1000ms + 30ms -> 1042ms).
+    // Probe far enough to learn the actual delta, then extend the shot to the
+    // real end instead of a rounded-down estimate that fails as out-of-bounds.
+    let extensionToMs: number | null = null;
     let crossTypePlan: CrossTypeBatchShiftPlan | null = null;
+    let probeDeltaMs: number | null = null;
+
     if (hasSupported) {
-      try {
-        crossTypePlan = this.planCrossTypeShift(planningProject, {
+      const probeEndMs =
+        requiredEndMs + Math.ceil(1_000 / TIMELINE_FPS) + 1;
+      const probeProject =
+        probeEndMs > shot.durationMs
+          ? this.shotService.setDuration(project, shot.id, probeEndMs)
+          : project;
+      const probePlan = this.tryPlanCrossTypeShift(probeProject, {
+        shotId: shot.id,
+        dialogueIds,
+        eventIds,
+        layerMotionSpans,
+        deltaMs: durationMs,
+        ...(input.sharedClipPolicy
+          ? { sharedClipPolicy: input.sharedClipPolicy }
+          : {}),
+      });
+
+      if (probePlan) {
+        probeDeltaMs = probePlan.deltaMs;
+        const actualEndMs = maxEndMs + probePlan.deltaMs;
+        const shiftInput = {
           shotId: shot.id,
           dialogueIds,
           eventIds,
@@ -1532,26 +1582,48 @@ export class TimelineEventBatchService {
           ...(input.sharedClipPolicy
             ? { sharedClipPolicy: input.sharedClipPolicy }
             : {}),
-        });
-      } catch (error) {
-        if (
-          error instanceof TimelineEventBatchError &&
-          (error.code === 'TIMELINE_EVENT_UNSUPPORTED' ||
-            error.code === 'TIMELINE_EVENT_BATCH_TOO_SMALL')
-        ) {
-          crossTypePlan = null;
+        };
+        if (actualEndMs > shot.durationMs) {
+          extensionToMs = actualEndMs;
+          crossTypePlan = this.tryPlanCrossTypeShift(
+            this.shotService.setDuration(project, shot.id, actualEndMs),
+            shiftInput,
+          );
         } else {
-          throw error;
+          // The snapped result already fits. Re-plan on the real duration so the
+          // preview equals apply; a sub-frame request that quantizes to 0 has
+          // nothing to move even though the raw ms value looks out of bounds.
+          try {
+            crossTypePlan = this.planCrossTypeShift(project, shiftInput);
+          } catch (error) {
+            const recoverable =
+              error instanceof TimelineEventBatchError &&
+              (error.code === 'TIMELINE_EVENT_UNSUPPORTED' ||
+                error.code === 'TIMELINE_EVENT_BATCH_TOO_SMALL' ||
+                (error.code === 'TIMELINE_EVENT_BATCH_OUT_OF_RANGE' &&
+                  probePlan.deltaMs === 0));
+            if (!recoverable) throw error;
+            crossTypePlan = null;
+          }
         }
       }
     }
 
+    const needsShotExtension = extensionToMs !== null;
     const allSkipped = [...skipped, ...(crossTypePlan?.skipped ?? [])];
     const changedCount = crossTypePlan?.changedCount ?? 0;
     return {
       shotId: shot.id,
       atMs,
       durationMs,
+      effectiveDeltaMs:
+        crossTypePlan?.deltaMs ?? probeDeltaMs ?? durationMs,
+      ...(crossTypePlan?.deltaFrames !== undefined
+        ? { deltaFrames: crossTypePlan.deltaFrames }
+        : {}),
+      ...(crossTypePlan?.frameSnapped !== undefined
+        ? { frameSnapped: crossTypePlan.frameSnapped }
+        : {}),
       dialogueIds,
       eventIds,
       layerMotionSpans,
@@ -1564,6 +1636,28 @@ export class TimelineEventBatchService {
       latestEndMs: crossTypePlan?.latestEndMs ?? atMs,
       changedCount,
     };
+  }
+
+  /**
+   * Plans a cross-type shift, treating "nothing supported selected" as an empty
+   * plan instead of an error so a healthy subset can still be previewed.
+   */
+  private tryPlanCrossTypeShift(
+    project: Project,
+    input: CrossTypeBatchShiftInput,
+  ): CrossTypeBatchShiftPlan | null {
+    try {
+      return this.planCrossTypeShift(project, input);
+    } catch (error) {
+      if (
+        error instanceof TimelineEventBatchError &&
+        (error.code === 'TIMELINE_EVENT_UNSUPPORTED' ||
+          error.code === 'TIMELINE_EVENT_BATCH_TOO_SMALL')
+      ) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -1589,8 +1683,7 @@ export class TimelineEventBatchService {
     return candidate;
   }
 
-  private collectUnsupportedAsSkipped(
-    project: Project,
+  private collectUnsupportedAsSkipped(    project: Project,
     shotId: string,
     eventIds: readonly string[],
     layerMotionSpans: readonly BatchLayerMotionSpanRef[],
