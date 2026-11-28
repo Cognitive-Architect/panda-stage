@@ -1681,10 +1681,17 @@ export function analyzeProjectResourceReuse(options: {
  * Resolves explicit user reuse selections against a verified compatibility analysis.
  * Any choice whose targetId does not match a provably compatible candidate is
  * rejected rather than silently merged.
+ *
+ * When a closure is provided, cross-character motion-mapping dependencies are
+ * validated against the final reuse set: if character B is reused but its
+ * motionMapping references character A that is being copied (not reused),
+ * B is locally degraded to an independent definition so its references can be
+ * remapped to the correct new A.
  */
 export function resolveDefinitionReusePlan(
   analysis: ProjectResourceReuseAnalysis,
   requestedReuseSelections: readonly ProjectResourceReuseSelection[] = [],
+  closure?: ProjectResourceImportClosure,
 ): ResolvedDefinitionReusePlan {
   const reusedAnimations = new Map<string, ProjectResourceReusableDefinition>();
   const reusedCharacters = new Map<string, ProjectResourceReusableDefinition>();
@@ -1705,6 +1712,41 @@ export function resolveDefinitionReusePlan(
       } else {
         rejectedChoices.push(choice);
       }
+    }
+  }
+
+  // Dependency closure check: a reused character whose motionMapping references
+  // a source character that is NOT being reused (i.e. will be copied as a new
+  // definition) must be degraded to independent copy so its references can be
+  // remapped to the correct new dependency.
+  if (closure && reusedCharacters.size > 0) {
+    const reusedSourceIds = new Set(reusedCharacters.keys());
+    const charById = new Map(closure.characters.map((c) => [c.id, c]));
+    const toDegrade: string[] = [];
+    for (const [sourceId] of reusedCharacters) {
+      const char = charById.get(sourceId);
+      const mappings =
+        char && 'motionMappings' in char ? char.motionMappings : undefined;
+      if (!mappings?.length) continue;
+      for (const mapping of mappings) {
+        if (
+          mapping.sourceCharacterId &&
+          charById.has(mapping.sourceCharacterId) &&
+          !reusedSourceIds.has(mapping.sourceCharacterId)
+        ) {
+          toDegrade.push(sourceId);
+          break;
+        }
+      }
+    }
+    for (const sourceId of toDegrade) {
+      const candidate = reusedCharacters.get(sourceId)!;
+      reusedCharacters.delete(sourceId);
+      rejectedChoices.push({
+        kind: 'character',
+        sourceId,
+        targetId: candidate.targetId,
+      });
     }
   }
 

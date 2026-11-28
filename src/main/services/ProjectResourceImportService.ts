@@ -443,6 +443,7 @@ export class ProjectResourceImportService {
             reusePlan = resolveDefinitionReusePlan(
               verifiedAnalysis,
               request.reuseDefinitions,
+              closure,
             );
           }
 

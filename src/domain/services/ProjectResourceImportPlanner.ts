@@ -731,7 +731,7 @@ export function buildProjectResourceImportPreview(
     targetProject,
     closure,
   });
-  const reusePlan = resolveDefinitionReusePlan(reuseAnalysis, reuseDefinitions);
+  const reusePlan = resolveDefinitionReusePlan(reuseAnalysis, reuseDefinitions, closure);
   const effectiveScope = collectEffectiveImportScope(
     sourceProject,
     selections,
