@@ -8,13 +8,19 @@ import {
   characterBonePoseMap,
   createCharacterPartAnimationClip,
   evaluateShotAtTime,
+  measureFlaGraphicSubtreeBounds,
   resolveCharacterBoneTree,
   resolveLayerVisualParts,
   resolveVectorSkinWeights,
+  transformPointByVisualPart,
+  unionFlaShapeRegionBounds,
   vectorSkinBoneRestSegments,
+  visualPartRenderTransform,
+  type LayerVisualPart,
   type VectorSkinBoneSegment,
   type Project,
   type VectorSkinInfluence,
+  type VisualLocalRect,
 } from '../../src/domain';
 import type { AffineMatrix2D } from '../../src/shared/affine-matrix';
 import {
@@ -487,3 +493,207 @@ function adaptiveCharacter(project: Project, fixture: VectorSkinFixture) {
   if (character.mode !== 'adaptive-parts') throw new Error('Expected adaptive parts.');
   return character;
 }
+
+function rectContainsRect(outer: VisualLocalRect, inner: VisualLocalRect): boolean {
+  const epsilon = 1e-6;
+  return (
+    inner.x >= outer.x - epsilon &&
+    inner.y >= outer.y - epsilon &&
+    inner.x + inner.width <= outer.x + outer.width + epsilon &&
+    inner.y + inner.height <= outer.y + outer.height + epsilon
+  );
+}
+
+/**
+ * Clip-space bounds of the drawable vector leaves, computed exactly like the
+ * raster adapter: region bounds relative to the leaf base view box, through the
+ * node world transform, the Graphic anchor, and the Part image transform.
+ */
+function vectorContentClipRect(part: LayerVisualPart): VisualLocalRect {
+  const node = part.flaGraphic?.layers
+    ?.flatMap((layer) => layer.nodes)
+    .find((candidate) => candidate.vectorVisual);
+  if (!part.flaGraphic || !part.imageTransform || !node?.vectorVisual) {
+    throw new Error('Expected a structured vector Part.');
+  }
+  const bounds = unionFlaShapeRegionBounds(
+    node.vectorVisual.regions,
+    node.vectorVisual.residueStrokes,
+  );
+  if (!bounds) throw new Error('Expected drawable vector bounds.');
+  const baseViewBox = node.vectorVisual.baseViewBox;
+  const anchor = part.flaGraphic.anchor;
+  const world = node.worldTransform;
+  const transform = part.imageTransform;
+  const left = bounds.x - baseViewBox.x;
+  const top = bounds.y - baseViewBox.y;
+  const points = [
+    [left, top],
+    [left + bounds.width, top],
+    [left, top + bounds.height],
+    [left + bounds.width, top + bounds.height],
+  ].map(([x, y]) => {
+    const graphicX = world.a * x! + world.c * y! + world.tx - anchor.x;
+    const graphicY = world.b * x! + world.d * y! + world.ty - anchor.y;
+    return {
+      x: transform.a * graphicX + transform.c * graphicY + transform.tx,
+      y: transform.b * graphicX + transform.d * graphicY + transform.ty,
+    };
+  });
+  const minX = Math.min(...points.map((point) => point.x));
+  const minY = Math.min(...points.map((point) => point.y));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const maxY = Math.max(...points.map((point) => point.y));
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+describe('two-Bone vector skin deformed runtime bounds (#1471 R2)', () => {
+  /** Sleeve + untouched bitmap Character with one skin and two authored Bone poses. */
+  function deformedCharacter() {
+    const fixture = buildVectorSkinFixture();
+    const skinned = withVectorSkin(fixture);
+    const project = posedProject(fixture, skinned.project, { a: 45, b: -30 });
+    // Same Character/Clip without the skin: the pre-fix rest bounds baseline.
+    const baselineProject = withVectorSkinClip(fixture.project, fixture);
+    return { fixture, skinned, project, baselineProject };
+  }
+
+  function frameAt(
+    project: Project,
+    fixture: VectorSkinFixture,
+    timeMs: number,
+  ) {
+    const shot = project.shots.find((candidate) => candidate.id === fixture.shotId)!;
+    const evaluated = evaluateShotAtTime(shot, timeMs, project).layers.find(
+      (candidate) => candidate.id === fixture.layerId,
+    )!;
+    const visual = resolveLayerVisualParts(project, shot, evaluated, timeMs);
+    const part = visual.parts.find((candidate) =>
+      candidate.source.kind === 'adaptive-part-fla-graphic' &&
+      candidate.source.characterPartId === fixture.sleevePartId);
+    const imagePart = visual.parts.find((candidate) =>
+      candidate.source.kind === 'adaptive-part' &&
+      candidate.source.characterPartId === fixture.imagePartId);
+    if (!part || !imagePart) throw new Error('Expected both fixture Parts to resolve.');
+    return { shot, evaluated, visual, part, imagePart };
+  }
+
+  function clipOf(project: Project, fixture: VectorSkinFixture) {
+    const clip = project.shots
+      .find((candidate) => candidate.id === fixture.shotId)!
+      .layers.find((candidate) => candidate.id === fixture.layerId)!.animationClip;
+    if (!clip || clip.version !== 1) throw new Error('Expected a Character Clip v1.');
+    return clip;
+  }
+
+  it('threads the current deformed bounds into the composite bounds instead of clipping the sleeve', () => {
+    const { fixture, project, baselineProject } = deformedCharacter();
+    const rest = frameAt(project, fixture, 0);
+    const baselineRest = frameAt(baselineProject, fixture, 0);
+
+    // Deformed bounds update per frame, while every rest frame and the untouched
+    // Part stay byte-identical to the pre-skin evaluation.
+    expect(rest.part.vectorSkin!.deformed).toBe(false);
+    expect(JSON.stringify(rest.part.localRect))
+      .toBe(JSON.stringify(baselineRest.part.localRect));
+    expect(JSON.stringify(rest.visual.combinedLocalBounds))
+      .toBe(JSON.stringify(baselineRest.visual.combinedLocalBounds));
+
+    for (const timeMs of [500, 750, 1_000]) {
+      const frame = frameAt(project, fixture, timeMs);
+      expect(frame.part.vectorSkin!.deformed).toBe(true);
+      const measured = measureFlaGraphicSubtreeBounds(
+        frame.part.flaGraphic!,
+        project.assets,
+      );
+      expect(measured).not.toBeNull();
+      const localRect = frame.part.localRect;
+      expect(localRect.x).toBeCloseTo(measured!.x, 9);
+      expect(localRect.y).toBeCloseTo(measured!.y, 9);
+      expect(localRect.width).toBeCloseTo(measured!.width, 9);
+      expect(localRect.height).toBeCloseTo(measured!.height, 9);
+      // The swinging sleeve really leaves its authored rest box on two sides.
+      expect(localRect.x).toBeLessThan(baselineRest.part.localRect.x);
+      expect(localRect.y + localRect.height).toBeGreaterThan(
+        baselineRest.part.localRect.y + baselineRest.part.localRect.height,
+      );
+      // The swinging sleeve really leaves its authored rest box in clip space.
+      const content = vectorContentClipRect(frame.part);
+      expect(content.x).toBeLessThan(baselineRest.visual.combinedLocalBounds.x);
+      // The composite/effect bounds used by Stage, Preview, Export and Canvas
+      // cover the complete deformed shape...
+      expect(rectContainsRect(frame.visual.combinedLocalBounds, content)).toBe(true);
+      // ...whereas the pre-fix rest-only bounds would have clipped it.
+      expect(rectContainsRect(baselineRest.visual.combinedLocalBounds, content)).toBe(false);
+      // The untouched bitmap Part keeps authored bounds and placement.
+      expect(JSON.stringify(frame.imagePart.localRect))
+        .toBe(JSON.stringify(baselineRest.imagePart.localRect));
+      expect(JSON.stringify(frame.imagePart.imageTransform))
+        .toBe(JSON.stringify(baselineRest.imagePart.imageTransform));
+      // Fixed Character center, Part placement, and the hit/coordinate origin
+      // stay exactly the authored ones: only the runtime bounds grow.
+      expect(JSON.stringify(clipOf(project, fixture).fixedCharacterCenter))
+        .toBe(JSON.stringify(clipOf(baselineProject, fixture).fixedCharacterCenter));
+      expect(frame.evaluated.x).toBe(baselineRest.evaluated.x);
+      expect(frame.evaluated.y).toBe(baselineRest.evaluated.y);
+      expect(JSON.stringify(frame.part.imageTransform))
+        .toBe(JSON.stringify(baselineRest.part.imageTransform));
+      expect(JSON.stringify(visualPartRenderTransform(frame.part)))
+        .toBe(JSON.stringify(visualPartRenderTransform(baselineRest.part)));
+      expect(JSON.stringify(transformPointByVisualPart({ x: 0, y: 0 }, frame.part)))
+        .toBe(JSON.stringify(transformPointByVisualPart({ x: 0, y: 0 }, baselineRest.part)));
+    }
+  });
+
+  it('keeps rest data and the persisted definition unchanged across evaluation', () => {
+    const { fixture, skinned, project } = deformedCharacter();
+    const persisted = JSON.stringify(project);
+    const characterBefore = JSON.stringify(adaptiveCharacter(project, fixture));
+    const evaluatedFrames = [0, 500, 1_000].map((timeMs) => frameAt(project, fixture, timeMs));
+    expect(evaluatedFrames.every((frame) => frame.visual.parts.length === 2)).toBe(true);
+    // Evaluation is pure: it never rewrites persisted rest data or bindings.
+    expect(JSON.stringify(project)).toBe(persisted);
+    expect(JSON.stringify(adaptiveCharacter(project, fixture))).toBe(characterBefore);
+    expect(adaptiveCharacter(project, fixture).vectorSkins).toEqual([{
+      id: skinned.skin.id,
+      partId: fixture.sleevePartId,
+      boneIds: [VECTOR_SKIN_BONE_A_ID, VECTOR_SKIN_BONE_B_ID],
+    }]);
+    // A rest-pose frame without any Bone animation still keeps the authored
+    // bounds bit for bit, so non-deformed frames cannot drift.
+    const restFrame = frameAt(project, fixture, 0);
+    expect(JSON.stringify(restFrame.part.localRect))
+      .toBe(JSON.stringify(measureFlaGraphicSubtreeBounds(
+        restFrame.part.flaGraphic!,
+        project.assets,
+      )));
+  });
+
+  it('keeps the deformed bounds deterministic under random seek and save/reopen', () => {
+    const { fixture, project } = deformedCharacter();
+    const times = [0, 250, 500, 750, 1_000];
+    const boundsAt = (source: Project, order: readonly number[]) => new Map(
+      order.map((timeMs) => {
+        const frame = frameAt(source, fixture, timeMs);
+        return [timeMs, JSON.stringify({
+          localRect: frame.part.localRect,
+          combined: frame.visual.combinedLocalBounds,
+        })] as const;
+      }),
+    );
+    const direct = boundsAt(project, times);
+    const reversed = boundsAt(project, [...times].reverse());
+    for (const timeMs of times) {
+      expect(reversed.get(timeMs)).toBe(direct.get(timeMs));
+    }
+    const reopened = ProjectSchema.parse(JSON.parse(JSON.stringify(project)));
+    const reopenedAt1000 = frameAt(reopened, fixture, 1_000);
+    const originalAt1000 = frameAt(project, fixture, 1_000);
+    expect(JSON.stringify(reopenedAt1000.part.localRect))
+      .toBe(JSON.stringify(originalAt1000.part.localRect));
+    expect(JSON.stringify(reopenedAt1000.visual.combinedLocalBounds))
+      .toBe(JSON.stringify(originalAt1000.visual.combinedLocalBounds));
+    expect(JSON.stringify(adaptiveCharacter(reopened, fixture).vectorSkins))
+      .toBe(JSON.stringify(adaptiveCharacter(project, fixture).vectorSkins));
+  });
+});
