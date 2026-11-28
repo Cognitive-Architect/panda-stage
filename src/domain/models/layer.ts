@@ -7,6 +7,7 @@ import {
   AnimationClipV32Schema,
   AnimationClipV0V22Schema,
   AnimationClipV22Schema,
+  AnimationClipV41Schema,
   LayerAnimationTrackSchema,
   type AnimationClip,
 } from './animationCore';
@@ -379,7 +380,7 @@ export const LayerV32Schema = LayerV30Schema.safeExtend({
 });
 
 export const LayerV41Schema = LayerV32Schema.safeExtend({
-  animationClip: AnimationClipSchema.optional(),
+  animationClip: AnimationClipV41Schema.optional(),
 });
 
 const LayerV42Shape = {

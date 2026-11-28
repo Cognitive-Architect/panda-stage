@@ -33,6 +33,11 @@ import {
   type EvaluatedCharacterNodePose,
 } from './character-node-animation';
 import {
+  evaluateCharacterBonePose,
+  evaluatedCharacterBonePoseList,
+  type EvaluatedCharacterBonePose,
+} from './character-bone-pose';
+import {
   composeAnimatedLayerTransform,
   evaluateLayerRelativeMotionValues,
   layerRootMotionClip,
@@ -62,6 +67,12 @@ export interface EvaluatedLayer {
   animationTimeMs?: number;
   /** Transient evaluated Composite Face pose for Character Node Clip v3. */
   faceTransform?: EvaluatedCharacterNodePose;
+  /**
+   * Deterministic parent-first FK Bone pose map for an Adaptive Parts Character
+   * instance (#1455). Transient, plain serializable matrices; Stage, Preview and
+   * Export derive the same Part matrices from this evaluation seam.
+   */
+  characterBonePose?: EvaluatedCharacterBonePose[];
   id: string;
   assetId: string;
   /** The formal Expression state before any transient Mouth projection. */
@@ -907,6 +918,18 @@ export function evaluateShotAtTime(
           ? evaluateCompositeFacePoseAtTime(project, layer, timeMs, animationValues) ??
             undefined
           : undefined;
+      const characterBonePose =
+        clip?.version === 1 &&
+        character?.mode === 'adaptive-parts' &&
+        (character.bones?.length ?? 0) > 0
+          ? evaluatedCharacterBonePoseList(
+              evaluateCharacterBonePose({
+                character,
+                values: animationValues ?? [],
+                layerId: layer.id,
+              }),
+            )
+          : undefined;
       const finalTransform: LayerBasePose =
         rootMotionClip
           ? composeAnimatedLayerTransform(
@@ -945,6 +968,7 @@ export function evaluateShotAtTime(
         id: layer.id,
         ...(animationValues ? { animationValues, animationTimeMs: timeMs } : {}),
         ...(faceTransform ? { faceTransform } : {}),
+        ...(characterBonePose?.length ? { characterBonePose } : {}),
         assetId: actionFrame?.frame.assetId ?? mouthOpenOverride?.assetId ?? preTrack.assetId ?? '',
         currentExpressionId: preTrack.currentExpressionId,
         ...(activeCharacterAction ? { characterAction: activeCharacterAction } : {}),

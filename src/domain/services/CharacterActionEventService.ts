@@ -44,10 +44,13 @@ export function saveLayeredCharacterAction(project: Project, shotId: string, lay
   }
   const protectedIds = characterFaceAndMouthPartIds(character);
   const partIds = new Set(input.partIds.filter((id) => !protectedIds.has(id) && character.parts.some(({ partId }) => partId === id)));
-  const tracks = clip.tracks.filter(({ target }) => partIds.has(target.partId)).map((track) => {
+  const tracks = clip.tracks.flatMap((track) => {
+    if (track.target.kind !== 'character-part' || !partIds.has(track.target.partId)) return [];
     const saved = captureMotionTrackRange(track, startMs, endMs, false);
-    return { property: saved.property, partId: track.target.partId,
-      keys: saved.keys.map(({ frameOffset, ...key }) => ({ ...key, timeMs: frameTimeMs(frameOffset) })) };
+    return [{
+      property: saved.property, partId: track.target.partId,
+      keys: saved.keys.map(({ frameOffset, ...key }) => ({ ...key, timeMs: frameTimeMs(frameOffset) })),
+    }];
   });
   if (!tracks.length) throw new Error('所选身体部件没有可保存的属性轨。');
   if (input.headAnchorPartId && !tracks.some(({ partId }) => partId === input.headAnchorPartId)) {

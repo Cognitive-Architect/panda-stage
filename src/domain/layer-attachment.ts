@@ -1,9 +1,14 @@
-import { invertAffineMatrix, type AffineMatrix2D } from '../shared/affine-matrix';
+import { invertAffineMatrix, multiplyAffineMatrices, type AffineMatrix2D } from '../shared/affine-matrix';
 import {
   captureCharacterPartAnimationBasis,
   composeAnimatedCharacterPartTransform,
   resolveLayeredCharacterPartTransforms,
 } from './character-part-animation';
+import {
+  characterBonePartDeltas,
+  characterBonePoseMap,
+  characterBoneProtectedPartIds,
+} from './character-bone-pose';
 import { evaluateFlaGraphicVisual, type EvaluatedFlaGraphicNode } from './evaluate-fla-graphic';
 import type { EvaluatedLayer } from './evaluate-shot-at-time';
 import {
@@ -237,9 +242,24 @@ export function resolveLayerAttachmentTargets(
     const layered = evaluated.layeredCharacterAction
       ? resolveLayeredCharacterPartTransforms(clip, character, values, evaluated.layeredCharacterAction)
       : undefined;
+    // Attachment targets read the final Part matrix, including any Bone delta.
+    const boneDeltas = (character.bones?.length ?? 0) > 0
+      ? characterBonePartDeltas({
+          character,
+          values,
+          layerId: layer.id,
+          fixedCharacterCenter: clip.fixedCharacterCenter,
+          protectedPartIds: characterBoneProtectedPartIds(character),
+          ...(evaluated.characterBonePose
+            ? { poses: characterBonePoseMap(evaluated.characterBonePose) }
+            : {}),
+        })
+      : undefined;
     return clip.targetBases.flatMap((basis) => {
       const partId = basis.target.partId;
-      const pose = layered?.get(partId) ?? composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, values);
+      const posed = layered?.get(partId) ?? composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, values);
+      const delta = boneDeltas?.get(partId);
+      const pose = delta ? multiplyAffineMatrices(delta, posed) : posed;
       const head = character.headMotionBinding?.partIds.includes(partId) ? evaluated.headGroupTransform : undefined;
       const transform = head ? {
         ...pose,

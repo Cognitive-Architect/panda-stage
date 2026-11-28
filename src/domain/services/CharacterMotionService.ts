@@ -15,7 +15,7 @@ import {
 } from '../animation-track-ops';
 import { createCharacterPartAnimationClip } from '../character-part-animation';
 import {
-  AnimationClipV0Schema,
+  CharacterPoseAnimationClipV0Schema,
   AnimationInterpolationSchema,
   type AnimationClipV0,
   type AnimationInterpolation,
@@ -129,6 +129,7 @@ export function hasAuthoredCharacterPartMotion(
   return Boolean(
     layer?.animationClip?.version === 1 && layer.animationClip.tracks.some(
       (track) =>
+        track.target.kind === 'character-part' &&
         track.target.partId === partId &&
         (track.keys.length > 1 ||
           track.keys.some(
@@ -174,7 +175,7 @@ function replaceLayerAnimationClip(
   layerId: string,
   clip: AnimationClipV0,
 ): Project {
-  const validatedClip = AnimationClipV0Schema.parse(clip);
+  const validatedClip = CharacterPoseAnimationClipV0Schema.parse(clip);
   return ProjectSchema.parse({
     ...project,
     shots: project.shots.map((shot) =>

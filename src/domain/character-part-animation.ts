@@ -128,7 +128,8 @@ export function recalibrateCharacterPartAnimationPivot(
   clip: AnimationClipV0, target: CharacterPartTargetRef, pivot: TargetLocalPivot,
 ): AnimationClipV0 {
   resolveCharacterPartAnimationBasis(clip, target);
-  const authored = clip.tracks.some(track => sameTarget(track.target, target) && track.keys.some(key =>
+  const authored = clip.tracks.some(track =>
+    track.target.kind === 'character-part' && sameTarget(track.target, target) && track.keys.some(key =>
     key.value !== (track.property === 'transform.scaleX' || track.property === 'transform.scaleY' ? 1 : 0),
   ));
   if (authored) throw new Error('Animation pivot is fixed after non-neutral animation is authored; clear the target animation before recalibrating.');

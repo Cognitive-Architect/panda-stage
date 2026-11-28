@@ -652,7 +652,8 @@ describe('Phase C: AdaptiveParts Talking Head Motion + Combined A/B/C Parity (#1
     expect(beforeClip?.version).toBe(1);
     expect(afterClip?.version).toBe(1);
     if (beforeClip?.version !== 1 || afterClip?.version !== 1) throw new Error('Expected Clip v1');
-    expect(afterClip.tracks).toEqual(beforeClip.tracks.filter((track) => track.target.partId !== PART_FACE));
+    expect(afterClip.tracks).toEqual(beforeClip.tracks.filter((track) =>
+      !(track.target.kind === 'character-part' && track.target.partId === PART_FACE)));
     expect(removedShot.timelineEvents).toEqual(restShot.timelineEvents);
 
     // Duplicate visible occurrences of same speaker character -> stays neutral

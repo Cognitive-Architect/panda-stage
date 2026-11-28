@@ -32,6 +32,11 @@ function transformPoint(matrix: AffineMatrix2D, point: ArmPoint): ArmPoint {
   return { x: matrix.a * point.x + matrix.c * point.y + matrix.tx, y: matrix.b * point.x + matrix.d * point.y + matrix.ty };
 }
 
+/** #1455: Bone-bound Parts are posed by the Bone Tree, not by the rigid arm solver. */
+function boneBoundPartIds(character: CharacterArmChainSource): Set<string> {
+  return new Set((character.bones ?? []).flatMap((bone) => bone.partId ? [bone.partId] : []));
+}
+
 function resolveArmInstance(project: Project, address: CharacterArmIkAddress, displayed?: EvaluatedLayer) {
   const shot = project.shots.find(({ id }) => id === address.shotId);
   const layer = shot?.layers.find(({ id }) => id === address.layerId);
@@ -61,13 +66,15 @@ export function resolveCharacterArmAssemblyParts(
   if (evaluated.characterAction || !evaluated.visible) return parts;
   const excluded = characterFaceAndMouthPartIds(character);
   if (evaluated.headGroupTransform) character.headMotionBinding?.partIds.forEach(id => excluded.add(id));
+  const boneBound = boneBoundPartIds(character);
   const values = evaluated.animationValues ?? [];
   const layered = evaluated.layeredCharacterAction
     ? resolveLayeredCharacterPartTransforms(clip, character, values, evaluated.layeredCharacterAction)
     : undefined;
   for (const basis of clip.targetBases) {
     const { partId } = basis.target;
-    if (!basis.visible || excluded.has(partId) || !character.parts.some(part => part.partId === partId && part.visible)) continue;
+    if (!basis.visible || excluded.has(partId) || boneBound.has(partId) ||
+      !character.parts.some(part => part.partId === partId && part.visible)) continue;
     const local = layered?.get(partId) ?? composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, values);
     const toStage = multiplyAffineMatrices(localToStage, local);
     const toPart = invertAffineMatrix(toStage);
@@ -83,9 +90,13 @@ export function resolveCharacterArmAssemblyParts(
 function calibrate(project: Project, address: CharacterArmIkAddress, instance: ReturnType<typeof resolveArmInstance>, chain: CharacterArmChain) {
   const { character, clip } = instance;
   const protectedIds = characterFaceAndMouthPartIds(character);
+  const boneBound = boneBoundPartIds(character);
   const segments = chain.segments.map(segment => {
     const basis = clip.targetBases.find(({ target, visible }) => visible && target.partId === segment.partId);
     if (!basis || protectedIds.has(segment.partId)) throw new Error('骨链包含缺失、隐藏或由脸嘴系统控制的部件。');
+    if (boneBound.has(segment.partId)) {
+      throw new Error('骨链部件已绑定骨骼；骨架 IK 暂不支持骨骼绑定部件，请改用骨骼摆姿势或先解除骨骼绑定。');
+    }
     const values = characterMotionValues(project, { ...address, partId: segment.partId, autoKey: true });
     const restMatrix = composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, []);
     const current = (Object.keys(values) as AnimationProperty[]).map(property => ({ target: basis.target, property, value: values[property] }));
