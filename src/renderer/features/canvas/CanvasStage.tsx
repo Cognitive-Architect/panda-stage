@@ -31,6 +31,8 @@ import {
   characterNodeMotionScaleBounds,
   composeAnimatedCharacterPartTransform,
   compareCameraDrawingLayers,
+  characterBonePartDeltas,
+  characterBoneProtectedPartIds,
   resolveLayerCameraTransform,
   createCharacterPartAnimationClip,
   evaluateAnimationClipAtTime,
@@ -71,7 +73,7 @@ import {
   type Shot,
   type ViewportTransform,
 } from '../../../domain';
-import type { AffineMatrix2D } from '../../../shared/affine-matrix';
+import { multiplyAffineMatrices, type AffineMatrix2D } from '../../../shared/affine-matrix';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import {
@@ -1398,11 +1400,27 @@ export function CanvasStage({
         const clip = createCharacterPartAnimationClip(snapshot.project, shot.id, motionLayer.id);
         const basis = clip.targetBases.find((b) => b.target.partId === targetId)!;
         if (!basis) return { x: 0, y: 0 };
-        const matrix = composeAnimatedCharacterPartTransform(
+        const values = evaluateAnimationClipAtTime(clip, timelineUi.currentTimeMs);
+        const characterId = motionLayer.source.kind === 'character' ? motionLayer.source.characterId : undefined;
+        const character = characterId
+          ? snapshot.project.characters.find((candidate) => candidate.id === characterId)
+          : undefined;
+        // Bone-bound Parts rotate around the final (post-FK) pivot.
+        const boneDelta = character?.mode === 'adaptive-parts' && (character.bones?.length ?? 0) > 0
+          ? characterBonePartDeltas({
+              character,
+              values,
+              layerId: motionLayer.id,
+              fixedCharacterCenter: clip.fixedCharacterCenter,
+              protectedPartIds: characterBoneProtectedPartIds(character),
+            }).get(targetId)
+          : undefined;
+        const posed = composeAnimatedCharacterPartTransform(
           basis,
           clip.fixedCharacterCenter,
-          evaluateAnimationClipAtTime(clip, timelineUi.currentTimeMs),
+          values,
         );
+        const matrix = boneDelta ? multiplyAffineMatrices(boneDelta, posed) : posed;
         return {
           x: matrix.a * basis.pivot.x + matrix.c * basis.pivot.y + matrix.tx,
           y: matrix.b * basis.pivot.x + matrix.d * basis.pivot.y + matrix.ty,

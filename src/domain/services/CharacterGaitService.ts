@@ -169,7 +169,7 @@ export function planCharacterGait(project: Project, input: GaitInput, createId =
   if (new Set(ids).size !== ids.length || ids.some((id) => !permitted.has(id))) {
     throw new Error('请选择不同且可见的大腿、小腿、脚与跟随部件。');
   }
-  if (clip.tracks.some((track) => ids.includes(track.target.partId) &&
+  if (clip.tracks.some((track) => track.target.kind === 'character-part' && ids.includes(track.target.partId) &&
     track.keys.some(({ value }) => value !== (track.property.startsWith('transform.scale') ? 1 : 0)))) {
     throw new Error('所选腿部已有动画，请选未编排腿部动作的实例。');
   }

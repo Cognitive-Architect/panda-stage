@@ -1007,6 +1007,133 @@ const CharacterArmChainsSchema = z.array(CharacterArmChainEntrySchema).max(8).re
   return ids.size === entries.length && names.size === entries.length;
 }, 'Arm chain ids and names must be unique.');
 
+export const CHARACTER_BONE_MAX_COUNT = 64 as const;
+
+/** Rest translation (parent-bone space) and authored rest rotation of one Bone. */
+export const CharacterBoneRestLocalSchema = z
+  .object({
+    x: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+    y: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+    rotationDeg: FiniteNumberSchema.min(-3_600).max(3_600),
+  })
+  .strict();
+
+/**
+ * One node of the minimal generic FK Bone Tree (#1455). A Bone is an abstract
+ * pivot; `partId` optionally binds exactly one existing Part to it. Bone pose
+ * tracks reuse the existing Animation Core transform properties, so old Part
+ * tracks keep their own local pose under a bone delta exactly once.
+ */
+export const CharacterBoneSchema = z
+  .object({
+    id: IdSchema,
+    name: NameSchema.optional(),
+    /** `null` marks a root. Exactly one root is allowed per Character. */
+    parentBoneId: IdSchema.nullable(),
+    partId: IdSchema.optional(),
+    restLocal: CharacterBoneRestLocalSchema,
+    length: FiniteNumberSchema.min(0.0001).max(1_000_000).optional(),
+    minDeg: FiniteNumberSchema.min(-360).max(360).optional(),
+    maxDeg: FiniteNumberSchema.min(-360).max(360).optional(),
+    /** Default true; when false the bone ignores its parent's accumulated rotation. */
+    inheritRotation: z.boolean().optional(),
+  })
+  .strict();
+
+const CharacterBonesSchema = z
+  .array(CharacterBoneSchema)
+  .max(CHARACTER_BONE_MAX_COUNT)
+  .optional();
+
+/**
+ * Shape-level invariant check only. The pure resolver in
+ * `character-bone-pose.ts` repeats these checks and reports a typed failure
+ * instead of throwing inside evaluation.
+ */
+function validateCharacterBoneTree(
+  character: {
+    bones?: readonly z.infer<typeof CharacterBoneSchema>[];
+    parts?: readonly { partId: string }[];
+  },
+  context: z.RefinementCtx,
+): void {
+  const bones = character.bones ?? [];
+  if (bones.length === 0) return;
+  const byId = new Map<string, z.infer<typeof CharacterBoneSchema>>();
+  bones.forEach((bone, index) => {
+    if (byId.has(bone.id)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['bones', index, 'id'],
+        message: `Duplicate Bone identity: ${bone.id}`,
+      });
+    }
+    byId.set(bone.id, bone);
+  });
+  const partBindings = new Map<string, string>();
+  let rootCount = 0;
+  bones.forEach((bone, index) => {
+    if (bone.parentBoneId === null) {
+      rootCount += 1;
+    } else if (!byId.has(bone.parentBoneId)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['bones', index, 'parentBoneId'],
+        message: `Bone parent references unknown Bone identity: ${bone.parentBoneId}`,
+      });
+    }
+    const visited = new Set<string>([bone.id]);
+    let cursor = bone.parentBoneId;
+    while (cursor !== null) {
+      if (visited.has(cursor)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['bones', index, 'parentBoneId'],
+          message: `Bone tree contains a cycle at Bone: ${bone.id}`,
+        });
+        break;
+      }
+      visited.add(cursor);
+      cursor = byId.get(cursor)?.parentBoneId ?? null;
+    }
+    if (
+      bone.minDeg !== undefined &&
+      bone.maxDeg !== undefined &&
+      bone.minDeg > bone.maxDeg
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['bones', index, 'minDeg'],
+        message: 'Bone minimum angle must not exceed its maximum angle.',
+      });
+    }
+    if (bone.partId !== undefined) {
+      if (!character.parts?.some((part) => part.partId === bone.partId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['bones', index, 'partId'],
+          message: `Bone references unknown Part identity: ${bone.partId}`,
+        });
+      } else if (partBindings.has(bone.partId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['bones', index, 'partId'],
+          message: `Part is already bound to another Bone: ${bone.partId}`,
+        });
+      } else {
+        partBindings.set(bone.partId, bone.id);
+      }
+    }
+  });
+  if (rootCount > 1) {
+    context.addIssue({
+      code: 'custom',
+      path: ['bones'],
+      message: 'A Bone tree requires at most one root Bone.',
+    });
+  }
+}
+
 export const CharacterMotionMappingRuleSchema = z.object({
   sourcePartId: IdSchema,
   targetPartId: IdSchema.optional(),
@@ -1094,7 +1221,8 @@ const AdaptivePartsCharacterV39Schema = AdaptivePartsCharacterV37Schema.safeExte
 const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV39Schema.safeExtend({
   bodyPoses: bodyPoseLibrary(CharacterBodyPoseSchema),
   armChains: CharacterArmChainsSchema.optional(),
-});
+  bones: CharacterBonesSchema,
+}).superRefine(validateCharacterBoneTree);
 
 function validateExpressionTalkingSources(character: {
   expressionTalkingSources?: Record<string, ExpressionTalkingSource>;
@@ -1150,6 +1278,8 @@ export type LayeredCharacterAction = z.infer<typeof LayeredCharacterActionSchema
 export type CharacterActionInstanceScope = z.infer<typeof CharacterActionInstanceScopeSchema>;
 export type CharacterBodyPose = z.infer<typeof CharacterBodyPoseSchema>;
 export type CharacterArmChain = z.infer<typeof CharacterArmChainSchema>;
+export type CharacterBone = z.infer<typeof CharacterBoneSchema>;
+export type CharacterBoneRestLocal = z.infer<typeof CharacterBoneRestLocalSchema>;
 export type CharacterMotionMappingRule = z.infer<typeof CharacterMotionMappingRuleSchema>;
 export type CharacterMotionMapping = z.infer<typeof CharacterMotionMappingSchema>;
 
@@ -1159,6 +1289,8 @@ export interface CharacterArmChainSource {
   mode?: string;
   armChain?: CharacterArmChain;
   armChains?: readonly CharacterArmChainEntry[];
+  /** Optional so Bone-aware callers can avoid claiming bone-bound Parts. */
+  bones?: readonly CharacterBone[];
 }
 
 /**

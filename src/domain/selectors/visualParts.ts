@@ -38,6 +38,8 @@ import {
 import {
   captureCharacterPartAnimationBasis, composeAnimatedCharacterPartTransform, resolveLayeredCharacterPartTransforms,
 } from '../character-part-animation';
+import { characterBonePartDeltas, characterBonePoseMap, characterBoneProtectedPartIds } from '../character-bone-pose';
+import { multiplyAffineMatrices } from '../../shared/affine-matrix';
 import {
   evaluateCompositeFacePoseAtTime,
   type EvaluatedCharacterNodePose,
@@ -1677,13 +1679,34 @@ export function resolveLayerVisualParts(
         !values.some(value => sameAnimationTarget(value.target, track.target) && value.property === track.property),
       )) throw new Error('Animation Clip requires complete Shot-time evaluation.');
       const layeredTransforms = layeredAction ? resolveLayeredCharacterPartTransforms(clip, character, values, layeredAction) : undefined;
+      // One authored Bone delta on top of one authored Part pose. Parts without
+      // a Bone keep today's matrices exactly; protected face/mouth/head Parts
+      // never take a Bone delta.
+      const boneDeltas = (character.bones?.length ?? 0) > 0
+        ? characterBonePartDeltas({
+            character,
+            values,
+            layerId: layer.id,
+            fixedCharacterCenter: clip.fixedCharacterCenter,
+            protectedPartIds: characterBoneProtectedPartIds(character),
+            // Reuse the FK pose already evaluated for this Layer instance.
+            ...(evaluated.characterBonePose
+              ? { poses: characterBonePoseMap(evaluated.characterBonePose) }
+              : {}),
+          })
+        : undefined;
       visualDefinition = {
         sourceRootTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
-        parts: clip.targetBases.map(basis => ({
-          partId: basis.target.partId, visualSource: basis.visualSource,
-          restTransform: layeredTransforms?.get(basis.target.partId) ?? composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, values),
-          visible: basis.visible, drawOrder: basis.drawOrder,
-        })),
+        parts: clip.targetBases.map(basis => {
+          const partId = basis.target.partId;
+          const posed = layeredTransforms?.get(partId) ?? composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, values);
+          const delta = boneDeltas?.get(partId);
+          return {
+            partId, visualSource: basis.visualSource,
+            restTransform: delta ? multiplyAffineMatrices(delta, posed) : posed,
+            visible: basis.visible, drawOrder: basis.drawOrder,
+          };
+        }),
       };
       parts = adaptivePartVisuals(project, visualDefinition, layer.id, evaluated.zIndex, layer.startTimeMs ?? 0, evaluated.animationTimeMs ?? timeMs);
     } else {

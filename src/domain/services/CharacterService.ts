@@ -1,7 +1,7 @@
 import {
   AdaptivePartsCharacterSchema,
   AdaptivePartsFaceBindingSchema,
-  AnimationClipV0Schema,
+  CharacterPoseAnimationClipV0Schema,
   BodyPlacementSchema,
   CharacterActionPlacementSchema,
   BakedCharacterActionSchema,
@@ -234,7 +234,7 @@ export function scanAdaptivePartReferences(
       if (layer.animationClip?.version === 1) {
         let layerKeys = 0;
         for (const track of layer.animationClip.tracks) {
-          if (track.target.partId === partId) {
+          if (track.target.kind === 'character-part' && track.target.partId === partId) {
             layerKeys += track.keys.length;
           }
         }
@@ -490,10 +490,25 @@ export class CharacterService {
         ? { partIds: [...new Set(reconciledHeadPartIds)] }
         : undefined;
 
+    const missingBonePartIds = new Set(
+      (character.bones ?? [])
+        .flatMap((bone) => bone.partId !== undefined && !nextPartIds.has(bone.partId) ? [bone.partId] : []),
+    );
     const draftCandidate: AdaptivePartsCharacter = {
       ...character,
       sourceRootTransform: definition.sourceRootTransform,
       parts: [...definition.parts],
+      // Removing a Part locally drops only its Bone binding; the Bone stays.
+      ...(missingBonePartIds.size > 0
+        ? {
+            bones: (character.bones ?? []).map((bone) => {
+              if (bone.partId === undefined || !missingBonePartIds.has(bone.partId)) return bone;
+              const nextBone = { ...bone };
+              delete nextBone.partId;
+              return nextBone;
+            }),
+          }
+        : {}),
     };
     if (reconciledFaceBinding) {
       draftCandidate.faceBinding = reconciledFaceBinding;
@@ -546,7 +561,8 @@ export class CharacterService {
         const clip = layer.animationClip;
         const hasRemovedTarget =
           clip.targetBases.some((basis) => removedPartIds.has(basis.target.partId)) ||
-          clip.tracks.some((track) => removedPartIds.has(track.target.partId));
+          clip.tracks.some((track) =>
+            track.target.kind === 'character-part' && removedPartIds.has(track.target.partId));
         if (!hasRemovedTarget) return layer;
         layerChanged = true;
         const remainingBases = clip.targetBases
@@ -557,9 +573,9 @@ export class CharacterService {
             drawOrder,
           }));
         const remainingTracks = clip.tracks.filter(
-          (track) => !removedPartIds.has(track.target.partId),
+          (track) => !(track.target.kind === 'character-part' && removedPartIds.has(track.target.partId)),
         );
-        const prunedClip = AnimationClipV0Schema.parse({
+        const prunedClip = CharacterPoseAnimationClipV0Schema.parse({
           ...clip,
           targetBases: remainingBases,
           tracks: remainingTracks,
