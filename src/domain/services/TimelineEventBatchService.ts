@@ -1,6 +1,8 @@
 import {
   ProjectSchema,
   type CharacterActionEvent,
+  type ExpressionEvent,
+  type FlipEvent,
   type GraphicPlaybackEvent,
   type Layer,
   type MoveEvent,
@@ -10,6 +12,7 @@ import {
   type ShakeEvent,
   type Shot,
   type TimelineEvent,
+  type VisibilityEvent,
 } from '../models';
 import {
   TIMELINE_FPS,
@@ -80,6 +83,27 @@ export type BatchEditableEvent =
   | CharacterActionEvent
   | GraphicPlaybackEvent;
 
+/** Instantaneous switch events are shift-only; they never gain a duration. */
+export const BATCH_SHIFTABLE_POINT_EVENT_TYPES = [
+  'expression',
+  'flip',
+  'visibility',
+] as const;
+
+export type BatchShiftablePointEventType =
+  (typeof BATCH_SHIFTABLE_POINT_EVENT_TYPES)[number];
+
+export type BatchShiftablePointEvent =
+  | ExpressionEvent
+  | FlipEvent
+  | VisibilityEvent;
+
+export type BatchShiftableEvent = BatchEditableEvent | BatchShiftablePointEvent;
+
+export type BatchShiftableEventType =
+  | BatchEditableEventType
+  | BatchShiftablePointEventType;
+
 type TimelineEventChannel =
   | 'move'
   | 'scale'
@@ -96,6 +120,16 @@ const EVENT_CHANNEL: Record<BatchEditableEventType, TimelineEventChannel | null>
   'graphic-playback': 'graphic-playback',
 };
 
+function eventChannel(eventType: BatchShiftableEventType): TimelineEventChannel | null {
+  return isBatchEditableEventType(eventType) ? EVENT_CHANNEL[eventType] : null;
+}
+
+function isBatchEditableEventType(
+  eventType: BatchShiftableEventType,
+): eventType is BatchEditableEventType {
+  return (BATCH_EDITABLE_EVENT_TYPES as readonly string[]).includes(eventType);
+}
+
 export const BATCH_EVENT_TYPE_LABEL: Record<BatchEditableEventType, string> = {
   move: '移动',
   scale: '缩放',
@@ -105,15 +139,26 @@ export const BATCH_EVENT_TYPE_LABEL: Record<BatchEditableEventType, string> = {
   'graphic-playback': '元件播放',
 };
 
-const ANY_EVENT_TYPE_LABEL: Record<TimelineEvent['type'], string> = {
-  ...BATCH_EVENT_TYPE_LABEL,
+export const BATCH_POINT_EVENT_TYPE_LABEL: Record<
+  BatchShiftablePointEventType,
+  string
+> = {
   expression: '表情',
   flip: '翻转',
   visibility: '显示',
+};
+
+const ANY_EVENT_TYPE_LABEL: Record<TimelineEvent['type'], string> = {
+  ...BATCH_EVENT_TYPE_LABEL,
+  ...BATCH_POINT_EVENT_TYPE_LABEL,
   'mouth-cue': '口型点',
   'mouth-pose': '口型段',
   'graphic-frame': '元件定格',
 };
+
+const POINT_EVENT_TYPE_SET = new Set<TimelineEvent['type']>(
+  BATCH_SHIFTABLE_POINT_EVENT_TYPES,
+);
 
 function formatSeconds(ms: number): string {
   const seconds = Math.abs(ms) / 1_000;
@@ -128,6 +173,8 @@ export type TimelineEventBatchErrorCode =
   | 'TIMELINE_EVENT_BATCH_TOO_SMALL'
   | 'TIMELINE_EVENT_UNSUPPORTED'
   | 'TIMELINE_EVENT_NOT_TIMED'
+  | 'POINT_EVENT_DURATION_UNSUPPORTED'
+  | 'POINT_EVENT_CONFLICT'
   | 'TIMELINE_EVENT_LAYER_MISSING'
   | 'TIMELINE_EVENT_LAYER_LOCKED'
   | 'INVALID_TIMELINE_EDIT_AMOUNT'
@@ -172,7 +219,7 @@ export interface BatchTimelineEventEntry {
   readonly eventId: string;
   readonly layerId: string;
   readonly layerName: string;
-  readonly eventType: BatchEditableEventType;
+  readonly eventType: BatchShiftableEventType;
   readonly startMs: number;
   readonly endMs: number;
   readonly nextStartMs: number;
@@ -197,6 +244,8 @@ export type BatchTimelineSkippedReasonCode =
   | 'UNSUPPORTED_EVENT_TYPE'
   | 'MOUTH_POSE_BOUND_TO_DIALOGUE'
   | 'EVENT_NOT_TIMED'
+  | 'POINT_EVENT_DURATION_UNSUPPORTED'
+  | 'POINT_EVENT_CONFLICT'
   | 'LAYER_MISSING'
   | 'LAYER_LOCKED'
   | 'PROTECTED_BASE_KEY'
@@ -265,7 +314,7 @@ export interface CrossTypeBatchShiftPlan {
 }
 
 interface SelectedEvent {
-  readonly event: BatchEditableEvent;
+  readonly event: BatchShiftableEvent;
   readonly layerName: string;
 }
 
@@ -297,6 +346,18 @@ export function isBatchEditableEvent(
   return (BATCH_EDITABLE_EVENT_TYPES as readonly string[]).includes(event.type);
 }
 
+export function isBatchShiftablePointEvent(
+  event: TimelineEvent,
+): event is BatchShiftablePointEvent {
+  return POINT_EVENT_TYPE_SET.has(event.type);
+}
+
+export function isBatchShiftableEvent(
+  event: TimelineEvent,
+): event is BatchShiftableEvent {
+  return isBatchEditableEvent(event) || isBatchShiftablePointEvent(event);
+}
+
 function retimeEvent(
   event: TimelineEvent,
   entry: BatchTimelineEventEntry,
@@ -307,6 +368,9 @@ function retimeEvent(
     case 'opacity':
     case 'shake':
     case 'character-action':
+    case 'expression':
+    case 'flip':
+    case 'visibility':
       return {
         ...event,
         startMs: entry.nextStartMs,
@@ -546,7 +610,7 @@ export class TimelineEventBatchService {
       const layerName = layer?.name ?? '该对象';
       const typeLabel = ANY_EVENT_TYPE_LABEL[event.type];
 
-      if (!isBatchEditableEvent(event)) {
+      if (!isBatchShiftableEvent(event)) {
         skipped.push({
           itemId: event.id,
           kind: 'timeline-event',
@@ -587,7 +651,32 @@ export class TimelineEventBatchService {
         });
         continue;
       }
-      if (event.endMs <= event.startMs) {
+      if (isBatchShiftablePointEvent(event)) {
+        if (edit.action === 'unify-duration') {
+          skipped.push({
+            itemId: event.id,
+            kind: 'timeline-event',
+            layerId: layer.id,
+            layerName: layer.name,
+            label: `${layer.name} · ${typeLabel}`,
+            reasonCode: 'POINT_EVENT_DURATION_UNSUPPORTED',
+            reason: `「${layer.name}」的${typeLabel}是点事件，只能平移，不能统一时长。`,
+          });
+          continue;
+        }
+        if (event.endMs !== event.startMs) {
+          skipped.push({
+            itemId: event.id,
+            kind: 'timeline-event',
+            layerId: layer.id,
+            layerName: layer.name,
+            label: `${layer.name} · ${typeLabel}`,
+            reasonCode: 'EVENT_NOT_TIMED',
+            reason: `「${layer.name}」的${typeLabel}不是零时长点事件，已跳过。`,
+          });
+          continue;
+        }
+      } else if (event.endMs <= event.startMs) {
         skipped.push({
           itemId: event.id,
           kind: 'timeline-event',
@@ -713,7 +802,7 @@ export class TimelineEventBatchService {
       }
     }
 
-    const entries = selectedEvents.map(
+    let entries = selectedEvents.map(
       ({ event, layerName }): BatchTimelineEventEntry => {
         const nextTiming = this.candidateEventTiming(
           shot,
@@ -737,6 +826,16 @@ export class TimelineEventBatchService {
         };
       },
     );
+
+    const pointConflictResult = this.filterPointEventConflicts(shot, entries);
+    entries = pointConflictResult.entries;
+    skipped.push(...pointConflictResult.skipped);
+    if (entries.length === 0 && selectedSpans.length === 0) {
+      throw new TimelineEventBatchError(
+        'TIMELINE_EVENT_UNSUPPORTED',
+        skipped[0]?.reason ?? '所选项目均不支持当前批量时间调整。',
+      );
+    }
 
     this.assertNoNewChannelConflict(shot, entries);
 
@@ -1181,7 +1280,7 @@ export class TimelineEventBatchService {
 
   private candidateEventTiming(
     shot: Shot,
-    event: BatchEditableEvent,
+    event: BatchShiftableEvent,
     edit: BatchTimelineEdit,
     layerName: string,
   ): { startMs: number; endMs: number; playbackStartMs?: number } {
@@ -1191,7 +1290,7 @@ export class TimelineEventBatchService {
       edit.action === 'shift'
         ? event.endMs + edit.deltaMs
         : event.startMs + edit.durationMs;
-    const label = BATCH_EVENT_TYPE_LABEL[event.type];
+    const label = ANY_EVENT_TYPE_LABEL[event.type];
 
     if (!Number.isSafeInteger(startMs) || !Number.isSafeInteger(endMs)) {
       throw new TimelineEventBatchError(
@@ -1215,7 +1314,13 @@ export class TimelineEventBatchService {
           : `「${layerName}」的${label}统一为 ${formatSeconds(edit.durationMs)} 秒会超出镜头结尾。`,
       );
     }
-    if (endMs <= startMs) {
+    if (endMs < startMs) {
+      throw new TimelineEventBatchError(
+        'INVALID_TIMELINE_EDIT_AMOUNT',
+        `「${layerName}」的${label}调整后时间无效。`,
+      );
+    }
+    if (!isBatchShiftablePointEvent(event) && endMs === startMs) {
       throw new TimelineEventBatchError(
         'INVALID_TIMELINE_EDIT_AMOUNT',
         `「${layerName}」的${label}调整后没有持续时间。`,
@@ -1241,6 +1346,72 @@ export class TimelineEventBatchService {
     return { startMs, endMs };
   }
 
+  /**
+   * Point events have no interval overlap semantics. Two same-layer, same-type
+   * switch events landing on the same timestamp would make the effective one
+   * depend on ID ordering, so report them locally instead of silently stacking.
+   */
+  private filterPointEventConflicts(
+    shot: Shot,
+    entries: readonly BatchTimelineEventEntry[],
+  ): {
+    entries: BatchTimelineEventEntry[];
+    skipped: BatchTimelineSkippedEntry[];
+  } {
+    const pointEntries = entries.filter((entry) =>
+      POINT_EVENT_TYPE_SET.has(entry.eventType),
+    );
+    if (pointEntries.length === 0) {
+      return { entries: [...entries], skipped: [] };
+    }
+
+    const targetCounts = new Map<string, number>();
+    for (const entry of pointEntries) {
+      const key = `${entry.layerId}:${entry.eventType}:${entry.nextStartMs}`;
+      targetCounts.set(key, (targetCounts.get(key) ?? 0) + 1);
+    }
+
+    const conflictingIds = new Set<string>();
+    for (const entry of pointEntries) {
+      const key = `${entry.layerId}:${entry.eventType}:${entry.nextStartMs}`;
+      const collidesWithUnselected = shot.timelineEvents.some(
+        (other) =>
+          other.id !== entry.eventId &&
+          other.layerId === entry.layerId &&
+          other.type === entry.eventType &&
+          other.startMs === entry.nextStartMs,
+      );
+      if (collidesWithUnselected || (targetCounts.get(key) ?? 0) > 1) {
+        conflictingIds.add(entry.eventId);
+      }
+    }
+
+    if (conflictingIds.size === 0) {
+      return { entries: [...entries], skipped: [] };
+    }
+
+    const skipped = pointEntries
+      .filter((entry) => conflictingIds.has(entry.eventId))
+      .map(
+        (entry): BatchTimelineSkippedEntry => ({
+          itemId: entry.eventId,
+          kind: 'timeline-event',
+          layerId: entry.layerId,
+          layerName: entry.layerName,
+          label: `${entry.layerName} · ${ANY_EVENT_TYPE_LABEL[entry.eventType]}`,
+          reasonCode: 'POINT_EVENT_CONFLICT',
+          reason: `「${entry.layerName}」在 ${formatSeconds(
+            entry.nextStartMs,
+          )} 秒已有同类型点事件，本次平移会重合；请调整偏移或先处理该点事件，已跳过。`,
+        }),
+      );
+
+    return {
+      entries: entries.filter((entry) => !conflictingIds.has(entry.eventId)),
+      skipped,
+    };
+  }
+
   private assertNoNewChannelConflict(
     shot: Shot,
     entries: readonly BatchTimelineEventEntry[],
@@ -1250,7 +1421,7 @@ export class TimelineEventBatchService {
     );
 
     for (const entry of entries) {
-      const channel = EVENT_CHANNEL[entry.eventType];
+      const channel = eventChannel(entry.eventType);
       if (!channel) continue;
       for (const other of shot.timelineEvents) {
         if (other.id === entry.eventId) continue;
@@ -1273,7 +1444,7 @@ export class TimelineEventBatchService {
           startMs: entry.startMs,
           endMs: entry.endMs,
         };
-        const channelLabel = BATCH_EVENT_TYPE_LABEL[entry.eventType];
+        const channelLabel = ANY_EVENT_TYPE_LABEL[entry.eventType];
 
         if (
           !overlaps(currentTiming, {

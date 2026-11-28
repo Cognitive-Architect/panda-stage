@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { AlertTriangle, Volume2, X } from 'lucide-react';
 import {
   BATCH_EVENT_TYPE_LABEL,
-  isBatchEditableEvent,
+  isBatchShiftableEvent,
   layerCompositeKeyTimes,
   type BatchLayerMotionSpanRef,
   type BatchTimelineEditPlan,
@@ -36,7 +36,7 @@ interface ActionCandidate {
   readonly label: string;
   readonly startMs: number;
   readonly endMs: number;
-  readonly supported: boolean;
+  readonly supportedModes: readonly BatchTimeMode[];
   readonly spanRef?: BatchLayerMotionSpanRef;
 }
 
@@ -123,18 +123,23 @@ function listActionCandidates(shot: Shot): ActionCandidate[] {
     const layer = layersById.get(event.layerId);
     const layerName = layer?.name ?? '图层';
     const typeLabel = EVENT_TYPE_FALLBACK_LABEL[event.type];
-    const supported =
-      isBatchEditableEvent(event) &&
-      Boolean(layer) &&
-      !layer!.locked &&
-      event.endMs > event.startMs;
+    const isPointEvent =
+      event.type === 'expression' ||
+      event.type === 'flip' ||
+      event.type === 'visibility';
+    const available = isBatchShiftableEvent(event) && Boolean(layer) && !layer!.locked;
+    const canShift = available && (isPointEvent ? event.endMs === event.startMs : event.endMs > event.startMs);
+    const canSetDuration = available && !isPointEvent && event.endMs > event.startMs;
     items.push({
       id: event.id,
       kind: 'timeline-event',
       label: `${layerName} · ${typeLabel}`,
       startMs: event.startMs,
       endMs: event.endMs,
-      supported,
+      supportedModes: [
+        ...(canShift ? (['shift'] as const) : []),
+        ...(canSetDuration ? (['unify-duration'] as const) : []),
+      ],
     });
   }
 
@@ -152,7 +157,7 @@ function listActionCandidates(shot: Shot): ActionCandidate[] {
         label: `${layer.name} · 关键帧选段`,
         startMs,
         endMs,
-        supported: !layer.locked,
+        supportedModes: layer.locked ? [] : ['shift', 'unify-duration'],
         spanRef: { id: spanId, layerId: layer.id, startMs, endMs },
       });
     }
@@ -206,14 +211,14 @@ export function BatchTimeEditPanel({
     [actionCandidates],
   );
 
-  // Prune stale action selections on shot/project updates.
+  // Prune stale or mode-incompatible action selections on shot/project/mode updates.
   useEffect(() => {
     setSelectedActionIds((current) =>
-      current.every((id) => actionById.has(id))
+      current.every((id) => actionById.get(id)?.supportedModes.includes(mode))
         ? current
-        : current.filter((id) => actionById.has(id)),
+        : current.filter((id) => actionById.get(id)?.supportedModes.includes(mode)),
     );
-  }, [actionById]);
+  }, [actionById, mode]);
 
   // Escape closes cleanly without touching Project.
   useEffect(() => {
@@ -230,9 +235,11 @@ export function BatchTimeEditPanel({
   const selectedEventIds = useMemo(
     () =>
       selectedActionIds.filter(
-        (id) => actionById.get(id)?.kind === 'timeline-event',
+        (id) =>
+          actionById.get(id)?.kind === 'timeline-event' &&
+          actionById.get(id)?.supportedModes.includes(mode),
       ),
-    [selectedActionIds, actionById],
+    [selectedActionIds, actionById, mode],
   );
   const selectedMotionSpans = useMemo(
     () =>
@@ -602,12 +609,12 @@ export function BatchTimeEditPanel({
             onClick={() =>
               setSelectedActionIds(
                 actionCandidates
-                  .filter((item) => item.supported)
+                  .filter((item) => item.supportedModes.includes(mode))
                   .map((item) => item.id),
               )
             }
           >
-            全选动作（{actionCandidates.filter((item) => item.supported).length}）
+            全选动作（{actionCandidates.filter((item) => item.supportedModes.includes(mode)).length}）
           </button>
         ) : null}
         {activeDialogueIds.length > 0 || selectedActionIds.length > 0 ? (
@@ -673,22 +680,28 @@ export function BatchTimeEditPanel({
             <ul className="batch-time-list" data-testid="batch-time-action-list">
               {actionCandidates.map((item) => {
                 const checked = selectedActionIds.includes(item.id);
+                const supported = item.supportedModes.includes(mode);
                 return (
                   <li key={item.id}>
                     <label
                       className={`batch-time-item${
-                        item.supported ? '' : ' is-unsupported'
+                        supported ? '' : ' is-unsupported'
                       }`}
                     >
                       <input
                         type="checkbox"
                         checked={checked}
+                        disabled={!supported}
                         onChange={() => toggleAction(item.id)}
                       />
                       <span className="batch-time-item-label">
                         <span>{item.label}</span>
-                        {!item.supported ? (
-                          <span className="batch-time-badge">暂不支持</span>
+                        {!supported ? (
+                          <span className="batch-time-badge">
+                            {mode === 'unify-duration'
+                              ? '仅支持平移'
+                              : '暂不支持'}
+                          </span>
                         ) : null}
                       </span>
                       <span className="batch-time-item-meta">
