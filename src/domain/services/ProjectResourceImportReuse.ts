@@ -581,6 +581,7 @@ function compareMouthPoseSet(
 ): boolean {
   if (!src && !tgt) return true;
   if (!src || !tgt) return false;
+  if (src.driveMode !== tgt.driveMode) return false;
   if (src.poses.length !== tgt.poses.length) return false;
   const poseIdMap = new Map<string, string>();
   for (let i = 0; i < src.poses.length; i += 1) {
@@ -1283,6 +1284,24 @@ function evaluateCharacterCompatibility(options: {
       ok: false,
       code: 'SOURCE_OR_DEPENDENCY_CHANGED',
       reason: '角色说话动画依赖不兼容，将复制为独立定义。',
+    };
+  }
+
+  // talkingAnimationPlayback (firstFrame / lastFrame / mode / restFrame)
+  const srcPlayback = sourceChar.talkingAnimationPlayback;
+  const tgtPlayback = targetChar.talkingAnimationPlayback;
+  if (Boolean(srcPlayback) !== Boolean(tgtPlayback)) {
+    return {
+      ok: false,
+      code: 'SOURCE_OR_DEPENDENCY_CHANGED',
+      reason: '角色说话动画播放配置已变化，将复制为独立定义。',
+    };
+  }
+  if (srcPlayback && tgtPlayback && !stableJsonEqual(srcPlayback, tgtPlayback)) {
+    return {
+      ok: false,
+      code: 'SOURCE_OR_DEPENDENCY_CHANGED',
+      reason: '角色说话动画起止帧、循环模式或静止帧已变化，将复制为独立定义。',
     };
   }
 
