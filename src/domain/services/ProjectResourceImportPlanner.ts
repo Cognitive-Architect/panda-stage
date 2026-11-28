@@ -1192,6 +1192,14 @@ export function buildImportedProjectCandidate(options: {
           tip: { ...entry.chain.tip },
         },
       }));
+      // #1455: a Bone `partId` references the Character's own Part identity,
+      // so it must reuse the same Part remap as the Parts/arm chains.
+      // `parentBoneId` is Character-local and stays intact, keeping the tree
+      // shape unchanged.
+      const bones = character.bones?.map((bone) => ({
+        ...bone,
+        ...(bone.partId ? { partId: remapPartId(bone.partId) } : {}),
+      }));
       // Preserve motionMappings only when the referenced source character, its
       // source action, every rule's sourcePartId, the generatedActionId, and
       // every defined targetPartId are all completely remapped in this batch.
@@ -1304,6 +1312,7 @@ export function buildImportedProjectCandidate(options: {
         ...(bodyPoses ? { bodyPoses } : {}),
         ...(armChain ? { armChain } : {}),
         ...(armChains ? { armChains } : {}),
+        ...(bones ? { bones } : {}),
         ...(motionMappings && motionMappings.length > 0
           ? { motionMappings }
           : { motionMappings: undefined }),
