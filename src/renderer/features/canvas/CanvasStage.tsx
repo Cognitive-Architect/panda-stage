@@ -107,7 +107,7 @@ import {
 } from './LayerTransformer';
 import { ParentLayerTransformer } from './ParentLayerTransformer';
 import { SelectableLayer, type SelectableLayerPinWarp, type SelectableLayerPinWarpEditing } from './SelectableLayer';
-import { resolvePinWarpDrawPlan } from '../../stage/pinWarpCanvas';
+import { resolvePinWarpMesh } from '../../stage/pinWarpCanvas';
 import { StageLayerSpace } from '../../stage/StageLayerSpace';
 import { CoverageMaskClipGroup } from '../../stage/coverageMaskClip';
 import { SubtitleRenderer } from '../subtitles/SubtitleRenderer';
@@ -1826,22 +1826,25 @@ export function CanvasStage({
                         const image = imageForStageLayer(stageLayer);
                         // #1460: one shared decision + evaluated mesh for the
                         // bitmap pin-warp path, matching Stage/Preview/Export.
-                        const pinWarpPlan = resolvePinWarpDrawPlan(
+                        // #1471 R1: authoring uses the mesh directly (the pin
+                        // handles must stay visible) while `resolvePinWarpDrawPlan`
+                        // routes a strict rest mesh to the plain bitmap path.
+                        const pinWarpMesh = resolvePinWarpMesh(
                           stageLayer.evaluated,
                           visual,
                           { isBackground: render.isBackground },
                         );
                         const evaluatedPinWarp = stageLayer.evaluated.pinWarp;
                         const pinWarp: SelectableLayerPinWarp | null =
-                          pinWarpPlan.kind === 'pin-warp' &&
+                          pinWarpMesh &&
                           layer.pinWarp &&
                           evaluatedPinWarp?.status === 'valid'
                             ? {
                                 mesh: layer.pinWarp.mesh,
                                 restPins: layer.pinWarp.restPins,
                                 pins: evaluatedPinWarp.pins,
-                                rect: pinWarpPlan.mesh.rect,
-                                committed: pinWarpPlan.mesh,
+                                rect: pinWarpMesh.rect,
+                                committed: pinWarpMesh,
                               }
                             : null;
                         const pinWarpEditing: SelectableLayerPinWarpEditing | null =

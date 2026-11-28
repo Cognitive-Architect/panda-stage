@@ -38,6 +38,7 @@ import {
 import { visibleImageRect } from '../characters/characterAssemblyPreview';
 import { measureImageVisibleBounds } from '../characters/measureImageVisibleBounds';
 import { cacheLayerVisualEffects } from '../../stage/layerVisualEffects';
+import { resolvePinWarpDrawBounds } from '../../stage/pinWarpCanvas';
 import type { LayerVisualEffects } from '../../../domain/models/layerVisualEffects';
 import { renderFlaGraphicCanvas } from './flaGraphicCanvasRenderer';
 
@@ -196,7 +197,13 @@ export function SelectableLayer({
       ownerZIndex: render.zIndex,
     },
   ];
-  const visualBounds = visual?.combinedLocalBounds ?? legacyBounds;
+  // #1471 R3: a warped Layer uses its evaluated deformed draw bounds so the
+  // editor effects cache / selection outline cannot clip the deformation; every
+  // other Layer keeps its existing combined bounds.
+  const visualBounds = resolvePinWarpDrawBounds(
+    visual?.combinedLocalBounds ?? legacyBounds,
+    pinWarp?.committed,
+  );
   const firstPart = visualParts[0];
   const imageForPart = (
     part: (typeof visualParts)[number],
