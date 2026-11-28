@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   AutoSubtitleAudioService,
+  attachDialogueManifestIdentities,
   buildAudioAssetFileNameIndex,
   createDraftRowIdGenerator,
   dialogueAudioManifestTextHash,
@@ -18,6 +19,7 @@ import {
   type AudioAsset,
   type Character,
   type DialogueAudioManifestRow,
+  type DialogueManifestPendingIdentity,
   type DialogueAudioMatchRequest,
   type DialogueAudioScheduleRowInput,
   type DialogueDraftRowSeed,
@@ -50,13 +52,7 @@ interface ManualAudioOverride {
   sourceEndMs?: number;
 }
 
-interface PendingManifestLine {
-  readonly lineKey: string;
-  readonly dialogueId?: string;
-  /** Manifest speaker/text, used to bind identity to the row it really belongs to. */
-  readonly speaker: string;
-  readonly text: string;
-}
+type PendingManifestLine = DialogueManifestPendingIdentity;
 
 interface ImportedAudioBinding {
   readonly assetId: string | null;
@@ -308,30 +304,13 @@ export function DialogueBatchPaste({
       nextDraftRowIdRef.current,
     );
 
-    // Manifest identity is a one-shot bridge from CSV rows to draft rows. It is
-    // attached to the row that really carries the same speaker/text, then
-    // retired, so a partial commit that re-numbers the remaining text can never
-    // walk a stale line number onto someone else's lineKey or formal dialogue.
-    const pending = pendingManifestByLineNumberRef.current;
-    const attached = pending.size === 0
-      ? reconciled
-      : reconciled.map((row) => {
-          if (row.lineKey || row.existingDialogueId) return row;
-          const candidate = [...pending.entries()].find(
-            ([, identity]) =>
-              identity.text === row.text && identity.speaker === row.speakerName,
-          );
-          if (!candidate) return row;
-          const [lineNumber, identity] = candidate;
-          pending.delete(lineNumber);
-          return {
-            ...row,
-            lineKey: identity.lineKey,
-            ...(identity.dialogueId
-              ? { existingDialogueId: identity.dialogueId }
-              : {}),
-          };
-        });
+    // Manifest identity is a one-shot positional bridge: a row only takes the
+    // identity of its own CSV slot, so an identical line from another shot can
+    // never walk into it.
+    const attached = attachDialogueManifestIdentities(
+      reconciled,
+      pendingManifestByLineNumberRef.current,
+    );
 
     previousStableRowsRef.current = attached;
     for (const row of attached) {
@@ -621,6 +600,17 @@ export function DialogueBatchPaste({
           logicalOrdinal:
             logicalOrdinalsByLineNumber.get(line.lineNumber) ?? idx + 1,
         }));
+
+        // Keep any not-yet-attached manifest identity aligned with the compacted
+        // text, so a line that was still unresolved keeps its own CSV slot.
+        const pendingAfterCommit = new Map<number, PendingManifestLine>();
+        remainingLines.forEach((line, idx) => {
+          const identity = pendingManifestByLineNumberRef.current.get(
+            line.lineNumber,
+          );
+          if (identity) pendingAfterCommit.set(idx + 1, identity);
+        });
+        pendingManifestByLineNumberRef.current = pendingAfterCommit;
 
         // Re-index existing manual speaker mappings to match the compacted line numbers.
         const remainingMappings: Record<number, string> = {};

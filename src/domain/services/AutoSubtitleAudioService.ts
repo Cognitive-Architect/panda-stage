@@ -79,6 +79,45 @@ export function createDraftRowIdGenerator(
   };
 }
 
+/** Imported identity of one CSV row, waiting for its draft row to appear. */
+export interface DialogueManifestPendingIdentity {
+  readonly lineKey: string;
+  readonly dialogueId?: string;
+  readonly speaker: string;
+  readonly text: string;
+}
+
+/**
+ * One-shot bridge from imported CSV rows to draft rows.
+ *
+ * The slot is the CSV row position, and a row only takes the identity of **its
+ * own** slot. Rows whose slot is empty (invalid/foreign rows keep the slot
+ * empty) never inherit an identical line from elsewhere, and an identity is
+ * retired once consumed so a later re-number cannot re-apply it.
+ */
+export function attachDialogueManifestIdentities(
+  rows: readonly StableDialogueDraftRow[],
+  pendingByIdentitySlot: Map<number, DialogueManifestPendingIdentity>,
+): StableDialogueDraftRow[] {
+  if (pendingByIdentitySlot.size === 0) return [...rows];
+  return rows.map((row) => {
+    if (row.lineKey || row.existingDialogueId) return row;
+    const identity = pendingByIdentitySlot.get(row.sourceLineNumber);
+    if (!identity) return row;
+    pendingByIdentitySlot.delete(row.sourceLineNumber);
+    if (identity.text !== row.text || identity.speaker !== row.speakerName) {
+      // The CSV row at this position is not the row that was created (invalid,
+      // foreign or manually remapped): drop the identity instead of guessing.
+      return row;
+    }
+    return {
+      ...row,
+      lineKey: identity.lineKey,
+      ...(identity.dialogueId ? { existingDialogueId: identity.dialogueId } : {}),
+    };
+  });
+}
+
 export interface DialogueAudioMatchRequest {
   readonly draftRowId: string;
   /** 1-based ordinal used for `<ordinal>_<speakerName>` initial matching. */
