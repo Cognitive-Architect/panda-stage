@@ -323,9 +323,36 @@ export class CharacterBoneService {
       }
     }
     const bones = tree.bones.filter((bone) => !descendants.has(bone.id));
-    return replaceAdaptiveCharacter(project, character, {
+    const nextCharacter = AdaptivePartsCharacterSchema.parse({
       ...character,
       ...(bones.length === 0 ? { bones: undefined } : { bones }),
+    });
+    // #1456: a deleted Bone must not leave an unsolvable end-effector lock behind.
+    const affectedLayerIds = new Set(project.shots.flatMap((shot) =>
+      shot.layers.flatMap((layer) =>
+        layer.source.kind === 'character' &&
+        layer.source.characterId === characterId &&
+        (layer.endEffectorLocks ?? []).some((lock) => descendants.has(lock.boneId))
+          ? [layer.id]
+          : [])));
+    return ProjectSchema.parse({
+      ...project,
+      updatedAt: new Date().toISOString(),
+      characters: project.characters.map((candidate) =>
+        candidate.id === character.id ? nextCharacter : candidate),
+      ...(affectedLayerIds.size === 0 ? {} : {
+        shots: project.shots.map((shot) => ({
+          ...shot,
+          layers: shot.layers.map((layer) => {
+            if (!affectedLayerIds.has(layer.id)) return layer;
+            const remaining = (layer.endEffectorLocks ?? [])
+              .filter((lock) => !descendants.has(lock.boneId));
+            return remaining.length > 0
+              ? { ...layer, endEffectorLocks: remaining }
+              : { ...layer, endEffectorLocks: undefined };
+          }),
+        })),
+      }),
     });
   }
 

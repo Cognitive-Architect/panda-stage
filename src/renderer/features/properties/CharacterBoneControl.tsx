@@ -3,12 +3,15 @@ import {
   CHARACTER_PART_MAX_SCALE,
   CHARACTER_PART_MIN_SCALE,
   CharacterBoneService,
+  CharacterEndEffectorLockService,
   characterBonePoseValues,
   characterBoneProtectedPartIds,
   resolveCharacterBoneTree,
   resolveTimelineFrameTime,
   type AdaptivePartsCharacter,
   type CharacterBone,
+  type CharacterEndEffectorLock,
+  type CharacterEndEffectorLockStatus,
   type Layer,
   type Project,
   type Shot,
@@ -46,6 +49,7 @@ interface BonePoseDraft {
 }
 
 const boneService = new CharacterBoneService();
+const endEffectorLockService = new CharacterEndEffectorLockService();
 
 function numberOrNull(value: string): number | null {
   const trimmed = value.trim();
@@ -92,6 +96,8 @@ function CharacterBoneForm({ snapshot, shot, layer, character }: CharacterBoneCo
   const [settings, setSettings] = useState<BoneSettingsDraft>();
   const [pose, setPose] = useState<BonePoseDraft>();
   const [error, setError] = useState('');
+  const [lockError, setLockError] = useState('');
+  const [rangeDraft, setRangeDraft] = useState<{ lockId: string; start: string; end: string }>();
   const selected = bones.find((bone) => bone.id === selectedBoneId) ?? bones[0];
   const protectedIds = characterBoneProtectedPartIds(character);
   const bindableParts = character.parts.filter((part) =>
@@ -134,6 +140,133 @@ function CharacterBoneForm({ snapshot, shot, layer, character }: CharacterBoneCo
   const activePose = pose?.revision === revision && pose.boneId === selected?.id
     ? pose
     : undefined;
+  const locks = layer.endEffectorLocks ?? [];
+  let lockStatuses: CharacterEndEffectorLockStatus[] = [];
+  let lockDiagnosticsError = '';
+  if (locks.length > 0) {
+    try {
+      lockStatuses = endEffectorLockService.describeLocks(snapshot.project, {
+        shotId: shot.id, layerId: layer.id, timeMs,
+      });
+    } catch (cause) {
+      lockDiagnosticsError = cause instanceof Error ? cause.message : '无法读取末端锁定状态。';
+    }
+  }
+  const nodeByBoneId = new Map(character.bones?.map((bone) => [bone.id, bone]) ?? []);
+  const boneLabel = (boneId: string): string => {
+    const bone = nodeByBoneId.get(boneId);
+    const index = bones.findIndex((candidate) => candidate.id === boneId);
+    return bone ? boneDisplayName(bone, Math.max(0, index)) : boneId;
+  };
+  const canPin = Boolean(selected) && editable && timeMs >= 0;
+  const lockRows: CharacterEndEffectorLockStatus[] = lockStatuses.length > 0
+    ? lockStatuses
+    : locks.map((lock) => ({ lock }));
+
+  function useEndEffectorLocks(): boolean {
+    return (editorProjectStore.getSnapshot()?.project.shots
+      .find(({ id }) => id === shot.id)?.layers
+      .find(({ id }) => id === layer.id)?.endEffectorLocks?.length ?? 0) > 0;
+  }
+
+  function commitBonePose(address: { shotId: string; layerId: string; boneId: string; timeMs: number },
+    project: Project, changes: Record<string, number>, reset: boolean): Project {
+    if (useEndEffectorLocks()) {
+      const next = endEffectorLockService.applyBonePoseWithLocks(project, address, changes);
+      return next;
+    }
+    return reset ? boneService.resetBonePose(project, address) : boneService.applyBonePose(project, address, changes);
+  }
+
+  function pinLock(space: 'character' | 'stage'): void {
+    if (!selected) return;
+    try {
+      const state = editorProjectStore.getSnapshot();
+      if (!state) return;
+      const result = endEffectorLockService.pinFromCurrentPose(state.project, {
+        shotId: shot.id, layerId: layer.id, timeMs,
+      }, { boneId: selected.id, space });
+      mutate(result.project, '固定末端');
+      setLockError('');
+    } catch (cause) {
+      setLockError(cause instanceof Error ? cause.message : '无法固定末端。');
+    }
+  }
+
+  function removeLock(lockId: string): void {
+    try {
+      const state = editorProjectStore.getSnapshot();
+      if (!state) return;
+      const next = endEffectorLockService.removeLock(state.project, {
+        shotId: shot.id, layerId: layer.id,
+      }, lockId);
+      mutate(next, '移除末端锁定');
+      setLockError('');
+    } catch (cause) {
+      setLockError(cause instanceof Error ? cause.message : '无法移除末端锁定。');
+    }
+  }
+
+  function toggleFootDirection(lock: CharacterEndEffectorLock): void {
+    try {
+      const state = editorProjectStore.getSnapshot();
+      if (!state) return;
+      const address = { shotId: shot.id, layerId: layer.id };
+      if (lock.footRotationDeg !== undefined) {
+        mutate(endEffectorLockService.updateLock(state.project, address, lock.id, {
+          footRotationDeg: null,
+        }), '解除脚掌方向锁定');
+      } else {
+        const current = endEffectorLockService.footDirectionDeg(state.project, {
+          shotId: shot.id, layerId: layer.id, timeMs,
+        }, lock.boneId, lock.space);
+        if (current === undefined) throw new Error('当前帧无法读取脚掌方向，请先记录角色姿势。');
+        mutate(endEffectorLockService.updateLock(state.project, address, lock.id, {
+          footRotationDeg: Number(current.toFixed(2)),
+        }), '锁定脚掌方向');
+      }
+      setLockError('');
+    } catch (cause) {
+      setLockError(cause instanceof Error ? cause.message : '无法修改脚掌方向锁定。');
+    }
+  }
+
+  function applyActiveRange(lock: CharacterEndEffectorLock, clear: boolean): void {
+    try {
+      const state = editorProjectStore.getSnapshot();
+      if (!state) return;
+      const address = { shotId: shot.id, layerId: layer.id };
+      if (clear) {
+        mutate(endEffectorLockService.updateLock(state.project, address, lock.id, {
+          activeRange: null,
+        }), '末端锁定改为全段');
+        setLockError('');
+        return;
+      }
+      const draft = rangeDraft?.lockId === lock.id ? rangeDraft : undefined;
+      const startMs = numberOrNull(draft?.start ?? '');
+      const endMs = numberOrNull(draft?.end ?? '');
+      if (startMs === null || endMs === null) throw new Error('请输入有效的生效区间。');
+      mutate(endEffectorLockService.updateLock(state.project, address, lock.id, {
+        activeRange: { startMs: Math.round(startMs), endMs: Math.round(endMs) },
+      }), '设置末端锁定区间');
+      setLockError('');
+    } catch (cause) {
+      setLockError(cause instanceof Error ? cause.message : '无法设置生效区间。');
+    }
+  }
+
+  function residualCopy(status: CharacterEndEffectorLockStatus): string {
+    const residual = status.residual;
+    if (!residual) return '';
+    if (residual.reason === 'shared-ancestor') {
+      return '共享祖先已被更高优先级锁定占用，此末端首版暂不解算。';
+    }
+    if (residual.reason === 'invalid-chain' || residual.reason === 'invalid-target') {
+      return '该末端锁定数据无效，本帧已局部忽略。';
+    }
+    return `末端未完全到达目标（残差 ${residual.distance.toFixed(2)}）。`;
+  }
 
   function mutate(project: Project, label: string): void {
     if (project !== editorProjectStore.getSnapshot()?.project) {
@@ -211,7 +344,13 @@ function CharacterBoneForm({ snapshot, shot, layer, character }: CharacterBoneCo
       const address = { shotId: shot.id, layerId: layer.id, boneId: selected.id, timeMs };
       let project: typeof state.project;
       if (reset) {
-        project = boneService.resetBonePose(state.project, address);
+        project = commitBonePose(address, state.project, {
+          'transform.offsetX': 0,
+          'transform.offsetY': 0,
+          'transform.rotationDeg': 0,
+          'transform.scaleX': 1,
+          'transform.scaleY': 1,
+        }, true);
       } else {
         if (!activePose) return;
         const x = numberOrNull(activePose.x);
@@ -227,13 +366,13 @@ function CharacterBoneForm({ snapshot, shot, layer, character }: CharacterBoneCo
           setError(`缩放范围为 ${CHARACTER_PART_MIN_SCALE * 100}%～${CHARACTER_PART_MAX_SCALE * 100}%。`);
           return;
         }
-        project = boneService.applyBonePose(state.project, address, {
+        project = commitBonePose(address, state.project, {
           'transform.offsetX': x,
           'transform.offsetY': y,
           'transform.rotationDeg': rotation,
           'transform.scaleX': scale,
           'transform.scaleY': scale,
-        });
+        }, false);
       }
       mutate(project, reset ? '重置骨骼姿态' : '记录骨骼姿态');
       setError('');
@@ -327,6 +466,55 @@ function CharacterBoneForm({ snapshot, shot, layer, character }: CharacterBoneCo
           onClick={deletePoseKey}>删除当前帧关键帧</Button>
       </div>
     </> : null}
+    {bones.length ? <details className="animation-key-selection" data-testid="character-end-effector-lock">
+      <summary>末端锁定</summary>
+      <div className="animation-curve-fields">
+        <Button disabled={!canPin || !activePose} onClick={() => pinLock('stage')}>固定当前骨骼（舞台坐标）</Button>
+        <Button variant="secondary" disabled={!canPin || !activePose}
+          onClick={() => pinLock('character')}>固定当前骨骼（角色坐标）</Button>
+      </div>
+      {lockDiagnosticsError ? <p role="alert">{lockDiagnosticsError}</p> : null}
+      {locks.length === 0
+        ? <p>选中骨链末端骨骼后固定它的当前位置。</p>
+        : <ul>
+          {lockRows.map((status) => {
+            const lock = status.lock;
+            const residual = residualCopy(status);
+            const draft = rangeDraft?.lockId === lock.id
+              ? rangeDraft
+              : {
+                  lockId: lock.id,
+                  start: String(lock.activeRange?.startMs ?? 0),
+                  end: String(lock.activeRange?.endMs ?? shot.durationMs),
+                };
+            return <li key={lock.id}>
+              <strong>{boneLabel(lock.boneId)}</strong>
+              <span>{` · ${lock.space === 'stage' ? '舞台坐标' : '角色坐标'} · 目标 ${formatNumber(lock.target.x)}, ${formatNumber(lock.target.y)}`}</span>
+              <span>{` · 生效 ${lock.activeRange ? `${lock.activeRange.startMs}–${lock.activeRange.endMs} 毫秒` : '全段'}`}</span>
+              <div className="animation-curve-fields">
+                <Button variant="secondary" disabled={!editable} onClick={() => toggleFootDirection(lock)}>
+                  {lock.footRotationDeg === undefined
+                    ? '锁定脚掌方向'
+                    : `解除脚掌方向（${formatNumber(lock.footRotationDeg)}°）`}
+                </Button>
+                <Button variant="secondary" disabled={!editable} onClick={() => removeLock(lock.id)}>移除末端锁定</Button>
+              </div>
+              <div className="animation-curve-fields">
+                <label>开始毫秒<input type="number" step={1} disabled={!editable} value={draft.start}
+                  onChange={(event) => setRangeDraft({ ...draft, start: event.target.value })} /></label>
+                <label>结束毫秒<input type="number" step={1} disabled={!editable} value={draft.end}
+                  onChange={(event) => setRangeDraft({ ...draft, end: event.target.value })} /></label>
+                <Button variant="secondary" disabled={!editable}
+                  onClick={() => applyActiveRange(lock, false)}>应用区间</Button>
+                <Button variant="secondary" disabled={!editable || !lock.activeRange}
+                  onClick={() => applyActiveRange(lock, true)}>改为全段</Button>
+              </div>
+              {residual ? <p role="alert">{residual}</p> : null}
+            </li>;
+          })}
+        </ul>}
+      {lockError ? <p role="alert">{lockError}</p> : null}
+    </details> : null}
     {error ? <p role="alert">{error}</p> : null}
   </details>;
 }

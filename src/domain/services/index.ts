@@ -24,3 +24,4 @@ export * from './TimelineEventBatchService';
 export * from './AssetService';
 export * from './mouthPoses';
 export * from './ProjectResourceImportPlanner';
+export * from './CharacterEndEffectorLockService';

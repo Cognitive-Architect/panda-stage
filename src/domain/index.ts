@@ -43,6 +43,7 @@ export * from './evaluate-animation-core';
 export * from './character-node-animation';
 export * from './character-part-animation';
 export * from './character-bone-pose';
+export * from './character-end-effector-lock';
 export * from './layer-animation';
 export * from './services/CharacterMotionService';
 export * from './services/LayerMotionService';

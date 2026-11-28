@@ -14,7 +14,7 @@ import {
 import { LAYER_ANCHOR } from '../constants';
 import { LAYER_DEPTH_MAX, LAYER_DEPTH_MIN } from '../constants';
 import { AnimationKeySchema } from './animationKeys';
-import { FiniteNumberSchema, IdSchema, NameSchema } from './common';
+import { FiniteNumberSchema, IdSchema, MillisecondsSchema, NameSchema } from './common';
 import { FlaGraphicShapeOverridesSchema } from '../fla-shape-vector';
 import { FlaGraphicInstanceTextOverridesSchema } from './flaGraphicInstanceText';
 import { FlaGraphicInstanceTransformOverridesSchema, FlaGraphicInstanceTransformOverridesV22Schema } from './flaGraphicInstanceOverrides';
@@ -547,8 +547,63 @@ export const LayerV46Schema = z.strictObject({
   }
 });
 
+export const CHARACTER_END_EFFECTOR_LOCK_SPACES = ['character', 'stage'] as const;
+export type CharacterEndEffectorLockSpace = (typeof CHARACTER_END_EFFECTOR_LOCK_SPACES)[number];
+
+const CharacterEndEffectorLockTargetSchema = z
+  .strictObject({
+    x: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+    y: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+  });
+
+const CharacterEndEffectorLockActiveRangeSchema = z
+  .strictObject({
+    /** Inclusive Shot-time start in milliseconds. */
+    startMs: MillisecondsSchema,
+    /** Exclusive Shot-time end in milliseconds. */
+    endMs: MillisecondsSchema,
+  })
+  .refine(({ startMs, endMs }) => endMs > startMs, 'End time must be after the start time.');
+
+/**
+ * Author-selectable world/character end-effector lock (#1456). It lives on the
+ * Layer (a Shot instance of a Character), never on the shared Character
+ * definition: a drag target belongs to one instance at one time range.
+ *
+ * `boneId` is the leaf Bone whose Character-space pivot is the locked end
+ * effector. The solver rotates the leaf's nearest 2–3 ancestor Bones; the root
+ * Bone is never solved, so a lock never moves the whole body in v1.
+ */
+export const CharacterEndEffectorLockSchema = z
+  .strictObject({
+    id: IdSchema,
+    boneId: IdSchema,
+    space: z.enum(CHARACTER_END_EFFECTOR_LOCK_SPACES),
+    target: CharacterEndEffectorLockTargetSchema,
+    /** Optional held foot direction; degrees counter-clockwise from +X in the lock's own space. */
+    footRotationDeg: FiniteNumberSchema.min(-360).max(360).optional(),
+    /** Solver authority in (0, 1]; missing means a full lock (1). */
+    weight: FiniteNumberSchema.gt(0).max(1).optional(),
+    /** Half-open Shot-time range where the solver applies; missing means the whole Shot. */
+    activeRange: CharacterEndEffectorLockActiveRangeSchema.optional(),
+  });
+
+export const CharacterEndEffectorLocksSchema = z
+  .array(CharacterEndEffectorLockSchema)
+  .max(16)
+  .refine(
+    (locks) =>
+      new Set(locks.map(({ id }) => id)).size === locks.length &&
+      new Set(locks.map(({ boneId }) => boneId)).size === locks.length,
+    'End-effector lock ids and Bones must be unique.',
+  );
+
+export type CharacterEndEffectorLock = z.infer<typeof CharacterEndEffectorLockSchema>;
+
 export const LayerSchema = LayerV46Schema.safeExtend({
   visualEffects: LayerVisualEffectsSchema.optional(),
+  /** Per-instance end-effector locks (#1456). Optional so old projects stay byte-identical. */
+  endEffectorLocks: CharacterEndEffectorLocksSchema.optional(),
 });
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */
