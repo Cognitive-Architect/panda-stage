@@ -155,3 +155,7 @@
 | F2 | 可选冻结 plan/apply | 独立；外部 Agent 使用时高 |
 
 各项先选一个真实场景完成端到端纵切；原始 WF OWNER UAT 仍待验，不人为把其变成所有后续研究的硬阻塞。新增功能最终接入正式 Project、History、保存与输出；若 UI 正好与 ReShell 迁移交叉，按实际合流保护其入口，不重复开发旧/新两套业务。未授权不建票、不创建实施分支、不修改业务代码。当前研究仅 Markdown；未独立运行 Windows、测试或性能基准，无可用独立子代理入口，直接并行读取固定源码和官方资料。具体 schema/界面/优先级须以 OWNER 后续指派为准。
+
+## OWNER 范围裁决与集成入口（2026-11-28）
+
+本轮施工范围以 [WF-OPT-EXT-ROADMAP #1431](https://github.com/Cognitive-Architect/panda-stage/issues/1431) 及实施票 [A #1435](https://github.com/Cognitive-Architect/panda-stage/issues/1435)、[B1 #1436](https://github.com/Cognitive-Architect/panda-stage/issues/1436)、[B2 #1437](https://github.com/Cognitive-Architect/panda-stage/issues/1437)、[B3 #1438](https://github.com/Cognitive-Architect/panda-stage/issues/1438)、[C #1439](https://github.com/Cognitive-Architect/panda-stage/issues/1439)、[D #1440](https://github.com/Cognitive-Architect/panda-stage/issues/1440)、[E1 #1441](https://github.com/Cognitive-Architect/panda-stage/issues/1441)、[E2 #1442](https://github.com/Cognitive-Architect/panda-stage/issues/1442)、[E3 #1443](https://github.com/Cognitive-Architect/panda-stage/issues/1443) 为准。F1、F2 暂缓；B3、D 依赖 B1/B2，E3 依赖 E2（E1 非硬依赖）。统一集成分支 `integration/wf-opt-ext-1431`，base `main`（建立时 `244528a`）。所有九票的正式交付集中于同一 Draft 母 PR，实施回执记录真实提交和验证状态；未经 OWNER 授权不合并、不关闭工单。本节仅登记施工范围与入口，不代表功能已实现或验收通过。
