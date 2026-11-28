@@ -10,6 +10,7 @@ import {
   collectProjectResourceClosure,
   duplicateCharacterActionForInstance,
   evaluateShotAtTime,
+  planMappedCharacterMotion,
   resolveLayerVisualParts,
   upsertCharacterActionEvent,
   type CharacterActionEvent,
@@ -109,6 +110,108 @@ function editCopy(project: Project, rig: InstanceRig): Project {
   }, { 'transform.rotationDeg': 45 });
 }
 
+interface MotionMappingTarget {
+  project: Project;
+  targetCharacterId: string;
+  generatedActionId: string;
+  targetPartId: string;
+}
+
+/**
+ * Adds a second Adaptive Parts Character whose `motionMappings` entry maps one
+ * action of the first Character onto its own generated action (#1469 F2).
+ */
+function addMotionMappingTarget(
+  project: Project,
+  source: { characterId: string; armId: string; actionId: string },
+): MotionMappingTarget {
+  const parts = adaptivePartsFixture(IDS.assetChar).slice(0, 2).map((part, index) => ({
+    ...part,
+    partId: randomUUID(),
+    restTransform: { a: 1, b: 0, c: 0, d: 1, tx: index * 70, ty: 0 },
+    sourceRestTransform: { a: 1, b: 0, c: 0, d: 1, tx: index * 70, ty: 0 },
+  }));
+  const created = new CharacterService().createAdaptiveParts(project, {
+    name: '映射目标',
+    parts,
+  });
+  const target = created.characters.at(-1)!;
+  const targetPartId = parts[0]!.partId;
+  const generatedActionId = randomUUID();
+  const next = ProjectSchema.parse({
+    ...created,
+    characters: created.characters.map((character) =>
+      character.id !== target.id
+        ? character
+        : {
+            ...character,
+            actions: [
+              {
+                id: generatedActionId,
+                name: '映射动作',
+                kind: 'layered' as const,
+                tracks: [
+                  {
+                    partId: targetPartId,
+                    property: 'transform.rotationDeg' as const,
+                    keys: [
+                      { timeMs: 0, value: 0, interpolationToNext: 'linear' as const },
+                      { timeMs: 1000, value: 20, interpolationToNext: 'linear' as const },
+                    ],
+                  },
+                ],
+              },
+            ],
+            motionMappings: [
+              {
+                sourceCharacterId: source.characterId,
+                sourceActionId: source.actionId,
+                generatedActionId,
+                rules: [
+                  {
+                    sourcePartId: source.armId,
+                    targetPartId,
+                    mirror: false,
+                    translationScale: 1,
+                    pivotOffset: { x: 0, y: 0 },
+                    properties: ['transform.rotationDeg' as const],
+                  },
+                ],
+              },
+            ],
+          },
+    ),
+  });
+  return { project: next, targetCharacterId: target.id, generatedActionId, targetPartId };
+}
+
+function importCharacters(
+  sourceProject: Project,
+  sourceCharacterIds: readonly string[],
+  targetProject: Project = buildProject(),
+) {
+  const closure = collectProjectResourceClosure(
+    sourceProject,
+    sourceCharacterIds.map((id) => ({ kind: 'character' as const, id })),
+  );
+  expect(closure.issues).toEqual([]);
+  const plannedAssets = closure.assets.map((asset, index) => ({
+    sourceAsset: asset,
+    targetId: randomUUID(),
+    reused: false,
+    targetRelativePath: `assets/imported-${index}.png`,
+    sha256: asset.sha256,
+  }));
+  return buildImportedProjectCandidate({
+    targetProject,
+    sourceProject,
+    closure,
+    plannedAssets,
+    createId: randomUUID,
+    updatedAtIso: '2026-11-28T00:00:00.000Z',
+  });
+}
+
 describe('instance-scoped action copy ownership (#1449)', () => {
   it('rejects binding another layer instance copy on the formal event write path', () => {
     const rig = instanceRig();
@@ -188,9 +291,22 @@ describe('instance-scoped action copy ownership (#1449)', () => {
     expect(actionEvent(duplicated, rig.layerA).actionId).toBe(COPY_ID);
   });
 
-  it('cross-project import drops a private scope that cannot exist in the target project', () => {
+  it('cross-project import never promotes an instance-private copy into the target shared library', () => {
     const rig = instanceRig();
     const project = editCopy(createCopyForA(rig), rig);
+    const sourceSnapshot = JSON.stringify(project);
+    const sourceCharacter = project.characters.find((character) => character.id === rig.characterId)!;
+    if (sourceCharacter.mode !== 'adaptive-parts') throw new Error('Expected adaptive-parts character.');
+    const sourceActions = sourceCharacter.actions!;
+    const sourceShared = sourceActions.find((action) => action.id === ACTION_ID)!;
+    const sourcePrivate = sourceActions.find((action) => action.id === COPY_ID)!;
+    // Fixture sanity: the private copy really carries a modified track that the
+    // shared origin does not have.
+    if (!('kind' in sourceShared) || !('kind' in sourcePrivate)) throw new Error('Expected layered actions.');
+    expect(sourcePrivate.tracks[0]!.keys.map((key) => key.value)).not.toEqual(
+      sourceShared.tracks[0]!.keys.map((key) => key.value),
+    );
+
     const closure = collectProjectResourceClosure(project, [
       { kind: 'character', id: rig.characterId },
     ]);
@@ -210,20 +326,195 @@ describe('instance-scoped action copy ownership (#1449)', () => {
       createId: randomUUID,
       updatedAtIso: '2026-11-28T00:00:00.000Z',
     });
+    // Importing never mutates the source project.
+    expect(JSON.stringify(project)).toBe(sourceSnapshot);
+
     const imported = candidate.importedCharacters[0]!;
     if (imported.mode !== 'adaptive-parts') throw new Error('Expected adaptive-parts character.');
-    const importedCopy = (imported.actions ?? []).find(
-      (action): action is LayeredCharacterAction => 'kind' in action && action.name === '招手 副本',
+    const importedActions = imported.actions ?? [];
+    // #1469 F2 / #1449: instance isolation is the default. Only the shared
+    // action is imported; the private modified copy is never silently promoted
+    // into the target project's shared action library.
+    expect(importedActions.map((action) => action.name)).toEqual(['招手']);
+    expect(importedActions.some((action) => 'instanceScope' in action)).toBe(false);
+    expect(importedActions.some((action) => 'originActionId' in action)).toBe(false);
+    const importedShared = importedActions.find(
+      (action): action is LayeredCharacterAction => 'kind' in action && action.name === '招手',
     )!;
-    expect(importedCopy).toBeDefined();
-    // The source layer instance does not exist in the target project, so the
-    // private scope must not survive as a dangling owner. The copy degrades to
-    // an independent shared action and never points at another layer's copy.
-    expect('instanceScope' in importedCopy).toBe(false);
-    expect('originActionId' in importedCopy).toBe(false);
-    expect(importedCopy.tracks[0]!.partId).toBe(imported.parts[0]!.partId);
-    expect(imported.parts[0]!.partId).not.toBe(rig.armId);
+    // The shared action keeps its own authored tracks (no private edit leaks in).
+    expect(importedShared.tracks[0]!.partId).toBe(imported.parts[0]!.partId);
+    expect(importedShared.tracks[0]!.partId).not.toBe(rig.armId);
+    expect(importedShared.tracks[0]!.keys.map((key) => key.value)).toEqual(
+      sourceShared.tracks[0]!.keys.map((key) => key.value),
+    );
     // The formal project still validates after the import.
+    expect(() => ProjectSchema.parse(candidate.project)).not.toThrow();
+  });
+
+  it('cross-project import never infers private ownership from a same-id target layer', () => {
+    const rig = instanceRig();
+    const project = editCopy(createCopyForA(rig), rig);
+    const targetBase = buildProject();
+    // The target project happens to contain an unrelated Layer whose id equals
+    // the source private copy's `instanceScope.layerId`. That is not proof of
+    // ownership: the private owner cannot be re-created by a resource import.
+    const targetProject = ProjectSchema.parse({
+      ...targetBase,
+      shots: targetBase.shots.map((shot) =>
+        shot.id !== IDS.shot
+          ? shot
+          : {
+              ...shot,
+              layers: [...shot.layers, { ...shot.layers[1]!, id: rig.layerA }],
+            },
+      ),
+    });
+    const candidate = importCharacters(project, [rig.characterId], targetProject);
+    const imported = candidate.importedCharacters[0]!;
+    if (imported.mode !== 'adaptive-parts') throw new Error('Expected adaptive-parts character.');
+    expect(imported.actions!.map((action) => action.name)).toEqual(['招手']);
+    expect(imported.actions!.some((action) => 'instanceScope' in action)).toBe(false);
+    expect(() => ProjectSchema.parse(candidate.project)).not.toThrow();
+  });
+
+  it('cross-project import remaps a reference to a private copy onto the imported shared origin', () => {
+    const rig = instanceRig();
+    const mapping = addMotionMappingTarget(editCopy(createCopyForA(rig), rig), {
+      characterId: rig.characterId,
+      armId: rig.armId,
+      actionId: COPY_ID,
+    });
+    const candidate = importCharacters(mapping.project, [
+      rig.characterId,
+      mapping.targetCharacterId,
+    ]);
+    const importedSource = candidate.importedCharacters.find(
+      (character) => character.name === 'Instance scope rig',
+    )!;
+    const importedTarget = candidate.importedCharacters.find(
+      (character) => character.name === '映射目标',
+    )!;
+    if (importedSource.mode !== 'adaptive-parts' || importedTarget.mode !== 'adaptive-parts') {
+      throw new Error('Expected adaptive-parts characters.');
+    }
+    const importedShared = importedSource.actions!.find(
+      (action): action is LayeredCharacterAction => 'kind' in action && action.name === '招手',
+    )!;
+    // The private copy is absent from the imported shared library.
+    expect(importedSource.actions!.some((action) => action.name === '招手 副本')).toBe(false);
+    // The formal mapping reference is remapped to the imported shared origin.
+    expect(importedTarget.motionMappings).toHaveLength(1);
+    const remapped = importedTarget.motionMappings![0]!;
+    expect(remapped.sourceCharacterId).toBe(importedSource.id);
+    expect(remapped.sourceActionId).toBe(importedShared.id);
+    expect(remapped.sourceActionId).not.toBe(COPY_ID);
+    expect(remapped.generatedActionId).not.toBe(mapping.generatedActionId);
+    expect(
+      importedTarget.actions!.find((action) => action.id === remapped.generatedActionId)!.name,
+    ).toBe('映射动作');
+    expect(remapped.rules[0]!.sourcePartId).toBe(importedSource.parts[0]!.partId);
+    expect(remapped.rules[0]!.targetPartId).toBe(importedTarget.parts[0]!.partId);
+
+    // The formal consumer accepts the remapped mapping and reuses the imported
+    // generated action instead of leaving a dangling sourceActionId.
+    const layerId = randomUUID();
+    const projectWithLayer = ProjectSchema.parse({
+      ...candidate.project,
+      shots: candidate.project.shots.map((shot) =>
+        shot.id !== IDS.shot
+          ? shot
+          : {
+              ...shot,
+              layers: [
+                ...shot.layers,
+                {
+                  id: layerId,
+                  name: importedTarget.name,
+                  source: { kind: 'character' as const, characterId: importedTarget.id },
+                  x: 960,
+                  y: 540,
+                  scaleX: 1,
+                  scaleY: 1,
+                  flipX: false,
+                  rotationDeg: 0,
+                  anchor: 'center' as const,
+                  opacity: 1,
+                  zIndex: 1,
+                  visible: true,
+                  locked: false,
+                },
+              ],
+            },
+      ),
+    });
+    const run = planMappedCharacterMotion(projectWithLayer, IDS.shot, layerId, 0, {
+      sourceCharacterId: remapped.sourceCharacterId,
+      sourceActionId: remapped.sourceActionId,
+      rules: remapped.rules,
+    });
+    expect(run.missingSourcePartIds).toEqual([]);
+    const targetAfterRun = run.project.characters.find(
+      (character) => character.id === importedTarget.id,
+    )!;
+    expect(targetAfterRun.actions).toHaveLength(1);
+    expect(targetAfterRun.actions![0]!.id).toBe(remapped.generatedActionId);
+  });
+
+  it('cross-project import degrades references to a private copy whose shared origin is missing', () => {
+    const rig = instanceRig();
+    const withCopy = editCopy(createCopyForA(rig), rig);
+    const sourceCharacter = withCopy.characters.find(
+      (character) => character.id === rig.characterId,
+    )!;
+    if (sourceCharacter.mode !== 'adaptive-parts') throw new Error('Expected adaptive-parts character.');
+    const privateCopy = sourceCharacter.actions!.find(
+      (action): action is LayeredCharacterAction => 'kind' in action && action.id === COPY_ID,
+    )!;
+    // Legacy/corrupt data: the private copy's provenance points at an action
+    // that does not exist, so no usable shared origin is importable.
+    const dangling = ProjectSchema.parse({
+      ...withCopy,
+      characters: withCopy.characters.map((character) =>
+        character.id !== rig.characterId
+          ? character
+          : {
+              ...character,
+              actions: [{ ...privateCopy, originActionId: randomUUID() }],
+            },
+      ),
+      shots: withCopy.shots.map((shot) => ({
+        ...shot,
+        timelineEvents: shot.timelineEvents.filter((event) => event.type !== 'character-action'),
+      })),
+    });
+    const mapping = addMotionMappingTarget(dangling, {
+      characterId: rig.characterId,
+      armId: rig.armId,
+      actionId: COPY_ID,
+    });
+    const candidate = importCharacters(mapping.project, [
+      rig.characterId,
+      mapping.targetCharacterId,
+    ]);
+    const importedSource = candidate.importedCharacters.find(
+      (character) => character.name === 'Instance scope rig',
+    )!;
+    const importedTarget = candidate.importedCharacters.find(
+      (character) => character.name === '映射目标',
+    )!;
+    if (importedSource.mode !== 'adaptive-parts' || importedTarget.mode !== 'adaptive-parts') {
+      throw new Error('Expected adaptive-parts characters.');
+    }
+    // Neither the private copy nor any dangling provenance is imported.
+    expect(importedSource.actions).toBeUndefined();
+    const serialized = JSON.stringify(candidate.project);
+    expect(serialized).not.toContain('"originActionId"');
+    expect(serialized).not.toContain('"instanceScope"');
+    // The mapping referenced the dropped copy with no usable shared origin, so
+    // the formal reference is degraded locally while the generated action
+    // stays usable on its own.
+    expect(importedTarget.motionMappings).toBeUndefined();
+    expect(importedTarget.actions!.map((action) => action.name)).toEqual(['映射动作']);
     expect(() => ProjectSchema.parse(candidate.project)).not.toThrow();
   });
 });
