@@ -10,6 +10,7 @@ import {
   type FlaEditableShapeRegion,
   type FlaGraphicTransformEasing,
   type FlaShapeTweenEasing,
+  type FlaShapeTweenHintLocation,
   type FlaShapeVertexTarget,
   type GridArrayInput,
   type Layer,
@@ -599,6 +600,57 @@ export class LayerStore {
     });
     if (next !== project) {
       this.editorStore.updateProject(next, '删除形状补间');
+    }
+    return next;
+  }
+
+  addFlaGraphicShapeTweenHint(input: {
+    readonly layerId: string;
+    readonly tweenId: string;
+    readonly from: FlaShapeTweenHintLocation;
+    readonly to: FlaShapeTweenHintLocation;
+  }): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.addFlaGraphicShapeTweenHint(project, {
+      shotId,
+      ...input,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '添加形状提示点');
+    }
+    return next;
+  }
+
+  updateFlaGraphicShapeTweenHint(input: {
+    readonly layerId: string;
+    readonly tweenId: string;
+    readonly hintId: string;
+    readonly from?: FlaShapeTweenHintLocation;
+    readonly to?: FlaShapeTweenHintLocation;
+  }): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.updateFlaGraphicShapeTweenHint(project, {
+      shotId,
+      ...input,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '修改形状提示点');
+    }
+    return next;
+  }
+
+  removeFlaGraphicShapeTweenHint(input: {
+    readonly layerId: string;
+    readonly tweenId: string;
+    readonly hintId: string;
+  }): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.removeFlaGraphicShapeTweenHint(project, {
+      shotId,
+      ...input,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '删除形状提示点');
     }
     return next;
   }

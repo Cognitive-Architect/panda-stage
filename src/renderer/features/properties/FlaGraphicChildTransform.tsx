@@ -3,12 +3,15 @@ import Konva from 'konva';
 import { FLA_STATIC_TEXT_LIMITS } from '../../../shared/fla-static-text';
 import {
   findFlaShapeTweenTrackForTarget,
+  FLA_SHAPE_TWEEN_MAX_HINTS,
   listFlaShapeRegionVertices,
+  listFlaShapeTweenHintAnchors,
   resolveFlaGraphicInternalAuthoringState,
   resolveFlaGraphicTimelineTarget,
   unapplyFlaGraphicSubtreeViewBox,
   type EvaluatedFlaGraphicNode,
   type FlaShapeTweenEasing,
+  type FlaShapeTweenHintLocation,
 } from '../../../domain';
 import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
@@ -36,6 +39,9 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
   const time = useTimelineUi();
   const [error, setError] = useState('');
   const [tweenDurationInput, setTweenDurationInput] = useState('1000');
+  const [hintFormOpen, setHintFormOpen] = useState(false);
+  const [fromHintAnchor, setFromHintAnchor] = useState('');
+  const [toHintAnchor, setToHintAnchor] = useState('');
   if (!target || !scope || !path?.length) return null;
   const node = getFlaGraphicNodeAtPath(
     target.frame,
@@ -141,6 +147,63 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
       : undefined) ??
     vertexHandles[0] ??
     null;
+
+  const shapeTweenHints = shapeTween?.hints ?? [];
+  const fromHintAnchors: ReturnType<typeof listFlaShapeTweenHintAnchors> = shapeTween
+    ? listFlaShapeTweenHintAnchors(shapeTween.from)
+    : [];
+  const toHintAnchors: ReturnType<typeof listFlaShapeTweenHintAnchors> = shapeTween
+    ? listFlaShapeTweenHintAnchors(shapeTween.to)
+    : [];
+  const hintAnchorValue = (location: FlaShapeTweenHintLocation): string =>
+    JSON.stringify({
+      contourIndex: location.contourIndex,
+      segmentIndex: location.segmentIndex,
+      t: location.t,
+    });
+  const hintAnchorOptions = (
+    anchors: ReturnType<typeof listFlaShapeTweenHintAnchors>,
+  ): readonly { readonly value: string; readonly label: string }[] =>
+    anchors.map((anchor) => ({
+      value: hintAnchorValue(anchor),
+      label: `轮廓 ${anchor.contourIndex + 1} · (${anchor.x.toFixed(1)}, ${anchor.y.toFixed(1)})`,
+    }));
+  const fromHintOptions = hintAnchorOptions(fromHintAnchors);
+  const toHintOptions = hintAnchorOptions(toHintAnchors);
+  const resolvedFromHintAnchor =
+    fromHintOptions.some((option) => option.value === fromHintAnchor)
+      ? fromHintAnchor
+      : fromHintOptions[0]?.value ?? '';
+  const resolvedToHintAnchor =
+    toHintOptions.some((option) => option.value === toHintAnchor)
+      ? toHintAnchor
+      : toHintOptions[0]?.value ?? '';
+
+  const parseHintAnchorValue = (raw: string): FlaShapeTweenHintLocation | null => {
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown> | null;
+      const contourIndex = parsed?.contourIndex;
+      const segmentIndex = parsed?.segmentIndex;
+      const t = parsed?.t;
+      if (
+        typeof contourIndex !== 'number' ||
+        !Number.isInteger(contourIndex) ||
+        contourIndex < 0 ||
+        typeof segmentIndex !== 'number' ||
+        !Number.isInteger(segmentIndex) ||
+        segmentIndex < 0 ||
+        typeof t !== 'number' ||
+        !Number.isFinite(t) ||
+        t < 0 ||
+        t > 1
+      ) {
+        return null;
+      }
+      return { contourIndex, segmentIndex, t };
+    } catch {
+      return null;
+    }
+  };
 
   const commit = (form: HTMLFormElement) => {
     if (!editable) return;
@@ -292,6 +355,82 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
     }
   };
 
+  const handleAddShapeTweenHint = () => {
+    if (!shapeTween) return;
+    const from = parseHintAnchorValue(resolvedFromHintAnchor);
+    const to = parseHintAnchorValue(resolvedToHintAnchor);
+    if (!from || !to) {
+      setError('请选择有效的提示点位置。');
+      return;
+    }
+    try {
+      layerStore.addFlaGraphicShapeTweenHint({
+        layerId: target.layerId,
+        tweenId: shapeTween.tweenId,
+        from,
+        to,
+      });
+      setHintFormOpen(false);
+      setError('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '添加形状提示点失败。');
+    }
+  };
+
+  const handleShapeTweenHintChange = (
+    hintId: string,
+    side: 'from' | 'to',
+    raw: string,
+  ) => {
+    if (!shapeTween) return;
+    const location = parseHintAnchorValue(raw);
+    if (!location) {
+      setError('请选择有效的提示点位置。');
+      return;
+    }
+    try {
+      layerStore.updateFlaGraphicShapeTweenHint({
+        layerId: target.layerId,
+        tweenId: shapeTween.tweenId,
+        hintId,
+        ...(side === 'from' ? { from: location } : { to: location }),
+      });
+      setError('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '修改形状提示点失败。');
+    }
+  };
+
+  const handleRemoveShapeTweenHint = (hintId: string) => {
+    if (!shapeTween) return;
+    try {
+      layerStore.removeFlaGraphicShapeTweenHint({
+        layerId: target.layerId,
+        tweenId: shapeTween.tweenId,
+        hintId,
+      });
+      setError('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '删除形状提示点失败。');
+    }
+  };
+
+  const renderHintOptions = (
+    options: readonly { readonly value: string; readonly label: string }[],
+    current: string,
+  ): React.JSX.Element => (
+    <>
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+      {options.some((option) => option.value === current) ? null : (
+        <option value={current}>当前位置</option>
+      )}
+    </>
+  );
+
   return <div className="fla-child-transform-wrap">
     {textValue !== undefined ? (
       <label>
@@ -403,6 +542,119 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
                   删除补间
                 </button>
                 <span className="fla-subtree-note">拖到补间起点或终点可直接编辑对应姿态</span>
+                <div className="fla-shape-tween-hints" data-testid="fla-shape-tween-hints">
+                  <div className="fla-shape-vector-row">
+                    <output data-testid="fla-shape-tween-hint-count">
+                      {shapeTweenHints.length > 0
+                        ? `提示点 ${shapeTweenHints.length} 个`
+                        : '未设置提示点'}
+                    </output>
+                    <button
+                      type="button"
+                      className="fla-subtree-stage-button"
+                      data-testid="fla-shape-tween-hint-add"
+                      aria-expanded={hintFormOpen}
+                      disabled={
+                        fromHintOptions.length === 0 ||
+                        toHintOptions.length === 0 ||
+                        shapeTweenHints.length >= FLA_SHAPE_TWEEN_MAX_HINTS
+                      }
+                      onClick={() => setHintFormOpen((open) => !open)}
+                    >
+                      {hintFormOpen ? '收起提示点' : '添加提示点'}
+                    </button>
+                  </div>
+                  {hintFormOpen ? (
+                    <div
+                      className="fla-shape-vector-row"
+                      data-testid="fla-shape-tween-hint-form"
+                    >
+                      <label>
+                        <span>起点</span>
+                        <select
+                          aria-label="提示点起点"
+                          data-testid="fla-shape-tween-hint-from"
+                          value={resolvedFromHintAnchor}
+                          onChange={(event) => setFromHintAnchor(event.currentTarget.value)}
+                        >
+                          {renderHintOptions(fromHintOptions, resolvedFromHintAnchor)}
+                        </select>
+                      </label>
+                      <label>
+                        <span>终点</span>
+                        <select
+                          aria-label="提示点终点"
+                          data-testid="fla-shape-tween-hint-to"
+                          value={resolvedToHintAnchor}
+                          onChange={(event) => setToHintAnchor(event.currentTarget.value)}
+                        >
+                          {renderHintOptions(toHintOptions, resolvedToHintAnchor)}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="fla-subtree-stage-button"
+                        data-testid="fla-shape-tween-hint-confirm"
+                        onClick={handleAddShapeTweenHint}
+                      >
+                        确认添加
+                      </button>
+                    </div>
+                  ) : null}
+                  {shapeTweenHints.map((hint, index) => {
+                    const fromValue = hintAnchorValue(hint.from);
+                    const toValue = hintAnchorValue(hint.to);
+                    return (
+                      <div
+                        className="fla-shape-vector-row"
+                        key={hint.hintId}
+                        data-testid="fla-shape-tween-hint-row"
+                      >
+                        <label>
+                          <span>起点</span>
+                          <select
+                            aria-label={`提示点起点 ${index + 1}`}
+                            value={fromValue}
+                            onChange={(event) =>
+                              handleShapeTweenHintChange(
+                                hint.hintId,
+                                'from',
+                                event.currentTarget.value,
+                              )
+                            }
+                          >
+                            {renderHintOptions(fromHintOptions, fromValue)}
+                          </select>
+                        </label>
+                        <label>
+                          <span>终点</span>
+                          <select
+                            aria-label={`提示点终点 ${index + 1}`}
+                            value={toValue}
+                            onChange={(event) =>
+                              handleShapeTweenHintChange(
+                                hint.hintId,
+                                'to',
+                                event.currentTarget.value,
+                              )
+                            }
+                          >
+                            {renderHintOptions(toHintOptions, toValue)}
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          className="fla-subtree-stage-button"
+                          data-testid="fla-shape-tween-hint-delete"
+                          aria-label={`删除提示点 ${index + 1}`}
+                          onClick={() => handleRemoveShapeTweenHint(hint.hintId)}
+                        >
+                          删除
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </>
             ) : tweenTargetInfo?.trackId ? (
               <>

@@ -35,6 +35,7 @@ import {
   STATIC_ARRAY_MIN_COUNT,
   type CubicBezier2D,
   type Point,
+  type ShapeMorphFailureCode,
   type StaticArrayOrientationMode,
 } from '../geometry';
 import { evaluateAnimationEase } from '../evaluate-animation-core';
@@ -93,15 +94,22 @@ import {
   type FlaGraphicTransformEasing,
 } from '../models/flaGraphicTimeline';
 import {
+  FLA_SHAPE_TWEEN_MAX_HINTS,
   findFlaShapeTweenTrackById,
   findFlaShapeTweenTrackForTarget,
   flaShapeTweenTargetKey,
   prepareFlaShapeTweenTrack,
   resolveFlaShapeTweenPoseEdit,
   sameFlaShapeTweenStyle,
+  stableFlaShapeTweenHintId,
+  toFlaShapeTweenHintLocation,
+  withFlaShapeTweenHintLocations,
+  withFlaShapeTweenHints,
   withFlaShapeTweenTrack,
   withoutFlaShapeTweenTrack,
   type FlaShapeTweenEasing,
+  type FlaShapeTweenHint,
+  type FlaShapeTweenHintLocation,
   type FlaShapeTweenTarget,
   type FlaShapeTweenTrack,
 } from '../models/flaShapeTween';
@@ -253,6 +261,7 @@ export type LayerServiceErrorCode =
   | 'SHAPE_TWEEN_TARGET_UNSUPPORTED'
   | 'SHAPE_TWEEN_MID_RANGE_READONLY'
   | 'SHAPE_TWEEN_INVALID_TIME'
+  | 'SHAPE_TWEEN_HINT_LIMIT'
   | 'INVALID_GRID_ARRAY'
   | 'INVALID_RADIAL_ARRAY'
   | 'INVALID_PATH_ARRAY'
@@ -1681,9 +1690,15 @@ export class LayerService {
     return { ...project, animations: nextAnimations };
   }
 
+  /**
+   * Validates authored geometry (and optional author hints) before persisting a
+   * tween edit. Multi-contour / hole pairing is enabled; only the documented
+   * unsupported topology remains a typed rejection.
+   */
   private assertFlaShapeTweenGeometrySupported(
     region: FlaEditableShapeRegion,
     other?: FlaEditableShapeRegion,
+    hints?: readonly FlaShapeTweenHint[],
   ): void {
     if (region.fill.kind === 'preserved') {
       throw new LayerServiceError(
@@ -1705,21 +1720,49 @@ export class LayerService {
       easing: 'linear',
       from: region,
       to: other ?? region,
+      ...(hints && hints.length > 0 ? { hints: [...hints] } : {}),
     });
     if (prepared.ok) return;
-    const message =
-      prepared.code === 'open-contour'
-        ? '形状补间要求两个姿态都是闭合轮廓。'
-        : prepared.code === 'unsupported-topology'
-          ? '暂不支持带孔洞或多轮廓的形状补间，请选择单一闭合轮廓区域。'
-          : prepared.code === 'degenerate-contour'
-            ? '当前轮廓的面积为 0，无法创建形状补间。'
-            : prepared.code === 'too-many-segments'
-              ? '当前轮廓过于复杂，暂不支持形状补间。'
-              : prepared.code === 'empty-pose'
-                ? '当前区域没有可用的闭合轮廓。'
-                : '当前轮廓无法进行形状补间。';
-    throw new LayerServiceError('SHAPE_TWEEN_GEOMETRY_UNSUPPORTED', message);
+    throw new LayerServiceError(
+      'SHAPE_TWEEN_GEOMETRY_UNSUPPORTED',
+      this.faShapeTweenGeometryFailureMessage(prepared.code),
+    );
+  }
+
+  private faShapeTweenGeometryFailureMessage(code: ShapeMorphFailureCode): string {
+    switch (code) {
+      case 'open-contour':
+        return '形状补间要求两个姿态都是闭合轮廓。';
+      case 'unsupported-topology':
+        return '暂不支持该多轮廓/孔洞拓扑：仅支持一个外轮廓加直接孔洞，或互不相交的外轮廓组合。';
+      case 'degenerate-contour':
+        return '当前轮廓的面积为 0，无法创建形状补间。';
+      case 'too-many-segments':
+        return '当前轮廓过于复杂，暂不支持形状补间。';
+      case 'empty-pose':
+        return '当前区域没有可用的闭合轮廓。';
+      case 'invalid-hint':
+        return '提示点位置无效，请重新选择提示点所在的轮廓顶点或位置。';
+      case 'ambiguous-hints':
+        return '提示点存在重复或歧义，请调整提示点位置。';
+      case 'crossing-hints':
+        return '提示点顺序交叉，无法建立一致的对应关系，请重新放置提示点。';
+      default:
+        return '当前轮廓无法进行形状补间。';
+    }
+  }
+
+  /** Validates a candidate hint set against the track's two authored poses. */
+  private assertFlaShapeTweenHintsSupported(
+    track: FlaShapeTweenTrack,
+    hints: readonly FlaShapeTweenHint[],
+  ): void {
+    const prepared = prepareFlaShapeTweenTrack({ ...track, hints: [...hints] });
+    if (prepared.ok) return;
+    throw new LayerServiceError(
+      'SHAPE_TWEEN_GEOMETRY_UNSUPPORTED',
+      this.faShapeTweenGeometryFailureMessage(prepared.code),
+    );
   }
 
   private stableFlaShapeTweenId(target: FlaShapeTweenTarget): string {
@@ -1944,6 +1987,7 @@ export class LayerService {
       this.assertFlaShapeTweenGeometrySupported(
         nextRegion,
         input.pose === 'from' ? track.to : track.from,
+        track.hints,
       );
       nextTrack = { ...nextTrack, [input.pose]: nextRegion };
     }
@@ -2000,6 +2044,129 @@ export class LayerService {
       structure: nextStructure,
     };
     return ProjectSchema.parse({ ...project, animations: nextAnimations });
+  }
+
+  /**
+   * Adds one author hint pair to an existing tween (#1458). One call = one undo
+   * through the renderer store; invalid geometry/conflicting hints are rejected
+   * with a clear Chinese error and never persisted.
+   */
+  addFlaGraphicShapeTweenHint(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly tweenId: string;
+      readonly from: FlaShapeTweenHintLocation;
+      readonly to: FlaShapeTweenHintLocation;
+    },
+  ): Project {
+    const context = this.resolveEditableFlaGraphicContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const structure = context.definition.structure!;
+    const track = findFlaShapeTweenTrackById(structure.shapeTweenTracks, input.tweenId);
+    if (!track) {
+      throw new LayerServiceError('SHAPE_TWEEN_NOT_FOUND', '未找到对应的形状补间。');
+    }
+    const existing = track.hints ?? [];
+    if (existing.length >= FLA_SHAPE_TWEEN_MAX_HINTS) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_HINT_LIMIT',
+        `一个形状补间最多支持 ${FLA_SHAPE_TWEEN_MAX_HINTS} 个提示点。`,
+      );
+    }
+    const location = {
+      from: toFlaShapeTweenHintLocation(input.from),
+      to: toFlaShapeTweenHintLocation(input.to),
+    };
+    const hintId = stableFlaShapeTweenHintId(location, (candidate) =>
+      existing.some((hint) => hint.hintId === candidate),
+    );
+    const nextHints = [...existing, { hintId, ...location }];
+    this.assertFlaShapeTweenHintsSupported(track, nextHints);
+    const next = this.commitFlaGraphicShapeTweenTrack(
+      project,
+      context.animationIndex,
+      withFlaShapeTweenHints(track, nextHints),
+    );
+    return ProjectSchema.parse(next);
+  }
+
+  /** Moves one authored hint endpoint; one call = one undo. */
+  updateFlaGraphicShapeTweenHint(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly tweenId: string;
+      readonly hintId: string;
+      readonly from?: FlaShapeTweenHintLocation;
+      readonly to?: FlaShapeTweenHintLocation;
+    },
+  ): Project {
+    if (input.from === undefined && input.to === undefined) return project;
+    const context = this.resolveEditableFlaGraphicContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const structure = context.definition.structure!;
+    const track = findFlaShapeTweenTrackById(structure.shapeTweenTracks, input.tweenId);
+    if (!track) {
+      throw new LayerServiceError('SHAPE_TWEEN_NOT_FOUND', '未找到对应的形状补间。');
+    }
+    const existing = track.hints ?? [];
+    const hintIndex = existing.findIndex((hint) => hint.hintId === input.hintId);
+    if (hintIndex < 0) {
+      throw new LayerServiceError('SHAPE_TWEEN_NOT_FOUND', '未找到对应的形状提示点。');
+    }
+    const nextHints = existing.map((hint, index) =>
+      index === hintIndex
+        ? withFlaShapeTweenHintLocations(hint, {
+            ...(input.from !== undefined ? { from: input.from } : {}),
+            ...(input.to !== undefined ? { to: input.to } : {}),
+          })
+        : hint,
+    );
+    this.assertFlaShapeTweenHintsSupported(track, nextHints);
+    const next = this.commitFlaGraphicShapeTweenTrack(
+      project,
+      context.animationIndex,
+      withFlaShapeTweenHints(track, nextHints),
+    );
+    return ProjectSchema.parse(next);
+  }
+
+  /** Removes one author hint; removing the last hint restores the unhinted track shape. */
+  removeFlaGraphicShapeTweenHint(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly tweenId: string;
+      readonly hintId: string;
+    },
+  ): Project {
+    const context = this.resolveEditableFlaGraphicContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const structure = context.definition.structure!;
+    const track = findFlaShapeTweenTrackById(structure.shapeTweenTracks, input.tweenId);
+    if (!track) return project;
+    const existing = track.hints ?? [];
+    const nextHints = existing.filter((hint) => hint.hintId !== input.hintId);
+    if (nextHints.length === existing.length) return project;
+    const next = this.commitFlaGraphicShapeTweenTrack(
+      project,
+      context.animationIndex,
+      withFlaShapeTweenHints(track, nextHints),
+    );
+    return ProjectSchema.parse(next);
   }
 
   updateFlaGraphicShapeRegionFillColor(
