@@ -1047,7 +1047,7 @@ export function CanvasStage({
   // clips every target Layer and mirrors Preview/Export (#1454).
   const coverageMaskClips = useMemo<CoverageMaskClipMap>(() => {
     if (!stageModel) {
-      return { clips: new Map(), unresolvedMaskLayerIds: new Set<string>() };
+      return { clips: new Map(), unresolvedMaskLayerIds: new Set<string>(), emptyMaskLayerIds: new Set<string>(), issues: [] };
     }
     const imageSizes = new Map<string, { width: number; height: number }>();
     for (const [assetId, asset] of projectImageDimensions) {

@@ -1044,22 +1044,32 @@ export function evaluateShotAtTime(
       };
     });
 
-  const evaluatedShot: EvaluatedShot = {
+  // The mask projection is resolved exactly once, after the final bone /
+  // parent-space evaluation. The end-effector lock pass (#1456) re-parents the
+  // Shot from the raw Layers, so projecting masks before it would drop them on
+  // every solved frame (#1464 R1).
+  const parentedLayers = applyLayerParenting(project, shot, layers, timeMs);
+  if (!shot.layers.some((layer) => (layer.endEffectorLocks?.length ?? 0) > 0)) {
+    // No authored locks: keep the byte-identical pre-#1456 evaluation path.
+    return {
+      shotId: shot.id,
+      timeMs,
+      backgroundLayerId: shot.backgroundLayerId,
+      layers: applyResolvedCoverageMasks(parentedLayers, coverageMaskResolution),
+    };
+  }
+  const lockedLayers = applyEndEffectorLocks(
+    project,
+    shot,
+    layers,
+    parentedLayers,
+    timeMs,
+  );
+  return {
     shotId: shot.id,
     timeMs,
     backgroundLayerId: shot.backgroundLayerId,
-    layers: applyResolvedCoverageMasks(
-      applyLayerParenting(project, shot, layers, timeMs),
-      coverageMaskResolution,
-    ),
-  };
-  if (!shot.layers.some((layer) => (layer.endEffectorLocks?.length ?? 0) > 0)) {
-    // No authored locks: keep the byte-identical pre-#1456 evaluation path.
-    return evaluatedShot;
-  }
-  return {
-    ...evaluatedShot,
-    layers: applyEndEffectorLocks(project, shot, layers, evaluatedShot.layers, timeMs),
+    layers: applyResolvedCoverageMasks(lockedLayers, coverageMaskResolution),
   };
 }
 
