@@ -1,18 +1,23 @@
 import {
-  layerCompositeKeyPropertiesAtTime,
+  layerCompositeAuthoredValuesAtTime,
   layerCompositeKeyTimes,
+  type BatchLayerMotionKeyMove,
   type BatchLayerMotionSpanRef,
   type PlannedPerformanceRow,
   type Project,
   type Shot,
 } from '../../domain';
 
+interface LinkedKeyIdentity {
+  readonly properties: ReadonlySet<string>;
+  /** Authored values at capture time; a re-created key with other values is a different product. */
+  readonly values: Readonly<Record<string, number>>;
+}
+
 interface DialoguePerformanceLink {
   readonly shotId: string;
   readonly eventIds: Set<string>;
-  readonly motionKeyTimesByLayer: Map<string, Set<number>>;
-  /** (layerId -> keyTimeMs -> authored properties) gives keys a real identity. */
-  readonly motionKeyPropertiesByLayer: Map<string, Map<number, Set<string>>>;
+  readonly motionKeysByLayer: Map<string, Map<number, LinkedKeyIdentity>>;
 }
 
 export interface ResolvedDialoguePerformanceLinks {
@@ -20,12 +25,17 @@ export interface ResolvedDialoguePerformanceLinks {
   readonly layerMotionSpans: readonly BatchLayerMotionSpanRef[];
   /** Referenced events/keys no longer exist (edited/deleted since generation). */
   readonly missingCount: number;
+  /**
+   * Keys whose timestamp now carries an extra, unlinked property. Moving the
+   * composite key would drag unrelated work, so it is skipped locally.
+   */
+  readonly blockedCount: number;
 }
 
-/** Per-layer frame-aligned delta actually applied to this batch. */
+/** Per-layer key moves actually applied by the official batch retime. */
 export interface DialoguePerformanceMove {
   readonly layerId: string;
-  readonly deltaMs: number;
+  readonly keyMoves: readonly BatchLayerMotionKeyMove[];
 }
 
 /**
@@ -37,10 +47,10 @@ export interface DialoguePerformanceMove {
  * - one project per session: switching/closing the project drops every link.
  * - capturing a generation replaces only the links of the shots it produced, so
  *   generating a second scene never erases the first one.
- * - a successful linked move rewrites the moved key times, otherwise the next
- *   resolve would look for keys that already moved away.
- * - a key is identified by (property, time): a brand-new key at the same
- *   timestamp on another property is never treated as the linked one.
+ * - a successful linked move rewrites key references with the **real** per-key
+ *   from->to moves, otherwise the next resolve looks for keys that moved away.
+ * - a key is identified by (property, time) **and** its authored values; a key
+ *   re-created at the same time on the same property is a different product.
  */
 export class DialoguePerformanceLinkStore {
   private projectId: string | null = null;
@@ -74,28 +84,29 @@ export class DialoguePerformanceLinkStore {
       const link: DialoguePerformanceLink = existing ?? {
         shotId: row.shotId!,
         eventIds: new Set<string>(),
-        motionKeyTimesByLayer: new Map<string, Set<number>>(),
-        motionKeyPropertiesByLayer: new Map<string, Map<number, Set<string>>>(),
+        motionKeysByLayer: new Map<string, Map<number, LinkedKeyIdentity>>(),
       };
       for (const eventId of row.eventIds) link.eventIds.add(eventId);
       if (row.layerId && row.motionKeyTimes?.length) {
-        const times =
-          link.motionKeyTimesByLayer.get(row.layerId) ?? new Set<number>();
-        const properties =
-          link.motionKeyPropertiesByLayer.get(row.layerId) ??
-          new Map<number, Set<string>>();
+        const keys =
+          link.motionKeysByLayer.get(row.layerId) ??
+          new Map<number, LinkedKeyIdentity>();
         const layer = project?.shots
           .find((shot) => shot.id === row.shotId)
           ?.layers.find((candidate) => candidate.id === row.layerId);
         for (const timeMs of row.motionKeyTimes) {
-          times.add(timeMs);
-          if (!layer) continue;
-          const authored = layerCompositeKeyPropertiesAtTime(layer, timeMs);
-          if (authored.length === 0) continue;
-          properties.set(timeMs, new Set(authored));
+          if (keys.has(timeMs)) continue;
+          if (!layer) {
+            keys.set(timeMs, { properties: new Set(), values: {} });
+            continue;
+          }
+          const values = layerCompositeAuthoredValuesAtTime(layer, timeMs);
+          keys.set(timeMs, {
+            properties: new Set(Object.keys(values)),
+            values,
+          });
         }
-        link.motionKeyTimesByLayer.set(row.layerId, times);
-        link.motionKeyPropertiesByLayer.set(row.layerId, properties);
+        link.motionKeysByLayer.set(row.layerId, keys);
       }
       merged.set(row.dialogueId!, link);
     }
@@ -105,8 +116,9 @@ export class DialoguePerformanceLinkStore {
   }
 
   /**
-   * Rewrites the key times of links that were moved, using the applied layer
-   * deltas. Events keep their IDs, so only keyframe times need remapping.
+   * Rewrites key references with the exact per-key moves the batch applied.
+   * A uniform integer delta would fabricate identities (42->83 and 83->125
+   * differ), and keys that did not move must not be shifted at all.
    */
   remapAfterMove(
     projectId: string,
@@ -116,26 +128,23 @@ export class DialoguePerformanceLinkStore {
   ): void {
     this.ensureProject(projectId);
     if (moves.length === 0) return;
-    const deltaByLayer = new Map(
-      moves.map((move) => [move.layerId, move.deltaMs]),
+    const movesByLayer = new Map(
+      moves.map((move) => [move.layerId, move.keyMoves]),
     );
     for (const dialogueId of dialogueIds) {
       const link = this.links.get(dialogueId);
       if (!link || link.shotId !== shotId) continue;
-      for (const [layerId, times] of link.motionKeyTimesByLayer) {
-        const deltaMs = deltaByLayer.get(layerId);
-        if (!deltaMs) continue;
-        link.motionKeyTimesByLayer.set(
-          layerId,
-          new Set([...times].map((timeMs) => timeMs + deltaMs)),
+      for (const [layerId, keys] of link.motionKeysByLayer) {
+        const keyMoves = movesByLayer.get(layerId);
+        if (!keyMoves || keyMoves.length === 0) continue;
+        const toByFrom = new Map(
+          keyMoves.map((move) => [move.fromTimeMs, move.toTimeMs]),
         );
-        const properties = link.motionKeyPropertiesByLayer.get(layerId);
-        if (!properties) continue;
-        const remapped = new Map<number, Set<string>>();
-        for (const [timeMs, authored] of properties) {
-          remapped.set(timeMs + deltaMs, authored);
+        const remapped = new Map<number, LinkedKeyIdentity>();
+        for (const [timeMs, identity] of keys) {
+          remapped.set(toByFrom.get(timeMs) ?? timeMs, identity);
         }
-        link.motionKeyPropertiesByLayer.set(layerId, remapped);
+        link.motionKeysByLayer.set(layerId, remapped);
       }
     }
   }
@@ -155,6 +164,7 @@ export class DialoguePerformanceLinkStore {
     const layersById = new Map(shot.layers.map((layer) => [layer.id, layer]));
     const motionByLayer = new Map<string, Set<number>>();
     let missingCount = 0;
+    let blockedCount = 0;
 
     for (const dialogueId of dialogueIds) {
       const link = this.links.get(dialogueId);
@@ -166,26 +176,48 @@ export class DialoguePerformanceLinkStore {
           missingCount += 1;
         }
       }
-      for (const [layerId, times] of link.motionKeyTimesByLayer) {
+      for (const [layerId, keys] of link.motionKeysByLayer) {
         const layer = layersById.get(layerId);
         if (!layer) {
-          missingCount += times.size;
+          missingCount += keys.size;
           continue;
         }
         const currentTimes = new Set(layerCompositeKeyTimes(layer));
-        const recordedProperties =
-          link.motionKeyPropertiesByLayer.get(layerId) ?? new Map();
-        const validTimes = [...times].filter((timeMs) => {
-          if (!currentTimes.has(timeMs)) return false;
-          const recorded = recordedProperties.get(timeMs);
-          if (!recorded || recorded.size === 0) return true;
-          const current = layerCompositeKeyPropertiesAtTime(layer, timeMs);
-          return current.some((property) => recorded.has(property));
-        });
-        missingCount += times.size - validTimes.length;
-        if (validTimes.length > 0) {
+        for (const [timeMs, identity] of keys) {
+          if (!currentTimes.has(timeMs)) {
+            missingCount += 1;
+            continue;
+          }
+          const values = layerCompositeAuthoredValuesAtTime(layer, timeMs);
+          const currentProperties = Object.keys(values);
+          const recorded = [...identity.properties];
+          if (recorded.length === 0) {
+            const target = motionByLayer.get(layerId) ?? new Set<number>();
+            target.add(timeMs);
+            motionByLayer.set(layerId, target);
+            continue;
+          }
+          if (recorded.some((property) => !(property in values))) {
+            // The linked property was deleted or replaced by another one.
+            missingCount += 1;
+            continue;
+          }
+          if (currentProperties.some((property) => !identity.properties.has(property))) {
+            // An unrelated property was authored on the same timestamp; the
+            // composite retime would move it too, so skip and report instead.
+            blockedCount += 1;
+            continue;
+          }
+          const valuesChanged = recorded.some(
+            (property) => values[property] !== identity.values[property],
+          );
+          if (valuesChanged) {
+            // Same slot, different authored values: a re-created key, not ours.
+            missingCount += 1;
+            continue;
+          }
           const target = motionByLayer.get(layerId) ?? new Set<number>();
-          for (const timeMs of validTimes) target.add(timeMs);
+          target.add(timeMs);
           motionByLayer.set(layerId, target);
         }
       }
@@ -208,6 +240,7 @@ export class DialoguePerformanceLinkStore {
       eventIds: [...eventIds],
       layerMotionSpans,
       missingCount,
+      blockedCount,
     };
   }
 }

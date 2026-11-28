@@ -345,12 +345,12 @@ export function BatchTimeEditPanel({
             shot,
             activeDialogueIds,
           )
-        : { eventIds: [], layerMotionSpans: [], missingCount: 0 },
+        : { eventIds: [], layerMotionSpans: [], missingCount: 0, blockedCount: 0 },
     [activeDialogueIds, project.id, shot],
   );
   const linkedPerformance = includeLinkedPerformance
     ? availablePerformanceLinks
-    : { eventIds: [], layerMotionSpans: [], missingCount: 0 };
+    : { eventIds: [], layerMotionSpans: [], missingCount: 0, blockedCount: 0 };
   const effectiveEventIds = useMemo(
     () => [...new Set([...selectedEventIds, ...linkedPerformance.eventIds])],
     [linkedPerformance.eventIds, selectedEventIds],
@@ -625,16 +625,16 @@ export function BatchTimeEditPanel({
             sharedClipPolicy,
           });
           if (includeLinkedPerformance) {
-            // The applied result moved these keys; without remapping the next
-            // resolve would look for keys that already left their old time.
+            // Remap with the exact per-key moves the batch performed: a single
+            // integer delta fabricates identities on the 24fps grid.
             const moves = (
               preview.crossTypePlan.actionPlan?.motionSpanEntries ?? []
             )
+              .filter((entry) => (entry.keyMoves?.length ?? 0) > 0)
               .map((entry) => ({
                 layerId: entry.layerId,
-                deltaMs: entry.nextStartMs - entry.startMs,
-              }))
-              .filter((move) => move.deltaMs !== 0);
+                keyMoves: entry.keyMoves!,
+              }));
             dialoguePerformanceLinkStore.remapAfterMove(
               project.id,
               shot.id,
@@ -854,34 +854,45 @@ export function BatchTimeEditPanel({
       {mode === 'shift' &&
       activeDialogueIds.length > 0 &&
       (availablePerformanceLinks.eventIds.length > 0 ||
-        availablePerformanceLinks.layerMotionSpans.length > 0) ? (
+        availablePerformanceLinks.layerMotionSpans.length > 0 ||
+        availablePerformanceLinks.missingCount > 0 ||
+        availablePerformanceLinks.blockedCount > 0) ? (
         <>
-          <label
-            className="batch-time-linked-performance"
-            data-testid="batch-time-linked-performance"
-          >
-            <input
-              type="checkbox"
-              checked={includeLinkedPerformance}
-              onChange={(event) => {
-                setIncludeLinkedPerformance(event.target.checked);
-                setCommitError(null);
-              }}
-            />
-            <span>
-              {`连同剧本关联表演移动（${
-                availablePerformanceLinks.eventIds.length +
-                availablePerformanceLinks.layerMotionSpans.reduce(
-                  (sum, span) => sum + (span.keyTimesMs?.length ?? 0),
-                  0,
-                )
-              } 项）`}
-            </span>
-          </label>
+          {availablePerformanceLinks.eventIds.length > 0 ||
+          availablePerformanceLinks.layerMotionSpans.length > 0 ? (
+            <label
+              className="batch-time-linked-performance"
+              data-testid="batch-time-linked-performance"
+            >
+              <input
+                type="checkbox"
+                checked={includeLinkedPerformance}
+                onChange={(event) => {
+                  setIncludeLinkedPerformance(event.target.checked);
+                  setCommitError(null);
+                }}
+              />
+              <span>
+                {`连同剧本关联表演移动（${
+                  availablePerformanceLinks.eventIds.length +
+                  availablePerformanceLinks.layerMotionSpans.reduce(
+                    (sum, span) => sum + (span.keyTimesMs?.length ?? 0),
+                    0,
+                  )
+                } 项）`}
+              </span>
+            </label>
+          ) : null}
           {includeLinkedPerformance &&
           availablePerformanceLinks.missingCount > 0 ? (
             <div className="batch-time-note" role="status">
-              {`${availablePerformanceLinks.missingCount} 项关联表演已被修改或删除，本次不会移动。`}
+              {`${availablePerformanceLinks.missingCount} 项关联表演已被修改或删除（同刻新建的其他键不算），本次不会移动。`}
+            </div>
+          ) : null}
+          {includeLinkedPerformance &&
+          availablePerformanceLinks.blockedCount > 0 ? (
+            <div className="batch-time-note" role="status">
+              {`${availablePerformanceLinks.blockedCount} 个关联键在同刻新增了未关联属性，整键移动会带上无关内容，本次局部跳过。`}
             </div>
           ) : null}
         </>

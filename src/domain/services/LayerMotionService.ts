@@ -275,16 +275,26 @@ export function layerCompositeKeyPropertiesAtTime(
   layer: Layer,
   timeMs: number,
 ): string[] {
+  return Object.keys(layerCompositeAuthoredValuesAtTime(layer, timeMs));
+}
+
+/**
+ * Authored property values at `timeMs`. Two keys can share (layer, time,
+ * property) after a delete + re-create, so the value is the only remaining
+ * evidence that a session reference still points at the same product.
+ */
+export function layerCompositeAuthoredValuesAtTime(
+  layer: Layer,
+  timeMs: number,
+): Record<string, number> {
   const clip = layerRootMotionClip(layer);
-  if (!clip) return [];
-  const target = layerTargetRef(layer.id);
-  const properties = new Set<string>();
-  for (const track of targetTracks(clip.tracks, target)) {
-    if (track.keys.some((key) => key.timeMs === timeMs)) {
-      properties.add(track.property);
-    }
+  if (!clip) return {};
+  const values: Record<string, number> = {};
+  for (const track of targetTracks(clip.tracks, layerTargetRef(layer.id))) {
+    const key = track.keys.find((candidate) => candidate.timeMs === timeMs);
+    if (key) values[track.property] = key.value;
   }
-  return [...properties];
+  return values;
 }
 
 /** True when the Layer Clip v2 has an outgoing interval at `timeMs`. */

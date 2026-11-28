@@ -230,6 +230,12 @@ export interface BatchTimelineEventEntry {
   readonly nextPlaybackStartMs?: number;
 }
 
+/** Real per-key retime produced by the official frame-aligned planner. */
+export interface BatchLayerMotionKeyMove {
+  readonly fromTimeMs: number;
+  readonly toTimeMs: number;
+}
+
 export interface BatchLayerMotionSpanEntry {
   readonly kind: 'layer-motion-span';
   readonly spanId: string;
@@ -241,6 +247,11 @@ export interface BatchLayerMotionSpanEntry {
   readonly nextEndMs: number;
   readonly keyTimesMs: readonly number[];
   readonly deltaFrames?: number;
+  /**
+   * Exact from->to per key. A single integer delta is not enough: on the 24fps
+   * grid 42ms->83ms (+41) and 83ms->125ms (+42) differ.
+   */
+  readonly keyMoves?: readonly BatchLayerMotionKeyMove[];
 }
 
 export type BatchTimelineSkippedReasonCode =
@@ -955,6 +966,10 @@ export class TimelineEventBatchService {
               nextEndMs: nextTimes[nextTimes.length - 1]!,
               keyTimesMs,
               deltaFrames,
+              keyMoves: retimePlan.moves.map((move) => ({
+                fromTimeMs: move.fromTimeMs,
+                toTimeMs: move.toTimeMs,
+              })),
             };
           } catch (error) {
             throw new TimelineEventBatchError(
