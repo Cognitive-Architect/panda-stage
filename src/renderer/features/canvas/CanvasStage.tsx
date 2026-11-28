@@ -15,7 +15,7 @@ import type Konva from 'konva';
 import type { DialogueSilence } from '../../../shared/dialogue-silence';
 import { CharacterMotionGesture } from './characterMotionGesture';
 import { CharacterArmAssemblyOverlay, characterArmAssemblyPrompt } from './CharacterArmAssemblyOverlay';
-import { updateArmAssemblyPart, useCharacterArmAssembly, useCharacterArmTool } from './CharacterArmTool';
+import { characterArmChainLabels, updateArmAssemblyPart, useCharacterArmAssembly, useCharacterArmTool } from './CharacterArmTool';
 import { CharacterArmHandle } from './CharacterArmHandle';
 import type { AnimationCurveDraft } from '../timeline/AnimationCurveDraft';
 import type { CharacterMotionCanvas } from './CharacterMotionPart';
@@ -61,8 +61,10 @@ import {
   resolveImageAsset,
   resolveRuntimeImageAsset,
   resolveCharacterArmAssemblyParts,
+  resolveCharacterArmChains,
   resolveTimelineFrameTime,
   resolveCharacterActionRootPatch,
+  type CharacterArmChainEntry,
   type ImageAsset,
   type Shot,
   type ViewportTransform,
@@ -368,12 +370,13 @@ export function CanvasStage({
     selectionStore.getSelectedLayerId,
   );
   const armDraft = useCharacterArmAssembly();
-  const { setAssembly, readAssemblyParts } = useCharacterArmTool({
+  const { setAssembly, readAssemblyParts, chainId: armChainId } = useCharacterArmTool({
     projectInstanceId, shotId: currentShotId ?? '', layerId: selectedLayerId ?? '',
   });
   const armShot = armDraft && snapshot?.project.shots.find(({ id }) => id === currentShotId);
   const armAssembly = armDraft && armDraft.target.projectInstanceId === projectInstanceId &&
     armDraft.target.shotId === currentShotId && armDraft.target.layerId === selectedLayerId &&
+    armDraft.target.chainId === armChainId &&
     armDraft.revision === snapshot?.revision && armShot &&
     armDraft.timeMs === resolveTimelineFrameTime(timelineUi.currentTimeMs, armShot.durationMs) &&
     !positionAuthoringSession && !flaGraphicEditScope ? armDraft : undefined;
@@ -1307,6 +1310,14 @@ export function CanvasStage({
     stageModel?.layers.find(
       ({ layer }) => layer.id === selectedLayerId,
     ) ?? null;
+  const selectedArmLayerSource = selectedStageLayer?.layer.source;
+  let selectedArmChain: CharacterArmChainEntry | undefined;
+  if (snapshot && selectedArmLayerSource?.kind === 'character') {
+    const character = snapshot.project.characters.find(({ id }) => id === selectedArmLayerSource.characterId);
+    if (character?.mode === 'adaptive-parts') {
+      selectedArmChain = resolveCharacterArmChains(character).find(({ id }) => id === armChainId);
+    }
+  }
   const selectedLayerProjection = selectedStageLayer
     ? resolveLayerCameraTransform(selectedStageLayer.evaluated, displayCamera, PROJECT_WIDTH, PROJECT_HEIGHT)
     : null;
@@ -2136,8 +2147,10 @@ export function CanvasStage({
               {armAssembly && !waitingForArmVisual && !armVisualUnavailable ? <CharacterArmAssemblyOverlay assembly={armAssembly} scale={transform.scale}
                 update={next => setAssembly?.(current => current === armAssembly ? next : current)} /> : null}
               {snapshot && shot && selectedLayerId && !armAssembly && !displayCamera && !cameraTool && !selectedStageLayer?.evaluated.parentSpace ? <CharacterArmHandle
-                key={JSON.stringify([projectInstanceId, shot.id, selectedLayerId, timelineUi.currentTimeMs, snapshot.revision])}
+                key={JSON.stringify([projectInstanceId, shot.id, selectedLayerId, armChainId, timelineUi.currentTimeMs, snapshot.revision])}
                 snapshot={snapshot}
+                chainId={armChainId}
+                tipLabel={characterArmChainLabels(selectedArmChain?.kind).handle}
                 address={{ shotId: shot.id, layerId: selectedLayerId,
                   timeMs: resolveTimelineFrameTime(timelineUi.currentTimeMs, shot.durationMs) }}
               /> : null}
