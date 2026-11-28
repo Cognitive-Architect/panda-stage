@@ -71,6 +71,12 @@ function maximumContentEndMs(shot: Shot): number {
     ...shot.layers.flatMap((layer) => layer.layerMotionTracks?.map((track) => track.keys.at(-1)?.timeMs ?? 0) ?? []),
     ...shot.layers.map((layer) => layer.depthKeys?.at(-1)?.timeMs ?? 0),
     ...shot.layers.map((layer) => layer.parentKeys?.at(-1)?.timeMs ?? 0),
+    // #1471 R4: an authored pin-warp pose is content too. Shortening past the
+    // last pose must use the same content-end rule instead of accepting a
+    // duration that every later pin write is then rejected against.
+    ...shot.layers.flatMap(
+      (layer) => layer.pinWarp?.poses.map((pose) => pose.timeMs) ?? [],
+    ),
     shot.camera?.keys.at(-1)?.timeMs ?? 0,
     ...(shot.camera?.overrides?.map((override) => override.endMs) ?? []),
   );
