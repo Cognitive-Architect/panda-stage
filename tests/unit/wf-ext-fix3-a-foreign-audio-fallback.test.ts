@@ -313,6 +313,52 @@ describe('WF-EXT FIX-03 A: out-of-scope CSV rows never fall back to numbered aut
     ]);
   });
 
+  it.each([
+    { format: 'surrounding whitespace', text: '  来自其他工程  ' },
+    { format: 'CRLF multiline text', text: '来自其他工程\r\n第二行' },
+  ])('keeps foreign CSV audio unselected after $format normalization', async ({ text }) => {
+    const numberedAudio1 = makeAudio(1, '1_熊猫', 1_500);
+    const localTake2 = makeAudio(2, 'take_l002', 2_400);
+    const projectRoot = 'D:/wf-fix3-r3-p2-01-format.pandastage';
+    const project = makeProject([numberedAudio1, localTake2]);
+    editorProjectStore.open(projectRoot, project);
+    shotStore.select(IDS.shot);
+
+    const draft = new DialogueAuthoringDraft();
+    draft.bindIdentity({ projectRoot, shotId: IDS.shot });
+    await act(async () => {
+      root.render(createElement(DialogueBatchPaste, { draft, onSuccess: vi.fn() }));
+    });
+
+    await importCsv(serializeDialogueAudioManifestCsv([
+      manifestRow({
+        projectId: project.id,
+        shotId: '10000000-0000-4000-8000-0000000000ff',
+        lineKey: 'L001',
+        dialogueId: FOREIGN_DIALOGUE_ID,
+        ordinal: 1,
+        speaker: '熊猫',
+        text,
+        audioFilename: '1_熊猫.wav',
+      }),
+      manifestRow({
+        projectId: project.id,
+        shotId: IDS.shot,
+        lineKey: 'L002',
+        dialogueId: EXISTING_DIALOGUE_ID,
+        ordinal: 2,
+        speaker: '熊猫',
+        text: '当前镜头台词',
+        audioFilename: 'take_l002.wav',
+      }),
+    ]));
+
+    expect(selectByTestId('dialogue-batch-audio-1').value).toBe('');
+    expect(selectByTestId('dialogue-batch-audio-2').value).toBe(localTake2.id);
+    await changeSelect('dialogue-batch-audio-1', numberedAudio1.id);
+    expect(selectByTestId('dialogue-batch-audio-1').value).toBe(numberedAudio1.id);
+  });
+
   it('preserves explicit unselected state across line swap and keeps plain-text numbered auto-matching intact', async () => {
     const numberedAudio1 = makeAudio(1, '1_熊猫', 1_500);
     const numberedAudio2 = makeAudio(2, '2_熊猫', 1_600);

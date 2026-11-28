@@ -117,9 +117,9 @@ export function attachDialogueManifestIdentities(
     if (!identity) return row;
     pendingByIdentitySlot.delete(row.sourceLineNumber);
     if (identity.explicitAudioUnselected) {
-      if (identity.text !== row.text) {
-        return row;
-      }
+      // This slot only carries a negative audio-selection decision, never a
+      // dialogue or recording identity. Text trimming/newline normalization
+      // (or an ambiguous edit) must not re-enable numbered audio matching.
       const next: StableDialogueDraftRow = {
         ...row,
         explicitAudioUnselected: true,
