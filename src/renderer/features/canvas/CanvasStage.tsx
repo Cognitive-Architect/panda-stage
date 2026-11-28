@@ -76,6 +76,8 @@ import {
 import { layerStore } from '../../stores/layerStore';
 import { useOpacityPreview } from '../../stores/opacityPreviewStore';
 import { useDepthPreview } from '../../stores/depthPreviewStore';
+import { useLayoutPreview } from '../../stores/layoutPreviewStore';
+import { useScenePreview } from '../../stores/scenePreviewStore';
 import {
   usePositionAuthoringSession,
   positionAuthoringSessionStore,
@@ -404,6 +406,8 @@ export function CanvasStage({
   const [motionError, setMotionError] = useState('');
   const opacityPreview = useOpacityPreview();
   const depthPreview = useDepthPreview();
+  const layoutPreview = useLayoutPreview();
+  const scenePreview = useScenePreview();
   const layerNodeRefs = useRef(
     new Map<string, React.RefObject<Konva.Group | null>>(),
   );
@@ -444,9 +448,26 @@ export function CanvasStage({
     depthPreview.timeMs === timelineUi.currentTimeMs
     ? depthPreview
     : null;
+  const activeLayoutPreview = !armAssembly && layoutPreview &&
+    layoutPreview.projectInstanceId === projectInstanceId &&
+    layoutPreview.projectId === snapshot?.project.id &&
+    layoutPreview.projectRoot === snapshot?.projectRoot &&
+    layoutPreview.revision === snapshot?.revision &&
+    layoutPreview.shotId === currentShotId &&
+    layoutPreview.timeMs === timelineUi.currentTimeMs
+    ? layoutPreview
+    : null;
+  const activeScenePreview = !armAssembly && scenePreview &&
+    scenePreview.projectInstanceId === projectInstanceId &&
+    scenePreview.projectId === snapshot?.project.id &&
+    scenePreview.projectRoot === snapshot?.projectRoot &&
+    scenePreview.revision === snapshot?.revision
+    ? scenePreview
+    : null;
   const effectiveCameraProject =
     activeCameraCurveDraft?.project ??
     activeDepthPreview?.previewProject ??
+    activeLayoutPreview?.previewProject ??
     snapshot?.project ??
     null;
   const effectiveCameraShot =
@@ -472,18 +493,32 @@ export function CanvasStage({
   const activeCurveDraft = !cameraViewActive && !armAssembly && curveDraft?.projectInstanceId === projectInstanceId &&
     curveDraft?.revision === snapshot?.revision && curveDraft?.shotId === currentShotId &&
     curveDraft?.layerId === selectedLayerId ? curveDraft : null;
-  const effectivePreviewTimeMs =
-    activeCurveDraft?.timeMs ??
-    activeCameraCurveDraft?.timeMs ??
-    timelineUi.currentTimeMs;
+  const effectivePreviewTimeMs = activeScenePreview
+    ? 0
+    : activeCurveDraft?.timeMs ??
+      activeCameraCurveDraft?.timeMs ??
+      timelineUi.currentTimeMs;
   const effectivePreviewProject =
+    activeScenePreview?.previewProject ??
+    activeLayoutPreview?.previewProject ??
     activeDepthPreview?.previewProject ??
     activeCameraCurveDraft?.project ??
     activeCurveDraft?.project ??
     snapshot?.project ??
     null;
-  const effectivePreviewShot =
-    effectivePreviewProject?.shots.find(({ id }) => id === currentShotId) ?? shot;
+  const effectivePreviewShot = activeScenePreview
+    ? activeScenePreview.previewProject.shots.find(
+        ({ id }) => id === activeScenePreview.previewShotId,
+      ) ?? shot
+    : effectivePreviewProject?.shots.find(({ id }) => id === currentShotId) ??
+      shot;
+  const effectiveImageSnapshot = useMemo(
+    () =>
+      snapshot && activeScenePreview
+        ? { ...snapshot, project: activeScenePreview.previewProject }
+        : snapshot,
+    [activeScenePreview, snapshot],
+  );
   const editContextKey = snapshot && shot && projectInstanceId !== null
     ? JSON.stringify([projectInstanceId, snapshot.project.id, snapshot.projectRoot, shot.id])
     : null;
@@ -879,7 +914,12 @@ export function CanvasStage({
     }
     return [...assets.values()];
   }, [previousTemporalVisuals, structuredEditAssets]);
-  const imageState = useCanvasImages(snapshot, shot, retainedAssets, effectivePreviewTimeMs);
+  const imageState = useCanvasImages(
+    effectiveImageSnapshot,
+    activeScenePreview ? effectivePreviewShot : shot,
+    retainedAssets,
+    effectivePreviewTimeMs,
+  );
   const handleMoveFlaShapeVertex = useCallback((
     nodePath: readonly string[],
     regionRef: string,
@@ -1517,7 +1557,30 @@ export function CanvasStage({
         onViewportChromePointerDown={() => { if (!armAssembly) selectionStore.clear(); }}
         viewportOverlay={empty ? <CanvasEmptyState /> : null}
         viewportChrome={(
-          showToolbar || shot || selectedFlaGraphicTarget ? (
+          <>
+            {activeScenePreview ? (
+              <div
+                className="canvas-scene-preview-badge"
+                data-testid="canvas-scene-preview-badge"
+                style={{
+                  position: 'absolute',
+                  top: 12,
+                  left: 12,
+                  zIndex: 12,
+                  padding: '4px 10px',
+                  borderRadius: 999,
+                  background: 'rgba(18, 22, 30, 0.84)',
+                  color: '#f5f7fa',
+                  fontSize: 12,
+                  lineHeight: 1.4,
+                  pointerEvents: 'none',
+                }}
+              >
+                自动布景只读预览 · {activeScenePreview.previewShotName}（
+                {activeScenePreview.shotIndex + 1}/{activeScenePreview.shotCount}）
+              </div>
+            ) : null}
+            {showToolbar || shot || selectedFlaGraphicTarget ? (
             <CanvasToolbar
               parentControl={canPickParent && shot && selectedLayerId ? (
                 <button type="button" data-ui-button data-ui-variant="secondary" data-canvas-interactive-chrome="true"
@@ -1571,7 +1634,8 @@ export function CanvasStage({
               showStatus={showToolbar}
               transform={toolbarTransform}
             />
-          ) : null
+          ) : null}
+          </>
         )}
       >
         {(transform) => (
@@ -1603,7 +1667,9 @@ export function CanvasStage({
               data-current-time-ms={timelineUi.currentTimeMs}
               data-active-subtitle-id={activeCue?.id ?? ''}
               data-temporal-inspection={String(temporalInspection)}
-              data-direct-canvas-editing={String(directEditingEnabled)}
+              data-direct-canvas-editing={String(directEditingEnabled && !activeScenePreview)}
+              data-scene-preview-active={String(Boolean(activeScenePreview))}
+              data-scene-preview-shot-id={activeScenePreview?.previewShotId ?? ''}
               data-layer-json={JSON.stringify(shot?.layers ?? [])}
               data-evaluated-layer-json={JSON.stringify(
                 temporalCanvasModel?.evaluatedShot.layers ?? [],
@@ -1669,7 +1735,7 @@ export function CanvasStage({
                     onTap={() => { if (!armAssembly) selectionStore.clear(); }}
                     width={PROJECT_WIDTH}
                   />
-                  <Group listening={!cameraTool}>
+                  <Group listening={!cameraTool && !activeScenePreview}>
                   {stageModel
                     ? [...stageModel.layers].sort((a, b) => compareCameraDrawingLayers(a.evaluated, b.evaluated)).map((stageLayer) => {
                         const { layer, render, visual } = stageLayer;
@@ -2002,7 +2068,7 @@ export function CanvasStage({
                         (displayCamera && selectedLayerProjection ? Math.abs(selectedLayerProjection.scaleX) : 1)} />
                     </StageLayerSpace>
                   ) : null}
-                  {!cameraTool && !pickingParent && transformerVisible && selectedStageLayer && selectedLayerProjection ? (
+                  {!activeScenePreview && !cameraTool && !pickingParent && transformerVisible && selectedStageLayer && selectedLayerProjection ? (
                     selectedStageLayer.evaluated.parentSpace && !structuredTransformerVisible ? (
                       <StageLayerSpace space={selectedStageLayer.evaluated.parentSpace} projection={displayCamera ? selectedLayerProjection : undefined}>
                         <ParentLayerTransformer

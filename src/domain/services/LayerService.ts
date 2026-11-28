@@ -720,6 +720,7 @@ export class LayerService {
     shotId: string,
     characterId: string,
     rawPosition: Point,
+    expressionId?: string,
   ): CreateLayerResult {
     const shot = this.shot(project, shotId);
     const character = project.characters.find(
@@ -731,11 +732,25 @@ export class LayerService {
         '所选角色目前无法放入镜头。',
       );
     }
+    if (
+      expressionId !== undefined &&
+      (!character.faceBinding ||
+        !character.expressions?.some((expression) => expression.id === expressionId))
+    ) {
+      throw new LayerServiceError(
+        'CHARACTER_IDENTITY_MISMATCH',
+        '所选表情无法用于此角色。',
+      );
+    }
     return this.appendLayer(
       project,
       shot,
       character.name,
-      { kind: 'character', characterId: character.id },
+      {
+        kind: 'character',
+        characterId: character.id,
+        ...(expressionId === undefined ? {} : { expressionId }),
+      },
       clampLayerPosition(rawPosition),
       character.defaultScale,
       character.defaultFlipX,

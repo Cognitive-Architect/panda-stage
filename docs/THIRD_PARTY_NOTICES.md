@@ -107,3 +107,46 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
+
+## excalidraw/excalidraw
+
+- Upstream: https://github.com/excalidraw/excalidraw
+- Upstream license file: https://github.com/excalidraw/excalidraw/blob/dabd83c4aa6b9e42d0dd0a42be62200eb8e3cce9/LICENSE
+- Reference source files:
+  - `packages/element/src/align.ts`
+  - `packages/element/src/distribute.ts`
+- Reference revision: `dabd83c4aa6b9e42d0dd0a42be62200eb8e3cce9`
+- Panda implementation: `src/domain/layout/excalidrawBoundsMath.ts`
+
+### What Panda reuses
+
+Panda adapts Excalidraw's pure bounding-box alignment (`start`/`center`/`end`
+along X/Y) and distribution (center-sorted equal-gap distribution with
+center-distribution fallback on negative gaps) math without importing
+Excalidraw's scene mutation, whiteboard bindings, or runtime store.
+
+### License text (MIT)
+
+```text
+MIT License
+
+Copyright (c) 2020 Excalidraw
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

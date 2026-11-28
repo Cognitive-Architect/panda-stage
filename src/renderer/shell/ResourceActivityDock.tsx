@@ -46,6 +46,7 @@ import {
   Clapperboard,
   CirclePlus,
   FileArchive,
+  FolderInput,
   Images,
   Plus,
   Smile,
@@ -195,6 +196,8 @@ export function ResourceActivityDock({
     useState<HTMLDivElement | null>(null);
   const [assetImportRequest, setAssetImportRequest] = useState(0);
   const [assetFlaReviewRequest, setAssetFlaReviewRequest] = useState(0);
+  const [assetCrossProjectImportRequest, setAssetCrossProjectImportRequest] =
+    useState(0);
   const [assetReviewCloseRequest, setAssetReviewCloseRequest] = useState(0);
   const [pendingExternalAdaptiveCharacter, setPendingExternalAdaptiveCharacter] = useState<{
     readonly characterId: string;
@@ -446,16 +449,16 @@ export function ResourceActivityDock({
     landscapePresentation &&
     activeActivity === 'shots';
   const landscapeShotHeaderLayout = useDirectLandscapeShotWorkspaceLabel
-    ? shotView === 'create'
-      ? 'shot-create-landscape'
-      : 'shot-list-landscape'
+    ? shotView === 'list'
+      ? 'shot-list-landscape'
+      : 'shot-create-landscape'
     : undefined;
   const useDirectCharacterWorkspaceLabel =
     landscapePresentation &&
     activeActivity === 'characters' &&
     (characterView === 'list' || characterView === 'create');
   const showCreateIcon =
-    (activeActivity === 'shots' && shotView !== 'create') ||
+    (activeActivity === 'shots' && shotView === 'list') ||
     (activeActivity === 'characters' && characterView === 'list');
   const showLandscapeCharacterEntryActions =
     landscapePresentation &&
@@ -472,7 +475,7 @@ export function ResourceActivityDock({
 
   const primaryAction =
     activeActivity === 'shots'
-      ? shotView === 'create'
+      ? shotView !== 'list'
         ? {
             label: '返回镜头列表',
             onClick: () => setShotView('list'),
@@ -676,35 +679,77 @@ export function ResourceActivityDock({
                     <span>{primaryAction.label}</span>
                   </button>
                 )}
-              {showLandscapeAssetActionGroup ? (
+              {activeActivity === 'shots' && shotView === 'list' ? (
                 <button
-                  aria-label="导入 FLA"
+                  aria-label="自动布景"
                   className="resource-activity-fla-action"
-                  data-resource-action="assets-import-fla"
-                  data-testid="resource-asset-import-fla"
-                  onClick={() =>
-                    setAssetFlaReviewRequest((value) => value + 1)
-                  }
+                  data-resource-action="shots-auto-scene"
+                  data-testid="resource-shot-auto-scene"
+                  onClick={() => setShotView('auto-scene')}
                   type="button"
                 >
-                  <DecorativeIcon icon={FileArchive} size={18} />
-                  <span>导入 FLA</span>
+                  <span>自动布景</span>
                 </button>
               ) : null}
+              {showLandscapeAssetActionGroup ? (
+                <>
+                  <button
+                    aria-label="导入 FLA"
+                    className="resource-activity-fla-action"
+                    data-resource-action="assets-import-fla"
+                    data-testid="resource-asset-import-fla"
+                    onClick={() =>
+                      setAssetFlaReviewRequest((value) => value + 1)
+                    }
+                    type="button"
+                  >
+                    <DecorativeIcon icon={FileArchive} size={18} />
+                    <span>导入 FLA</span>
+                  </button>
+                  <button
+                    aria-label="从其他工程导入"
+                    className="resource-activity-fla-action"
+                    data-resource-action="assets-import-project"
+                    data-testid="resource-asset-import-project"
+                    onClick={() =>
+                      setAssetCrossProjectImportRequest((value) => value + 1)
+                    }
+                    type="button"
+                  >
+                    <DecorativeIcon icon={FolderInput} size={18} />
+                    <span>从其他工程导入</span>
+                  </button>
+                </>
+              ) : null}
               {showPortraitAssetActionGroup ? (
-                <button
-                  aria-label="导入 FLA"
-                  className="resource-activity-fla-action"
-                  data-resource-action="assets-import-fla"
-                  data-testid="resource-asset-import-fla"
-                  onClick={() =>
-                    setAssetFlaReviewRequest((value) => value + 1)
-                  }
-                  type="button"
-                >
-                  <DecorativeIcon icon={FileArchive} size={18} />
-                  <span>导入 FLA</span>
-                </button>
+                <>
+                  <button
+                    aria-label="导入 FLA"
+                    className="resource-activity-fla-action"
+                    data-resource-action="assets-import-fla"
+                    data-testid="resource-asset-import-fla"
+                    onClick={() =>
+                      setAssetFlaReviewRequest((value) => value + 1)
+                    }
+                    type="button"
+                  >
+                    <DecorativeIcon icon={FileArchive} size={18} />
+                    <span>导入 FLA</span>
+                  </button>
+                  <button
+                    aria-label="从其他工程导入"
+                    className="resource-activity-fla-action"
+                    data-resource-action="assets-import-project"
+                    data-testid="resource-asset-import-project"
+                    onClick={() =>
+                      setAssetCrossProjectImportRequest((value) => value + 1)
+                    }
+                    type="button"
+                  >
+                    <DecorativeIcon icon={FolderInput} size={18} />
+                    <span>从其他工程导入</span>
+                  </button>
+                </>
               ) : null}
               {hidePortraitAssetsChrome ? null : hidePortraitShotChrome ? null : (
                 <button
@@ -785,6 +830,7 @@ export function ResourceActivityDock({
             ) : activeActivity === 'assets' ? (
               <AssetLibrary
                 closeRequestToken={assetReviewCloseRequest}
+                crossProjectImportRequestToken={assetCrossProjectImportRequest}
                 flaReviewRequestToken={assetFlaReviewRequest}
                 hideHeading={hideLocalActivityTabs}
                 importRequestToken={assetImportRequest}

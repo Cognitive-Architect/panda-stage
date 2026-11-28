@@ -40,6 +40,7 @@ export interface ShotEditorProps {
   projectRoot?: string;
   shot: Shot | null;
   onDuplicate: () => void;
+  onDuplicateStructure?: (includeNonDialogueAudio?: boolean) => void;
   onRemove: () => void;
   onRename: (name: string) => void;
   onSetDuration: (durationMs: number) => void;
@@ -52,6 +53,7 @@ export function ShotEditor({
   projectRoot,
   shot,
   onDuplicate,
+  onDuplicateStructure,
   onRemove,
   onRename,
   onSetDuration,
@@ -124,6 +126,32 @@ export function ShotEditor({
             <Copy aria-hidden="true" className="ui-icon" focusable="false" size={18} />
             <span>复制镜头</span>
           </button>
+          {onDuplicateStructure ? (
+            <>
+              <button
+                className="shot-duplicate-button"
+                data-testid="shot-duplicate-structure-button"
+                disabled={disabled}
+                onClick={() => onDuplicateStructure(false)}
+                type="button"
+              >
+                <Layers3 aria-hidden="true" className="ui-icon" focusable="false" size={18} />
+                <span>仅复制布景与动作</span>
+              </button>
+              {shot.audioClips.some((clip) => clip.role !== 'dialogue') ? (
+                <button
+                  className="shot-duplicate-button"
+                  data-testid="shot-duplicate-structure-with-audio-button"
+                  disabled={disabled}
+                  onClick={() => onDuplicateStructure(true)}
+                  type="button"
+                >
+                  <Music2 aria-hidden="true" className="ui-icon" focusable="false" size={18} />
+                  <span>复制结构并保留 BGM/音效</span>
+                </button>
+              ) : null}
+            </>
+          ) : null}
           <button
             className="shot-delete-button"
             disabled={disabled}

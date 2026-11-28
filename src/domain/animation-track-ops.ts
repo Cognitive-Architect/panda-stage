@@ -531,3 +531,146 @@ export function pasteTargetKeysAtTime<TTrack extends AnimationTrack>(
     authoredAtSource,
   );
 }
+
+export interface TargetKeySpanDurationInput {
+  readonly startMs: number;
+  readonly endMs: number;
+  readonly durationMs: number;
+}
+
+export interface TargetKeySpanDurationPlan {
+  readonly startMs: number;
+  readonly endMs: number;
+  readonly nextEndMs: number;
+  readonly changed: boolean;
+  readonly moves: readonly TargetKeyMove[];
+}
+
+/**
+ * Plan a proportional frame-grid duration retime for all composite keys of
+ * `target` inside `[startMs, endMs]`. Pins `startMs`, maps keys in
+ * `(startMs, endMs]` proportionally onto the 24fps frame grid, preserves
+ * easing/curves, and rejects frame-grid collapse or unselected collisions.
+ */
+export function planTargetKeySpanDuration(
+  tracks: readonly AnimationTrack[],
+  target: AnimationTrack['target'],
+  shotDurationMs: number,
+  input: TargetKeySpanDurationInput,
+): TargetKeySpanDurationPlan {
+  const { startMs, endMs, durationMs } = input;
+  if (!isValidFrameTime(startMs) || !isValidFrameTime(endMs) || endMs <= startMs) {
+    throw new Error('请选择有效的关键帧起止区间。');
+  }
+  if (!Number.isSafeInteger(durationMs) || durationMs < 1) {
+    throw new Error('统一时长必须为正整数毫秒。');
+  }
+  const compositeTimes = compositeKeyTimesForTarget(tracks, target);
+  const selectedTimes = compositeTimes.filter(
+    (timeMs) => timeMs >= startMs && timeMs <= endMs,
+  );
+  if (selectedTimes.length < 2) {
+    throw new Error('关键帧选段内至少需要 2 枚关键帧。');
+  }
+  const spanStart = selectedTimes[0]!;
+  const spanEnd = selectedTimes[selectedTimes.length - 1]!;
+  if (spanEnd <= spanStart) {
+    throw new Error('关键帧选段时长无效。');
+  }
+
+  const targetEndFrame = Math.round(
+    ((spanStart + durationMs) * TIMELINE_FPS) / 1_000,
+  );
+  const nextEndMs = frameTimeMs(targetEndFrame);
+  if (nextEndMs <= spanStart) {
+    throw new Error('目标时长过短，无法在项目帧网格上保留关键帧区间。');
+  }
+  const maxValidFrameMs = lastValidFrameTime(shotDurationMs);
+  if (nextEndMs > maxValidFrameMs) {
+    throw new Error('调整后的关键帧结束时间超出镜头范围。');
+  }
+
+  const oldSpan = spanEnd - spanStart;
+  const newSpan = nextEndMs - spanStart;
+  const unselectedTimes = new Set(
+    compositeTimes.filter((timeMs) => timeMs < spanStart || timeMs > spanEnd),
+  );
+  const seenTargets = new Set<number>([spanStart]);
+  const moves: TargetKeyMove[] = [{ fromTimeMs: spanStart, toTimeMs: spanStart }];
+
+  for (const fromTimeMs of selectedTimes.slice(1)) {
+    const toTimeMs =
+      fromTimeMs === spanEnd
+        ? nextEndMs
+        : frameTimeMs(
+            Math.round(
+              ((spanStart + ((fromTimeMs - spanStart) / oldSpan) * newSpan) *
+                TIMELINE_FPS) /
+                1_000,
+            ),
+          );
+    if (toTimeMs <= spanStart || toTimeMs > maxValidFrameMs) {
+      throw new Error('调整后的关键帧时间超出有效范围。');
+    }
+    if (seenTargets.has(toTimeMs)) {
+      throw new Error('目标时长过短，区间内多枚关键帧会合并到同一帧。');
+    }
+    if (unselectedTimes.has(toTimeMs)) {
+      throw new Error(`目标位置 ${toTimeMs} ms 已有未选中的关键帧，无法覆盖。`);
+    }
+    seenTargets.add(toTimeMs);
+    moves.push({ fromTimeMs, toTimeMs });
+  }
+
+  // Ensure extending the span does not cross any unselected key after spanEnd.
+  if (nextEndMs > spanEnd) {
+    for (const timeMs of unselectedTimes) {
+      if (timeMs > spanEnd && timeMs <= nextEndMs) {
+        throw new Error(
+          `拉长区间会跨过位于 ${timeMs} ms 的后续关键帧，请先调整后续关键帧。`,
+        );
+      }
+    }
+  }
+
+  return {
+    startMs: spanStart,
+    endMs: spanEnd,
+    nextEndMs,
+    changed: moves.some((move) => move.fromTimeMs !== move.toTimeMs),
+    moves,
+  };
+}
+
+/**
+ * Proportionally retime all keys of `target` within `[startMs, endMs]` to a new
+ * duration while preserving each key's value, `interpolationToNext`, and
+ * `curveToNext`.
+ */
+export function retimeTargetKeySpanDuration<TTrack extends AnimationTrack>(
+  tracks: readonly TTrack[],
+  target: AnimationTrack['target'],
+  shotDurationMs: number,
+  input: TargetKeySpanDurationInput,
+): TTrack[] {
+  const plan = planTargetKeySpanDuration(tracks, target, shotDurationMs, input);
+  if (!plan.changed) return tracks as TTrack[];
+  const moveMap = new Map(
+    plan.moves.map((move) => [move.fromTimeMs, move.toTimeMs]),
+  );
+  return tracks.map((track) => {
+    if (!sameAnimationTarget(track.target, target)) return track;
+    if (!track.keys.some((key) => moveMap.has(key.timeMs))) return track;
+    return AnimationTrackSchema.parse({
+      ...track,
+      keys: track.keys
+        .map((key) => {
+          const nextTimeMs = moveMap.get(key.timeMs);
+          return nextTimeMs !== undefined
+            ? { ...key, timeMs: nextTimeMs }
+            : key;
+        })
+        .sort((left, right) => left.timeMs - right.timeMs),
+    }) as TTrack;
+  });
+}

@@ -1,14 +1,29 @@
-import { useMemo, useState, useSyncExternalStore } from 'react';
-import type { Character } from '../../../domain';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  AutoSubtitleAudioService,
+  createDraftRowIdGenerator,
+  dialogueDraftSpeakerKey,
+  formatAudioDurationMs,
+  matchDialogueAudioRows,
+  reconcileDialogueDraftRows,
+  type AudioAsset,
+  type Character,
+  type DialogueAudioMatchRequest,
+  type DialogueAudioScheduleRowInput,
+  type DialogueDraftRowSeed,
+  type StableDialogueDraftRow,
+} from '../../../domain';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
+import { shotStore } from '../../stores/shotStore';
 import { dialogueStore } from '../../stores/dialogueStore';
+import { useTimelineUi } from '../timeline/timelineUiStore';
 import {
   CharacterAvatar,
   CharacterIdentityPicker,
   getCharacterDefaultExpression,
   useCharacterAvatarThumbnails,
 } from '../characters/CharacterIdentity';
-import { CirclePlus, Mic } from 'lucide-react';
+import { CirclePlus, Mic, Volume2 } from 'lucide-react';
 import {
   parseDialoguePaste,
   resolveDialoguePaste,
@@ -16,6 +31,14 @@ import {
 } from './parseDialoguePaste';
 import { NARRATOR_SPEAKER_NAME } from './dialogueSpeaker';
 import type { DialogueAuthoringDraft } from './dialogueAuthoringDraft';
+import { DialogueBatchAudioRow } from './DialogueBatchAudioRow';
+
+interface ManualAudioOverride {
+  assetId: string | null;
+  speakerKey: string;
+}
+
+const autoSubtitleAudioService = new AutoSubtitleAudioService();
 
 function exceptionHeading(line: ParsedDialogueLine): string {
   if (line.status === 'malformed') return '这一行格式不对';
@@ -44,9 +67,10 @@ function mappingIssueCopy(line: ParsedDialogueLine): string {
 }
 
 /**
- * Production batch authoring surface. Parsing and explicit speaker mapping
- * remain transient draft state; DialogueStore.createMany performs the sole,
- * atomic Project/History commit.
+ * Production batch authoring surface. Parsing, speaker mapping, stable draft
+ * row identity, audio matching, and real-duration timing preview remain
+ * transient draft state; DialogueStore.createMany or DialogueStore.applyAudioBatch
+ * performs the sole, atomic Project/History commit.
  */
 export function DialogueBatchPaste({
   draft,
@@ -61,25 +85,320 @@ export function DialogueBatchPaste({
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
   );
+  const currentShotId = useSyncExternalStore(
+    shotStore.subscribe,
+    shotStore.getCurrentShotId,
+  );
+  const timelineUi = useTimelineUi();
   const characters: readonly Character[] = snapshot?.project.characters ?? [];
+  const audioAssets: readonly AudioAsset[] = useMemo(
+    () =>
+      (snapshot?.project.assets ?? []).filter(
+        (asset): asset is AudioAsset => asset.kind === 'audio',
+      ),
+    [snapshot?.project.assets],
+  );
   const {
     onThumbnailError: onCharacterThumbnailError,
     thumbnails: characterThumbnails,
   } = useCharacterAvatarThumbnails(snapshot, characters);
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
   const [commitError, setCommitError] = useState<string | null>(null);
+  const [manualAudioState, setManualAudioState] = useState<{
+    sessionKey: string;
+    entries: Record<string, ManualAudioOverride>;
+  }>({ sessionKey: '', entries: {} });
+  const [confirmedExtensionToMs, setConfirmedExtensionToMs] = useState<
+    number | null
+  >(null);
+  const previousStableRowsRef = useRef<readonly StableDialogueDraftRow[]>([]);
+  const confirmedAudioByRowIdRef = useRef<
+    Record<string, { assetId: string; speakerKey: string }>
+  >({});
+  const nextDraftRowIdRef = useRef<() => string>(createDraftRowIdGenerator());
+  const preservedLineOrdinalsRef = useRef<
+    readonly { raw: string; logicalOrdinal: number }[] | null
+  >(null);
+  const committedMaxOrdinalRef = useRef<number>(0);
+  const sessionKey = `${snapshot?.projectRoot ?? ''}::${currentShotId ?? ''}`;
+  const lastSessionKeyRef = useRef<string>(sessionKey);
+
+  // Synchronously reset transient session refs before reconciliation when the
+  // active project or shot changes so no stale draft IDs or audio bindings leak
+  // into the first render of the new session.
+  if (lastSessionKeyRef.current !== sessionKey) {
+    lastSessionKeyRef.current = sessionKey;
+    previousStableRowsRef.current = [];
+    confirmedAudioByRowIdRef.current = {};
+    nextDraftRowIdRef.current = createDraftRowIdGenerator();
+    preservedLineOrdinalsRef.current = null;
+    committedMaxOrdinalRef.current = 0;
+  }
+
+  const manualAudioByRowId = useMemo(
+    () =>
+      manualAudioState.sessionKey === sessionKey
+        ? manualAudioState.entries
+        : {},
+    [manualAudioState, sessionKey],
+  );
+
+  useEffect(() => {
+    setManualAudioState({ sessionKey, entries: {} });
+    setConfirmedExtensionToMs(null);
+    setCommitError(null);
+  }, [sessionKey]);
 
   const parsed = useMemo(
     () => parseDialoguePaste(draftState.batchRaw, characters),
     [draftState.batchRaw, characters],
   );
   const resolution = useMemo(
-    () =>
-      resolveDialoguePaste(parsed, draftState.batchMapping, characters),
+    () => resolveDialoguePaste(parsed, draftState.batchMapping, characters),
     [characters, draftState.batchMapping, parsed],
   );
   const hasContent = draftState.batchRaw.trim().length > 0;
   const pendingCount = Math.max(parsed.lines.length - resolution.readyCount, 0);
+
+  // Preserve original 1-based logical ordinals across unresolved lines and
+  // across partial commits so remaining draft lines are never re-numbered onto
+  // already-committed audio ordinals.
+  const logicalOrdinalsByLineNumber = useMemo(() => {
+    const map = new Map<number, number>();
+    if (parsed.lines.length === 0) {
+      preservedLineOrdinalsRef.current = null;
+      committedMaxOrdinalRef.current = 0;
+      return map;
+    }
+
+    const preserved = preservedLineOrdinalsRef.current;
+    if (preserved && preserved.length > 0) {
+      const available = new Set(preserved.map((_, idx) => idx));
+      const matchedOrdinals: Array<number | null> = parsed.lines.map(() => null);
+      parsed.lines.forEach((line, idx) => {
+        for (const prevIdx of available) {
+          if (preserved[prevIdx]!.raw === line.raw) {
+            matchedOrdinals[idx] = preserved[prevIdx]!.logicalOrdinal;
+            available.delete(prevIdx);
+            break;
+          }
+        }
+      });
+
+      let nextOrdinal = Math.max(
+        committedMaxOrdinalRef.current,
+        ...matchedOrdinals.filter((val): val is number => val !== null),
+        0,
+      );
+      const nextPreserved: Array<{ raw: string; logicalOrdinal: number }> = [];
+      parsed.lines.forEach((line, idx) => {
+        let ordinal = matchedOrdinals[idx] ?? null;
+        if (ordinal === null) {
+          nextOrdinal += 1;
+          ordinal = nextOrdinal;
+        }
+        map.set(line.lineNumber, ordinal);
+        nextPreserved.push({ raw: line.raw, logicalOrdinal: ordinal });
+      });
+      preservedLineOrdinalsRef.current = nextPreserved;
+      return map;
+    }
+
+    parsed.lines.forEach((line, index) => {
+      map.set(line.lineNumber, index + 1);
+    });
+    return map;
+  }, [parsed.lines]);
+
+  const stableDraftRows = useMemo(() => {
+    const seeds: DialogueDraftRowSeed[] = [];
+    parsed.lines.forEach((line, index) => {
+      const resolved = resolution.resolvedLines[index];
+      if (!resolved) return;
+      const isNarrator = resolved.speakerType === 'narrator';
+      const character = resolved.characterId
+        ? characters.find((candidate) => candidate.id === resolved.characterId)
+        : undefined;
+      if (!isNarrator && !character) return;
+      const logicalOrdinal =
+        logicalOrdinalsByLineNumber.get(line.lineNumber) ?? index + 1;
+      seeds.push({
+        sourceLineNumber: line.lineNumber,
+        logicalOrdinal,
+        text: resolved.text,
+        speakerType: isNarrator ? 'narrator' : 'character',
+        ...(character ? { characterId: character.id } : {}),
+        speakerName: isNarrator ? NARRATOR_SPEAKER_NAME : character!.name,
+      });
+    });
+    const reconciled = reconcileDialogueDraftRows(
+      previousStableRowsRef.current,
+      seeds,
+      nextDraftRowIdRef.current,
+    );
+    previousStableRowsRef.current = reconciled;
+
+    // Immediately prune confirmed audio cache for any deleted draft rows so
+    // retired row IDs leave no stale bindings behind.
+    const activeIds = new Set(reconciled.map((row) => row.draftRowId));
+    const prunedConfirmed: Record<string, { assetId: string; speakerKey: string }> = {};
+    for (const [rowId, binding] of Object.entries(confirmedAudioByRowIdRef.current)) {
+      if (activeIds.has(rowId)) {
+        prunedConfirmed[rowId] = binding;
+      }
+    }
+    confirmedAudioByRowIdRef.current = prunedConfirmed;
+
+    return reconciled;
+  }, [
+    characters,
+    logicalOrdinalsByLineNumber,
+    parsed.lines,
+    resolution.resolvedLines,
+  ]);
+
+  // Prune manual audio overrides for deleted draft rows.
+  useEffect(() => {
+    const activeIds = new Set(stableDraftRows.map((row) => row.draftRowId));
+    setManualAudioState((prev) => {
+      if (prev.sessionKey !== sessionKey) return prev;
+      const keys = Object.keys(prev.entries);
+      if (keys.every((id) => activeIds.has(id))) return prev;
+      const nextEntries: Record<string, ManualAudioOverride> = {};
+      for (const id of keys) {
+        if (activeIds.has(id)) {
+          nextEntries[id] = prev.entries[id]!;
+        }
+      }
+      return { sessionKey, entries: nextEntries };
+    });
+  }, [sessionKey, stableDraftRows]);
+
+  const matchReport = useMemo(() => {
+    if (!snapshot || audioAssets.length === 0 || stableDraftRows.length === 0) {
+      return null;
+    }
+    const requests: DialogueAudioMatchRequest[] = stableDraftRows.map(
+      (row, index) => {
+        const speakerKey = dialogueDraftSpeakerKey(row);
+        const manual = manualAudioByRowId[row.draftRowId];
+        const activeManual =
+          manual && manual.speakerKey === speakerKey ? manual : undefined;
+        const confirmed = confirmedAudioByRowIdRef.current[row.draftRowId];
+        const activeConfirmedAssetId =
+          row.confirmedAudioAssetId ??
+          (confirmed && confirmed.speakerKey === speakerKey
+            ? confirmed.assetId
+            : undefined);
+        return {
+          draftRowId: row.draftRowId,
+          ordinal: row.logicalOrdinal ?? index + 1,
+          sourceLineNumber: row.sourceLineNumber,
+          text: row.text,
+          speakerType: row.speakerType,
+          ...(row.characterId ? { characterId: row.characterId } : {}),
+          speakerName: row.speakerName,
+          ...(row.existingDialogueId
+            ? { existingDialogueId: row.existingDialogueId }
+            : {}),
+          ...(activeConfirmedAssetId !== undefined
+            ? { confirmedAudioAssetId: activeConfirmedAssetId }
+            : {}),
+          ...(activeManual !== undefined
+            ? { manualAudioAssetId: activeManual.assetId }
+            : {}),
+        };
+      },
+    );
+    return matchDialogueAudioRows(snapshot.project, requests, {
+      shotId: currentShotId ?? undefined,
+    });
+  }, [
+    audioAssets.length,
+    currentShotId,
+    manualAudioByRowId,
+    snapshot,
+    stableDraftRows,
+  ]);
+
+  useEffect(() => {
+    if (!matchReport) {
+      if (stableDraftRows.length === 0) {
+        confirmedAudioByRowIdRef.current = {};
+      }
+      return;
+    }
+    const nextConfirmed: Record<string, { assetId: string; speakerKey: string }> = {};
+    for (const row of matchReport.rows) {
+      if (row.ready && row.audioAssetId) {
+        nextConfirmed[row.draftRowId] = {
+          assetId: row.audioAssetId,
+          speakerKey: dialogueDraftSpeakerKey(row),
+        };
+      }
+    }
+    confirmedAudioByRowIdRef.current = nextConfirmed;
+  }, [matchReport, stableDraftRows.length]);
+
+  const matchRowByLineNumber = useMemo(() => {
+    const map = new Map<
+      number,
+      NonNullable<typeof matchReport>['rows'][number]
+    >();
+    matchReport?.rows.forEach((row) => {
+      map.set(row.sourceLineNumber, row);
+    });
+    return map;
+  }, [matchReport]);
+
+  const readyScheduleRows: readonly DialogueAudioScheduleRowInput[] = useMemo(
+    () =>
+      (matchReport?.readyRows ?? []).map((row) => ({
+        draftRowId: row.draftRowId,
+        sourceLineNumber: row.sourceLineNumber,
+        text: row.text,
+        speakerType: row.speakerType,
+        ...(row.characterId ? { characterId: row.characterId } : {}),
+        ...(row.existingDialogueId
+          ? { existingDialogueId: row.existingDialogueId }
+          : {}),
+        audioAssetId: row.audioAssetId!,
+        sourceStartMs: row.sourceStartMs ?? 0,
+        sourceEndMs: row.sourceEndMs ?? row.durationMs!,
+      })),
+    [matchReport],
+  );
+
+  const schedulePlan = useMemo(() => {
+    if (!snapshot || !currentShotId || readyScheduleRows.length === 0) {
+      return null;
+    }
+    return autoSubtitleAudioService.plan(snapshot.project, {
+      shotId: currentShotId,
+      startMs: timelineUi.currentTimeMs,
+      rows: readyScheduleRows,
+    });
+  }, [currentShotId, readyScheduleRows, snapshot, timelineUi.currentTimeMs]);
+
+  const plannedRowByDraftId = useMemo(() => {
+    const map = new Map<
+      string,
+      NonNullable<typeof schedulePlan>['rows'][number]
+    >();
+    schedulePlan?.rows.forEach((row) => {
+      map.set(row.draftRowId, row);
+    });
+    return map;
+  }, [schedulePlan]);
+
+  useEffect(() => {
+    if (
+      confirmedExtensionToMs !== null &&
+      confirmedExtensionToMs !== schedulePlan?.extensionToMs
+    ) {
+      setConfirmedExtensionToMs(null);
+    }
+  }, [confirmedExtensionToMs, schedulePlan?.extensionToMs]);
 
   const handleCommit = (): void => {
     if (!resolution.allResolved) return;
@@ -97,6 +416,104 @@ export function DialogueBatchPaste({
       );
     }
   };
+
+  const handleAudioCommit = (): void => {
+    if (!schedulePlan || !schedulePlan.ready || !matchReport) return;
+    if (
+      schedulePlan.needsShotExtension &&
+      confirmedExtensionToMs !== schedulePlan.extensionToMs
+    ) {
+      return;
+    }
+    try {
+      const { plan: committedPlan } = dialogueStore.applyAudioBatch({
+        startMs: schedulePlan.startMs,
+        rows: readyScheduleRows,
+        ...(schedulePlan.needsShotExtension &&
+        schedulePlan.extensionToMs !== null
+          ? { extendShotToMs: schedulePlan.extensionToMs }
+          : {}),
+      });
+      setCommitError(null);
+      setConfirmedExtensionToMs(null);
+
+      // Retire committed identities before reconciling the compacted text.
+      // Identical remaining lines must match their own previous identities.
+      const committedRowIds = new Set(
+        committedPlan.rows.map((row) => row.draftRowId),
+      );
+      previousStableRowsRef.current = previousStableRowsRef.current.filter(
+        (row) => !committedRowIds.has(row.draftRowId),
+      );
+      for (const rowId of committedRowIds) {
+        delete confirmedAudioByRowIdRef.current[rowId];
+      }
+      setManualAudioState((prev) => {
+        if (prev.sessionKey !== sessionKey) return prev;
+        const entries = { ...prev.entries };
+        for (const rowId of committedRowIds) {
+          delete entries[rowId];
+        }
+        return { sessionKey, entries };
+      });
+
+      const committedLineNumbers = new Set(
+        committedPlan.rows.map((row) => row.sourceLineNumber),
+      );
+      const remainingLines = parsed.lines.filter(
+        (line) => !committedLineNumbers.has(line.lineNumber),
+      );
+      if (remainingLines.length === 0) {
+        preservedLineOrdinalsRef.current = null;
+        committedMaxOrdinalRef.current = 0;
+        onSuccess();
+      } else {
+        // Preserve original logical ordinals for all remaining draft lines so
+        // partial commit never re-numbers remaining rows onto already-committed
+        // numbered audio files.
+        const committedMax = Math.max(
+          committedMaxOrdinalRef.current,
+          ...committedPlan.rows.map(
+            (row) => logicalOrdinalsByLineNumber.get(row.sourceLineNumber) ?? 0,
+          ),
+        );
+        committedMaxOrdinalRef.current = committedMax;
+        preservedLineOrdinalsRef.current = remainingLines.map((line, idx) => ({
+          raw: line.raw,
+          logicalOrdinal:
+            logicalOrdinalsByLineNumber.get(line.lineNumber) ?? idx + 1,
+        }));
+
+        // Re-index existing manual speaker mappings to match the compacted line numbers.
+        const remainingMappings: Record<number, string> = {};
+        remainingLines.forEach((line, idx) => {
+          const mappedCharId = draftState.batchMapping[line.lineNumber];
+          if (mappedCharId) {
+            remainingMappings[idx + 1] = mappedCharId;
+          }
+        });
+        draft.setBatchRaw(
+          remainingLines.map((line) => line.raw).join('\n'),
+          remainingMappings,
+        );
+      }
+    } catch (nextError) {
+      setCommitError(
+        nextError instanceof Error
+          ? nextError.message
+          : '生成字幕与配音失败。',
+      );
+    }
+  };
+
+  const extensionConfirmed =
+    !schedulePlan?.needsShotExtension ||
+    confirmedExtensionToMs === schedulePlan.extensionToMs;
+  const canCommitAudio =
+    Boolean(schedulePlan?.ready) &&
+    readyScheduleRows.length > 0 &&
+    extensionConfirmed;
+  const hasAudioMode = audioAssets.length > 0;
 
   return (
     <div
@@ -143,13 +560,19 @@ export function DialogueBatchPaste({
               <span aria-hidden="true">⚠</span>
               {`${pendingCount} 条待确认`}
             </span>
-            {parsed.ignoredEmpty > 0
-              ? (
-                <span className="dialogue-batch-recognition-ignored">
-                  {`已忽略 ${parsed.ignoredEmpty} 个空行`}
-                </span>
-              )
-              : null}
+            {matchReport && matchReport.readyCount > 0 ? (
+              <span
+                className="dialogue-batch-recognition-audio"
+                data-testid="dialogue-batch-audio-summary"
+              >
+                {`已配音 ${matchReport.readyCount} 条 · ${formatAudioDurationMs(matchReport.totalDurationMs)}`}
+              </span>
+            ) : null}
+            {parsed.ignoredEmpty > 0 ? (
+              <span className="dialogue-batch-recognition-ignored">
+                {`已忽略 ${parsed.ignoredEmpty} 个空行`}
+              </span>
+            ) : null}
           </div>
 
           <ol
@@ -171,13 +594,28 @@ export function DialogueBatchPaste({
                 resolved && (resolvedNarration || resolvedCharacter)
                   ? { character: resolvedCharacter, line: resolved }
                   : null;
+              const matchRow = matchRowByLineNumber.get(line.lineNumber);
+              const plannedRow = matchRow
+                ? plannedRowByDraftId.get(matchRow.draftRowId)
+                : undefined;
+              const rowSpeakerKey = matchRow
+                ? dialogueDraftSpeakerKey(matchRow)
+                : '';
+
               return (
                 <li
+                  data-audio-ready={
+                    matchRow ? String(matchRow.ready) : undefined
+                  }
                   data-status={
-                    resolvedRow ? (needsMapping ? 'mapped' : 'valid') : line.status
+                    resolvedRow
+                      ? needsMapping
+                        ? 'mapped'
+                        : 'valid'
+                      : line.status
                   }
                   data-testid="dialogue-batch-line"
-                  key={line.lineNumber}
+                  key={matchRow?.draftRowId ?? `line-${line.lineNumber}`}
                 >
                   {resolvedRow ? (
                     <div className="dialogue-batch-row-result dialogue-batch-row-result-resolved">
@@ -194,8 +632,9 @@ export function DialogueBatchPaste({
                           onThumbnailError={onCharacterThumbnailError}
                           thumbnail={
                             characterThumbnails[
-                              getCharacterDefaultExpression(resolvedRow.character)
-                                ?.assetId ?? ''
+                              getCharacterDefaultExpression(
+                                resolvedRow.character,
+                              )?.assetId ?? ''
                             ]
                           }
                         />
@@ -230,6 +669,29 @@ export function DialogueBatchPaste({
                       </div>
                     </div>
                   )}
+
+                  {hasAudioMode && matchRow ? (
+                    <DialogueBatchAudioRow
+                      audioAssets={audioAssets}
+                      lineNumber={line.lineNumber}
+                      matchRow={matchRow}
+                      plannedRow={plannedRow}
+                      onSelectAudio={(assetId) => {
+                        setCommitError(null);
+                        setManualAudioState((prev) => ({
+                          sessionKey,
+                          entries: {
+                            ...(prev.sessionKey === sessionKey ? prev.entries : {}),
+                            [matchRow.draftRowId]: {
+                              assetId,
+                              speakerKey: rowSpeakerKey,
+                            },
+                          },
+                        }));
+                      }}
+                    />
+                  ) : null}
+
                   {needsMapping && !resolvedRow ? (
                     <div className="dialogue-batch-row-resolution">
                       <p className="dialogue-batch-row-issue">
@@ -265,17 +727,92 @@ export function DialogueBatchPaste({
             })}
           </ol>
 
+          {schedulePlan && schedulePlan.blockers.length > 0 ? (
+            <div
+              className="dialogue-batch-audio-alerts"
+              data-testid="dialogue-batch-audio-conflict"
+              role="alert"
+            >
+              {schedulePlan.blockers.map((blocker, idx) => (
+                <p key={`${blocker.code}-${blocker.sourceLineNumber ?? idx}`}>
+                  {blocker.message}
+                </p>
+              ))}
+            </div>
+          ) : null}
+
+          {schedulePlan?.needsShotExtension &&
+          schedulePlan.extensionToMs !== null ? (
+            <label
+              className="dialogue-batch-extend-confirm"
+              data-testid="dialogue-batch-extend-confirm"
+            >
+              <input
+                checked={
+                  confirmedExtensionToMs === schedulePlan.extensionToMs
+                }
+                type="checkbox"
+                onChange={(event) => {
+                  setCommitError(null);
+                  setConfirmedExtensionToMs(
+                    event.target.checked ? schedulePlan.extensionToMs : null,
+                  );
+                }}
+              />
+              <span>
+                {`当前镜头时长 ${formatAudioDurationMs(schedulePlan.shotDurationMs)} 不足，确认延长至 ${formatAudioDurationMs(schedulePlan.extensionToMs)}`}
+              </span>
+            </label>
+          ) : null}
+
+          {matchReport &&
+          matchReport.hasCommitableSubset &&
+          matchReport.draftCount > 0 ? (
+            <p
+              className="dialogue-batch-subset-note"
+              data-testid="dialogue-batch-subset-note"
+            >
+              {`可先生成 ${matchReport.readyCount} 条就绪配音，其余 ${matchReport.draftCount} 条将保留在草稿。`}
+            </p>
+          ) : null}
+
           {commitError ? (
             <p className="dialogue-authoring-error" role="alert">
               {commitError}
             </p>
           ) : null}
+
           <footer
-            className="dialogue-authoring-footer"
+            className="dialogue-authoring-footer dialogue-batch-footer-actions"
             data-testid="dialogue-authoring-footer"
           >
+            {hasAudioMode ? (
+              <button
+                className="dialogue-authoring-submit dialogue-batch-submit dialogue-batch-audio-submit"
+                data-testid="dialogue-batch-audio-commit"
+                disabled={!canCommitAudio}
+                type="button"
+                onClick={handleAudioCommit}
+              >
+                <Volume2
+                  aria-hidden="true"
+                  className="ui-icon"
+                  focusable="false"
+                  size={18}
+                />
+                <span>
+                  {matchReport && matchReport.readyCount > 0
+                    ? matchReport.draftCount > 0
+                      ? `生成 ${matchReport.readyCount} 条有效字幕与配音`
+                      : `生成 ${matchReport.readyCount} 条字幕与配音`
+                    : '生成字幕与配音'}
+                </span>
+              </button>
+            ) : null}
             <button
-              className="dialogue-authoring-submit dialogue-batch-submit"
+              className={`dialogue-authoring-submit dialogue-batch-submit${
+                hasAudioMode ? ' dialogue-batch-plain-submit' : ''
+              }`}
               data-testid="dialogue-batch-commit"
               disabled={!resolution.allResolved}
               type="button"

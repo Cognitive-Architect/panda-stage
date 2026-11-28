@@ -45,3 +45,5 @@ export * from './character-part-animation';
 export * from './layer-animation';
 export * from './services/CharacterMotionService';
 export * from './services/LayerMotionService';
+export * from './layout';
+export * from './scene';

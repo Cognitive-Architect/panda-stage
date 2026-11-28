@@ -6,12 +6,13 @@ import {
 } from '../../../domain';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { shotStore } from '../../stores/shotStore';
+import { AutoScenePanel } from './AutoScenePanel';
 import { ShotCreateForm } from './ShotCreateForm';
 import { ShotEditor } from './ShotEditor';
 import { nextAvailableShotName, ShotList } from './ShotList';
 import { ShotQuickActions } from './ShotQuickActions';
 
-export type ShotWorkspaceView = 'list' | 'create';
+export type ShotWorkspaceView = 'list' | 'create' | 'auto-scene';
 export type ShotManagerPresentation = 'default' | 'landscape';
 export type ShotEditorPresentation = 'default' | 'portrait';
 
@@ -77,6 +78,18 @@ export function ShotManager({
     mutate(() => shotStore.duplicate(selectedShot.id));
   };
 
+  const duplicateSelectedShotStructure = (
+    includeNonDialogueAudio = false,
+  ): void => {
+    if (!selectedShot) return;
+    mutate(() =>
+      shotStore.duplicate(selectedShot.id, {
+        mode: 'structure-only',
+        includeNonDialogueAudio,
+      }),
+    );
+  };
+
   const removeSelectedShot = (): void => {
     if (
       !selectedShot ||
@@ -136,6 +149,11 @@ export function ShotManager({
           presentation={presentation}
           suggestedName={nextAvailableShotName(project?.shots ?? [])}
         />
+      ) : view === 'auto-scene' ? (
+        <AutoScenePanel
+          onBack={() => onViewChange('list')}
+          snapshot={snapshot}
+        />
       ) : (
         <div className="shot-workspace">
           <ShotList
@@ -155,6 +173,7 @@ export function ShotManager({
                   disabled={!snapshot}
                   index={selectedIndex}
                   onDuplicate={duplicateSelectedShot}
+                  onDuplicateStructure={duplicateSelectedShotStructure}
                   onRemove={removeSelectedShot}
                   onRename={renameSelectedShot}
                   onSetDuration={setSelectedShotDuration}
@@ -175,6 +194,7 @@ export function ShotManager({
               index={selectedIndex}
               key={selectedShot?.id ?? 'empty'}
               onDuplicate={duplicateSelectedShot}
+              onDuplicateStructure={duplicateSelectedShotStructure}
               onRemove={removeSelectedShot}
               onRename={renameSelectedShot}
               onSetDuration={setSelectedShotDuration}

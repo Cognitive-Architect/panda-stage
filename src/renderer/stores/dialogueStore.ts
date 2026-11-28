@@ -1,14 +1,21 @@
 import {
+  AutoSubtitleAudioService,
   DialogueService,
+  type ApplyDialogueAudioScheduleResult,
+  type BatchBoundaryMode,
   type DialogueArrangementTiming,
+  type DialogueAudioScheduleRowInput,
+  type DialogueBatchMovePlan,
   type ArrangeDialogueInput,
   type BindDialogueAudioInput,
   type DialogueTextMatch,
   type MoveDialogueInput,
+  type MoveManyDialoguesInput,
   type Project,
   type ResizeBoundAudioEndInput,
   type ResizeDialogueInput,
   type SetDialogueTimingInput,
+  type SharedAudioClipPolicy,
 } from '../../domain';
 import {
   EditorProjectStore,
@@ -39,6 +46,8 @@ export type DialogueArrangementPreview =
  * Timeline store into the domain layer.
  */
 export class DialogueStore {
+  private readonly autoSubtitleAudio: AutoSubtitleAudioService;
+
   constructor(
     private readonly editorStore: EditorProjectStore,
     private readonly shotSelection: CurrentShotSelection,
@@ -47,7 +56,9 @@ export class DialogueStore {
     private readonly dialogueSelection: {
       select: (dialogueId: string) => void;
     },
-  ) {}
+  ) {
+    this.autoSubtitleAudio = new AutoSubtitleAudioService(this.service);
+  }
 
   duplicate(dialogueId: string): void {
     const { project, shotId } = this.context();
@@ -111,6 +122,36 @@ export class DialogueStore {
     if (next !== project) {
       this.editorStore.updateProject(next, 'Paste dialogues');
     }
+  }
+
+  /**
+   * Commits a validated batch of timed dialogues + real audio clips (and an
+   * explicitly confirmed shot extension, when needed) in one updateProject
+   * call so the entire batch is a single Undo/Redo command.
+   */
+  applyAudioBatch(input: {
+    startMs?: number;
+    rows: readonly DialogueAudioScheduleRowInput[];
+    extendShotToMs?: number;
+  }): ApplyDialogueAudioScheduleResult {
+    const { project, shotId } = this.context();
+    const startMs =
+      input.startMs ?? this.timelineUi.getSnapshot().currentTimeMs;
+    const result = this.autoSubtitleAudio.apply(project, {
+      shotId,
+      startMs,
+      rows: input.rows,
+      ...(input.extendShotToMs !== undefined
+        ? { extendShotToMs: input.extendShotToMs }
+        : {}),
+    });
+    if (result.project !== project) {
+      this.editorStore.updateProject(result.project, '生成字幕与配音');
+    }
+    if (result.dialogueIds.length > 0) {
+      this.dialogueSelection.select(result.dialogueIds[0]!);
+    }
+    return result;
   }
 
   update(
@@ -224,6 +265,57 @@ export class DialogueStore {
     const input: MoveDialogueInput = { shotId, dialogueId, deltaMs };
     const next = this.service.move(project, input);
     if (next !== project) this.editorStore.updateProject(next, 'Move dialogue');
+  }
+
+  /** Read-only batch shift preview; never writes to Project or History. */
+  planMoveMany(
+    dialogueIds: readonly string[],
+    deltaMs: number,
+    options: {
+      sharedClipPolicy?: SharedAudioClipPolicy;
+      boundaryMode?: BatchBoundaryMode;
+    } = {},
+  ): DialogueBatchMovePlan {
+    const { project, shotId } = this.context();
+    const input: MoveManyDialoguesInput = {
+      shotId,
+      dialogueIds,
+      deltaMs,
+      ...(options.sharedClipPolicy !== undefined
+        ? { sharedClipPolicy: options.sharedClipPolicy }
+        : {}),
+      ...(options.boundaryMode !== undefined
+        ? { boundaryMode: options.boundaryMode }
+        : {}),
+    };
+    return this.service.planMoveMany(project, input);
+  }
+
+  /** Commits a batch dialogue shift as a single History command. */
+  moveMany(
+    dialogueIds: readonly string[],
+    deltaMs: number,
+    options: {
+      sharedClipPolicy?: SharedAudioClipPolicy;
+      boundaryMode?: BatchBoundaryMode;
+    } = {},
+  ): void {
+    const { project, shotId } = this.context();
+    const input: MoveManyDialoguesInput = {
+      shotId,
+      dialogueIds,
+      deltaMs,
+      ...(options.sharedClipPolicy !== undefined
+        ? { sharedClipPolicy: options.sharedClipPolicy }
+        : {}),
+      ...(options.boundaryMode !== undefined
+        ? { boundaryMode: options.boundaryMode }
+        : {}),
+    };
+    const next = this.service.moveMany(project, input);
+    if (next !== project) {
+      this.editorStore.updateProject(next, 'Batch move dialogues');
+    }
   }
 
   resize(

@@ -59,7 +59,11 @@ export function captureUserMotionPreset(clip: LayerAnimationClip, id: string, na
   return UserMotionPresetSchema.parse({ id, name, durationFrames: frameNumber(endMs) - frameNumber(startMs), tracks });
 }
 
-export function userMotionPresetRange(preset: UserMotionPreset, startMs: number, shotDurationMs: number) {
+export function userMotionPresetRange(
+  preset: UserMotionPreset,
+  startMs: number,
+  shotDurationMs = Number.POSITIVE_INFINITY,
+) {
   const frame = frameNumber(startMs);
   const endMs = frameTimeMs(frame + preset.durationFrames);
   if (endMs > shotDurationMs) throw new Error('预设时段超出当前镜头。');

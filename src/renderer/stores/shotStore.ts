@@ -1,6 +1,7 @@
 import {
   ShotService,
   type CreateShotInput,
+  type DuplicateShotOptions,
   type Project,
   type Shot,
   type ShotCameraOverride,
@@ -86,13 +87,17 @@ export class ShotStore {
     return project;
   }
 
-  duplicate(shotId: string): Project {
+  duplicate(shotId: string, options?: DuplicateShotOptions): Project {
     const sourceIndex = this.project().shots.findIndex(
       (shot) => shot.id === shotId,
     );
+    const label =
+      options?.mode === 'structure-only'
+        ? 'Duplicate shot structure'
+        : 'Duplicate shot';
     const project = this.apply(
-      (current) => this.service.duplicate(current, shotId),
-      'Duplicate shot',
+      (current) => this.service.duplicate(current, shotId, options),
+      label,
     );
     this.setCurrentShotId(project.shots[sourceIndex + 1]!.id);
     return project;

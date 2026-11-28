@@ -132,8 +132,8 @@ export class DialogueAuthoringDraft {
     this.set({ ...EMPTY_DRAFT });
   }
 
-  setBatchRaw(value: string): void {
-    this.set({ ...this.snapshot, batchRaw: value });
+  setBatchRaw(value: string, mapping = this.snapshot.batchMapping): void {
+    this.set({ ...this.snapshot, batchRaw: value, batchMapping: mapping });
   }
 
   setBatchMapping(lineNumber: number, characterId: string): void {

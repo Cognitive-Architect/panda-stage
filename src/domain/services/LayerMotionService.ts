@@ -9,12 +9,16 @@ import {
   pasteTargetKeysAtTime,
   pasteTargetKeySnapshotAtTime,
   planTargetKeysRetime,
+  planTargetKeySpanDuration,
   readTargetAuthoredKeyValues,
   retimeTargetKeys,
+  retimeTargetKeySpanDuration,
   setTargetKeyEasing,
   targetCompositeKeyEasing,
   upsertTargetKeyValues,
   type AnimationMotionValues,
+  type TargetKeySpanDurationInput,
+  type TargetKeySpanDurationPlan,
   type TargetKeysRetimeInput,
   type TargetKeysRetimePlan,
 } from '../animation-track-ops';
@@ -38,6 +42,7 @@ import {
 import {
   createLayerAnimationClip,
   canAuthorLayerRootMotion,
+  centeredLayerMotionClip,
   evaluateLayerRelativeMotionValues,
   findLayerMotionGraphic,
   layerRootMotionClip,
@@ -94,6 +99,10 @@ export interface LayerRetimeKeyInput extends LayerMotionTargetInput {
 }
 
 export interface LayerBatchRetimeInput extends LayerMotionTargetInput, TargetKeysRetimeInput {}
+
+export interface LayerKeySpanDurationInput
+  extends LayerMotionTargetInput,
+    TargetKeySpanDurationInput {}
 
 export interface LayerPasteKeysInput extends LayerMotionTargetInput {
   readonly fromTimeMs: number;
@@ -170,6 +179,7 @@ function resolveLayerContext(
   project: Project,
   shotId: string,
   layerId: string,
+  allowCharacterRoot = false,
 ): {
   readonly shot: Shot;
   readonly layer: Layer;
@@ -183,7 +193,8 @@ function resolveLayerContext(
     throw new Error('请选择有效的 FLA 图形动画图层。');
   }
   const animation = findLayerMotionGraphic(project, layer);
-  if (!animation && !canAuthorLayerRootMotion(layer)) {
+  if (!animation && !canAuthorLayerRootMotion(layer) &&
+    !(allowCharacterRoot && layer.source.kind === 'character')) {
     throw new Error('对象动作仅支持 FLA 图形（Graphic）图层。');
   }
   if (animation && layer.animationClip && layer.animationClip.version !== 2) {
@@ -196,8 +207,9 @@ function assertMutableLayerContext(
   project: Project,
   shotId: string,
   layerId: string,
+  allowCharacterRoot = false,
 ) {
-  const resolved = resolveLayerContext(project, shotId, layerId);
+  const resolved = resolveLayerContext(project, shotId, layerId, allowCharacterRoot);
   if (resolved.layer.locked) {
     throw new Error(`图层“${resolved.layer.name}”已锁定，请先解锁。`);
   }
@@ -306,12 +318,19 @@ export class LayerMotionService {
       : [...library, preset] });
   }
 
-  applyUserMotionPreset(project: Project, input: LayerKeyTimeInput, presetId: string): Project {
-    const { shot, layer } = assertMutableLayerContext(project, input.shotId, input.layerId);
+  applyUserMotionPreset(
+    project: Project,
+    input: LayerKeyTimeInput,
+    presetId: string,
+    options: { readonly allowCharacterRoot?: boolean } = {},
+  ): Project {
+    const { shot, layer } = assertMutableLayerContext(project, input.shotId, input.layerId, options.allowCharacterRoot);
     const preset = project.userMotionPresets?.find((entry) => entry.id === presetId);
     if (!preset) throw new Error('找不到选择的运动预设。');
     assertValidFrame(shot, input.timeMs);
-    const clip = layerRootMotionClip(layer) ?? createLayerAnimationClip(project, shot.id, layer.id);
+    const clip = layerRootMotionClip(layer) ?? (layer.source.kind === 'character'
+      ? centeredLayerMotionClip(layer)
+      : createLayerAnimationClip(project, shot.id, layer.id));
     const tracks = applyUserMotionPresetTracks(clip, layer.id, preset, input.timeMs, shot.durationMs);
     return this.commitLayerClip(project, shot.id, layer.id, { ...clip, tracks });
   }
@@ -791,6 +810,50 @@ export class LayerMotionService {
       throw new Error('找不到可移动的关键帧。');
     }
     const nextTracks = retimeTargetKeys(
+      existing.tracks,
+      layerTargetRef(layer.id),
+      shot.durationMs,
+      input,
+    );
+    if (nextTracks === existing.tracks) return project;
+    return this.commitLayerClip(project, shot.id, layer.id, {
+      ...existing,
+      tracks: nextTracks,
+    });
+  }
+
+  planKeySpanDuration(
+    project: Project,
+    input: LayerKeySpanDurationInput,
+  ): TargetKeySpanDurationPlan {
+    const { shot, layer } = resolveLayerContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const existing = layerRootMotionClip(layer);
+    return planTargetKeySpanDuration(
+      existing?.tracks ?? [],
+      layerTargetRef(layer.id),
+      shot.durationMs,
+      input,
+    );
+  }
+
+  retimeKeySpanDuration(
+    project: Project,
+    input: LayerKeySpanDurationInput,
+  ): Project {
+    const { shot, layer } = assertMutableLayerContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const existing = layerRootMotionClip(layer);
+    if (!existing) {
+      throw new Error('找不到可调整时长的关键帧选段。');
+    }
+    const nextTracks = retimeTargetKeySpanDuration(
       existing.tracks,
       layerTargetRef(layer.id),
       shot.durationMs,
