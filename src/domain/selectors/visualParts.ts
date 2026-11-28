@@ -23,7 +23,11 @@ import {
   evaluateFlaGraphicVisual,
   type EvaluatedFlaGraphicVisual,
 } from '../evaluate-fla-graphic';
-import { selectFlaGraphicSubtreeVisual } from '../fla-graphic-subtree';
+import {
+  measureFlaGraphicSubtreeBounds,
+  selectFlaGraphicSubtreeVisual,
+  type FlaGraphicAssetDimensionLike,
+} from '../fla-graphic-subtree';
 import {
   evaluateFlaVideoClock,
   flaVideoFrameAssetKey,
@@ -1339,6 +1343,7 @@ function applyCharacterVectorSkinVisuals(input: {
   clip: AnimationClipV0;
   values: readonly EvaluatedAnimationValue[];
   layerId: string;
+  assets: readonly FlaGraphicAssetDimensionLike[];
   parts: readonly LayerVisualPart[];
   poses?: ReadonlyMap<string, EvaluatedCharacterBonePose>;
 }): LayerVisualPart[] {
@@ -1382,9 +1387,18 @@ function applyCharacterVectorSkinVisuals(input: {
       overrides: vectorSkinAnchorWeightsMap(skin),
     });
     if (!result.ok) return fallback(result.code);
+    // #1471 R2: the authored `localRect` is the rest bounds, but LBS rewrites
+    // the region geometry. Reuse the same vector range utilities the raster
+    // consumes so this frame's runtime visual bounds cover the deformed shape
+    // instead of clipping it in the Character composite/effect cache. Rest and
+    // fallback frames keep their authored bounds bit for bit.
+    const deformedBounds = result.deformed
+      ? measureFlaGraphicSubtreeBounds(result.visual, input.assets)
+      : null;
     return {
       ...part,
       flaGraphic: result.visual,
+      ...(deformedBounds ? { localRect: deformedBounds } : {}),
       vectorSkin: {
         ...statusBase,
         anchorCount: result.anchorCount,
@@ -1838,6 +1852,7 @@ export function resolveLayerVisualParts(
         clip,
         values,
         layerId: layer.id,
+        assets: project.assets,
         parts,
         ...(poses ? { poses } : {}),
       });
