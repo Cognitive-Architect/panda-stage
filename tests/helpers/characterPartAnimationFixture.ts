@@ -42,7 +42,7 @@ export function addTestAnimation(project: Project, layerId: string, partId: stri
   const clip: AnimationClipV0 = layer.animationClip?.version === 1
     ? layer.animationClip
     : createCharacterPartAnimationClip(next, IDS.shot, layerId);
-  clip.tracks = clip.tracks.filter(track => !(track.target.partId === partId && track.property === property));
+  clip.tracks = clip.tracks.filter(track => !(track.target.kind === 'character-part' && track.target.partId === partId && track.property === property));
   clip.tracks.push({ target: { kind: 'character-part', layerId, partId }, property, keys: [
     { timeMs: 0, value: startValue, interpolationToNext: 'linear' },
     { timeMs: 1000, value: endValue, interpolationToNext: 'linear' },

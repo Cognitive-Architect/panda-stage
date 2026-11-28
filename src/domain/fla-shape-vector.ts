@@ -352,7 +352,8 @@ function parseSvgTransformAttr(raw: string | undefined): AffineMatrix2D | null {
   return result;
 }
 
-function transformCommands(
+/** Applies an affine matrix to canonical vector path commands (translation-safe). */
+export function transformCommands(
   commands: readonly FlaVectorPathCommand[],
   matrix: AffineMatrix2D | null,
 ): FlaVectorPathCommand[] {

@@ -900,9 +900,23 @@ const LayeredCharacterActionV37Schema = z.object({
   }
 });
 
+/**
+ * Marks a Layered Character action as a per-definition copy bound to one
+ * Character Layer instance. Other layers keep referencing the shared action.
+ */
+export const CharacterActionInstanceScopeSchema = z
+  .object({
+    layerId: IdSchema,
+  })
+  .strict();
+
 export const LayeredCharacterActionSchema = LayeredCharacterActionV37Schema.safeExtend({
   partPivotOffsets: z.array(z.object({ partId: IdSchema, offset: ArmPointSchema }).strict()).optional(),
-}).superRefine(({ tracks, partPivotOffsets }, context) => {
+  /** Source shared action this instance copy was cloned from. */
+  originActionId: IdSchema.optional(),
+  /** Present only on an instance-editable copy; scoped to one Character Layer. */
+  instanceScope: CharacterActionInstanceScopeSchema.optional(),
+}).superRefine(({ tracks, partPivotOffsets, originActionId, instanceScope }, context) => {
   const seen = new Set<string>();
   partPivotOffsets?.forEach(({ partId }, index) => {
     if (seen.has(partId) || !tracks.some(track => track.partId === partId &&
@@ -911,6 +925,12 @@ export const LayeredCharacterActionSchema = LayeredCharacterActionV37Schema.safe
     }
     seen.add(partId);
   });
+  if (instanceScope && !originActionId) {
+    context.addIssue({ code: 'custom', path: ['instanceScope'], message: 'An instance-scoped action copy requires its origin action.' });
+  }
+  if (originActionId && !instanceScope) {
+    context.addIssue({ code: 'custom', path: ['originActionId'], message: 'An action origin is only valid on an instance-scoped copy.' });
+  }
 });
 
 const CharacterActionV37Schema = z.union([BakedCharacterActionSchema, LayeredCharacterActionV37Schema]);
@@ -953,6 +973,281 @@ export const CharacterArmChainSchema = z.object({
   tip: ArmPointSchema,
 }).strict().refine(({ segments }) => new Set(segments.map(({ partId }) => partId)).size === segments.length &&
   segments.every(({ minDeg, maxDeg }) => minDeg <= maxDeg), 'Invalid rigid arm joints or limits.');
+
+/** User-facing role of a named rigid chain; purely descriptive metadata. */
+export const CHARACTER_ARM_CHAIN_KINDS = [
+  'left-arm',
+  'right-arm',
+  'left-leg',
+  'right-leg',
+  'custom',
+] as const;
+export const CharacterArmChainKindSchema = z.enum(CHARACTER_ARM_CHAIN_KINDS);
+export type CharacterArmChainKind = z.infer<typeof CharacterArmChainKindSchema>;
+
+/**
+ * Stable identity of the implicit chain that wraps a legacy `armChain`. It is a
+ * fixed UUID because persisted chain ids share the formal project id contract.
+ */
+export const DEFAULT_ARM_CHAIN_ID = '00000000-0000-4000-8000-000000000144';
+export const DEFAULT_ARM_CHAIN_NAME = '手臂';
+
+/** A named rigid chain. `chain` keeps the exact legacy arm-chain contract. */
+export const CharacterArmChainEntrySchema = z.object({
+  id: IdSchema,
+  name: NameSchema,
+  kind: CharacterArmChainKindSchema.optional(),
+  chain: CharacterArmChainSchema,
+}).strict();
+export type CharacterArmChainEntry = z.infer<typeof CharacterArmChainEntrySchema>;
+
+const CharacterArmChainsSchema = z.array(CharacterArmChainEntrySchema).max(8).refine((entries) => {
+  const ids = new Set(entries.map(({ id }) => id));
+  const names = new Set(entries.map(({ name }) => name.toLocaleLowerCase()));
+  return ids.size === entries.length && names.size === entries.length;
+}, 'Arm chain ids and names must be unique.');
+
+export const CHARACTER_BONE_MAX_COUNT = 64 as const;
+
+/** Rest translation (parent-bone space) and authored rest rotation of one Bone. */
+export const CharacterBoneRestLocalSchema = z
+  .object({
+    x: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+    y: FiniteNumberSchema.min(-1_000_000).max(1_000_000),
+    rotationDeg: FiniteNumberSchema.min(-3_600).max(3_600),
+  })
+  .strict();
+
+/**
+ * One node of the minimal generic FK Bone Tree (#1455). A Bone is an abstract
+ * pivot; `partId` optionally binds exactly one existing Part to it. Bone pose
+ * tracks reuse the existing Animation Core transform properties, so old Part
+ * tracks keep their own local pose under a bone delta exactly once.
+ */
+export const CharacterBoneSchema = z
+  .object({
+    id: IdSchema,
+    name: NameSchema.optional(),
+    /** `null` marks a root. Exactly one root is allowed per Character. */
+    parentBoneId: IdSchema.nullable(),
+    partId: IdSchema.optional(),
+    restLocal: CharacterBoneRestLocalSchema,
+    length: FiniteNumberSchema.min(0.0001).max(1_000_000).optional(),
+    minDeg: FiniteNumberSchema.min(-360).max(360).optional(),
+    maxDeg: FiniteNumberSchema.min(-360).max(360).optional(),
+    /** Default true; when false the bone ignores its parent's accumulated rotation. */
+    inheritRotation: z.boolean().optional(),
+  })
+  .strict();
+
+const CharacterBonesSchema = z
+  .array(CharacterBoneSchema)
+  .max(CHARACTER_BONE_MAX_COUNT)
+  .optional();
+
+/**
+ * Shape-level invariant check only. The pure resolver in
+ * `character-bone-pose.ts` repeats these checks and reports a typed failure
+ * instead of throwing inside evaluation.
+ */
+function validateCharacterBoneTree(
+  character: {
+    bones?: readonly z.infer<typeof CharacterBoneSchema>[];
+    parts?: readonly { partId: string }[];
+  },
+  context: z.RefinementCtx,
+): void {
+  const bones = character.bones ?? [];
+  if (bones.length === 0) return;
+  const byId = new Map<string, z.infer<typeof CharacterBoneSchema>>();
+  bones.forEach((bone, index) => {
+    if (byId.has(bone.id)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['bones', index, 'id'],
+        message: `Duplicate Bone identity: ${bone.id}`,
+      });
+    }
+    byId.set(bone.id, bone);
+  });
+  const partBindings = new Map<string, string>();
+  let rootCount = 0;
+  bones.forEach((bone, index) => {
+    if (bone.parentBoneId === null) {
+      rootCount += 1;
+    } else if (!byId.has(bone.parentBoneId)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['bones', index, 'parentBoneId'],
+        message: `Bone parent references unknown Bone identity: ${bone.parentBoneId}`,
+      });
+    }
+    const visited = new Set<string>([bone.id]);
+    let cursor = bone.parentBoneId;
+    while (cursor !== null) {
+      if (visited.has(cursor)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['bones', index, 'parentBoneId'],
+          message: `Bone tree contains a cycle at Bone: ${bone.id}`,
+        });
+        break;
+      }
+      visited.add(cursor);
+      cursor = byId.get(cursor)?.parentBoneId ?? null;
+    }
+    if (
+      bone.minDeg !== undefined &&
+      bone.maxDeg !== undefined &&
+      bone.minDeg > bone.maxDeg
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['bones', index, 'minDeg'],
+        message: 'Bone minimum angle must not exceed its maximum angle.',
+      });
+    }
+    if (bone.partId !== undefined) {
+      if (!character.parts?.some((part) => part.partId === bone.partId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['bones', index, 'partId'],
+          message: `Bone references unknown Part identity: ${bone.partId}`,
+        });
+      } else if (partBindings.has(bone.partId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['bones', index, 'partId'],
+          message: `Part is already bound to another Bone: ${bone.partId}`,
+        });
+      } else {
+        partBindings.set(bone.partId, bone.id);
+      }
+    }
+  });
+  if (rootCount > 1) {
+    context.addIssue({
+      code: 'custom',
+      path: ['bones'],
+      message: 'A Bone tree requires at most one root Bone.',
+    });
+  }
+}
+
+/** Most two-Bone vector skins one Character may carry (#1459 小样 scope). */
+export const CHARACTER_VECTOR_SKIN_MAX_COUNT = 16 as const;
+/** Most hand-authored anchor weight overrides per skin. */
+export const CHARACTER_VECTOR_SKIN_MAX_ANCHOR_OVERRIDES = 512 as const;
+/** Max influences per anchor in the first LBS slice; the skin itself has exactly two Bones. */
+export const CHARACTER_VECTOR_SKIN_MAX_INFLUENCES = 2 as const;
+
+const CharacterVectorSkinWeightSchema = z
+  .object({
+    boneId: IdSchema,
+    weight: FiniteNumberSchema.min(0).max(1),
+  })
+  .strict();
+
+/**
+ * Lazy per-anchor override. `anchorKey` is produced by the pure skinning module
+ * (`regionIndex:contourIndex:anchorIndex`) so the persisted data never carries a
+ * copy of the rest geometry.
+ */
+export const CharacterVectorSkinAnchorWeightsSchema = z
+  .object({
+    anchorKey: z.string().trim().min(1).max(160),
+    weights: z.array(CharacterVectorSkinWeightSchema).min(1).max(CHARACTER_VECTOR_SKIN_MAX_INFLUENCES),
+  })
+  .strict()
+  .refine(({ weights }) => new Set(weights.map(({ boneId }) => boneId)).size === weights.length,
+    'Anchor overrides must not repeat a Bone.')
+  .refine(({ weights }) => {
+    const sum = weights.reduce((total, entry) => total + entry.weight, 0);
+    return Math.abs(sum - 1) <= 1e-6;
+  }, 'Anchor override weights must sum to 1.');
+
+/**
+ * Two-Bone vector path skin (#1459). Rest geometry lives in the FLA Graphic
+ * Definition and the Bone tree rest; only the binding is persisted here.
+ */
+export const CharacterVectorSkinSchema = z
+  .object({
+    id: IdSchema,
+    partId: IdSchema,
+    boneIds: z.tuple([IdSchema, IdSchema]),
+    anchorWeights: z.array(CharacterVectorSkinAnchorWeightsSchema)
+      .max(CHARACTER_VECTOR_SKIN_MAX_ANCHOR_OVERRIDES)
+      .optional(),
+  })
+  .strict()
+  .refine(({ boneIds }) => boneIds[0] !== boneIds[1], 'A vector skin requires two distinct Bones.');
+
+const CharacterVectorSkinsSchema = z
+  .array(CharacterVectorSkinSchema)
+  .max(CHARACTER_VECTOR_SKIN_MAX_COUNT)
+  .refine((skins) => new Set(skins.map(({ id }) => id)).size === skins.length,
+    'Vector skin ids must be unique.')
+  .refine((skins) => new Set(skins.map(({ partId }) => partId)).size === skins.length,
+    'Each Part may carry at most one vector skin.')
+  .optional();
+
+/**
+ * Real reference check against the Character's own Part and Bone identities.
+ * Vector content is verified again at evaluation time, where the Definition is
+ * available; here a missing/absent Part or Bone is a hard schema error.
+ */
+function validateCharacterVectorSkins(
+  character: {
+    parts?: readonly {
+      partId: string;
+      visualSource?: { kind: string; animationId?: string; nodePath?: readonly string[]; regionRef?: string; regionVector?: unknown };
+      assetId?: string;
+    }[];
+    bones?: readonly z.infer<typeof CharacterBoneSchema>[];
+    vectorSkins?: readonly z.infer<typeof CharacterVectorSkinSchema>[];
+  },
+  context: z.RefinementCtx,
+): void {
+  const skins = character.vectorSkins ?? [];
+  if (skins.length === 0) return;
+  const bonesById = new Set((character.bones ?? []).map(({ id }) => id));
+  skins.forEach((skin, index) => {
+    const part = character.parts?.find(({ partId }) => partId === skin.partId);
+    if (!part) {
+      context.addIssue({
+        code: 'custom',
+        path: ['vectorSkins', index, 'partId'],
+        message: `Vector skin references unknown Part identity: ${skin.partId}`,
+      });
+    } else if (part.visualSource?.kind !== 'fla-graphic') {
+      context.addIssue({
+        code: 'custom',
+        path: ['vectorSkins', index, 'partId'],
+        message: 'Vector skins require an FLA Graphic vector Part.',
+      });
+    }
+    skin.boneIds.forEach((boneId, boneIndex) => {
+      if (!bonesById.has(boneId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['vectorSkins', index, 'boneIds', boneIndex],
+          message: `Vector skin references unknown Bone identity: ${boneId}`,
+        });
+      }
+    });
+    skin.anchorWeights?.forEach((override, overrideIndex) => {
+      override.weights.forEach(({ boneId }, weightIndex) => {
+        if (!skin.boneIds.includes(boneId)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['vectorSkins', index, 'anchorWeights', overrideIndex, 'weights', weightIndex, 'boneId'],
+            message: `Anchor override references a Bone outside its skin: ${boneId}`,
+          });
+        }
+      });
+    });
+  });
+}
 
 export const CharacterMotionMappingRuleSchema = z.object({
   sourcePartId: IdSchema,
@@ -1040,7 +1335,12 @@ const AdaptivePartsCharacterV39Schema = AdaptivePartsCharacterV37Schema.safeExte
 });
 const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV39Schema.safeExtend({
   bodyPoses: bodyPoseLibrary(CharacterBodyPoseSchema),
-});
+  armChains: CharacterArmChainsSchema.optional(),
+  bones: CharacterBonesSchema,
+  vectorSkins: CharacterVectorSkinsSchema,
+})
+  .superRefine(validateCharacterBoneTree)
+  .superRefine(validateCharacterVectorSkins);
 
 function validateExpressionTalkingSources(character: {
   expressionTalkingSources?: Record<string, ExpressionTalkingSource>;
@@ -1093,10 +1393,48 @@ export type CharacterActionPlacement = z.infer<typeof CharacterActionPlacementSc
 export type CharacterAction = z.infer<typeof CharacterActionSchema>;
 export type BakedCharacterAction = z.infer<typeof BakedCharacterActionSchema>;
 export type LayeredCharacterAction = z.infer<typeof LayeredCharacterActionSchema>;
+export type CharacterActionInstanceScope = z.infer<typeof CharacterActionInstanceScopeSchema>;
 export type CharacterBodyPose = z.infer<typeof CharacterBodyPoseSchema>;
 export type CharacterArmChain = z.infer<typeof CharacterArmChainSchema>;
+export type CharacterBone = z.infer<typeof CharacterBoneSchema>;
+export type CharacterBoneRestLocal = z.infer<typeof CharacterBoneRestLocalSchema>;
+export type CharacterVectorSkin = z.infer<typeof CharacterVectorSkinSchema>;
+export type CharacterVectorSkinAnchorWeights = z.infer<typeof CharacterVectorSkinAnchorWeightsSchema>;
 export type CharacterMotionMappingRule = z.infer<typeof CharacterMotionMappingRuleSchema>;
 export type CharacterMotionMapping = z.infer<typeof CharacterMotionMappingSchema>;
+
+/** Structural input for the migration-free multi-chain resolver. */
+export interface CharacterArmChainSource {
+  /** Present so every Character union member is structurally acceptable. */
+  mode?: string;
+  armChain?: CharacterArmChain;
+  armChains?: readonly CharacterArmChainEntry[];
+  /** Optional so Bone-aware callers can avoid claiming bone-bound Parts. */
+  bones?: readonly CharacterBone[];
+}
+
+/**
+ * Resolves the named rigid chains of a Character. A project that only has the
+ * legacy single `armChain` is exposed as one default chain, so callers never
+ * need a migration to read multi-chain data.
+ */
+export function resolveCharacterArmChains(character: CharacterArmChainSource): CharacterArmChainEntry[] {
+  const chains = character.armChains ?? [];
+  if (chains.length > 0) return [...chains];
+  return character.armChain
+    ? [{ id: DEFAULT_ARM_CHAIN_ID, name: DEFAULT_ARM_CHAIN_NAME, kind: 'right-arm', chain: character.armChain }]
+    : [];
+}
+
+/** Resolves one chain by id, defaulting to the default chain or the first chain. */
+export function resolveCharacterArmChain(
+  character: CharacterArmChainSource,
+  chainId?: string,
+): CharacterArmChainEntry | undefined {
+  const chains = resolveCharacterArmChains(character);
+  if (chainId !== undefined) return chains.find(({ id }) => id === chainId);
+  return chains.find(({ id }) => id === DEFAULT_ARM_CHAIN_ID) ?? chains[0];
+}
 
 export function resolveExpressionVisualSource(expression: CharacterExpression): CharacterFaceSource {
   if (expression.visualSource) return expression.visualSource;

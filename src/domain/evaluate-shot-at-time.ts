@@ -1,5 +1,10 @@
 import { applyLayerParenting } from './layer-parent-space';
 import { resolveLayerAnimationTimeLink } from './animation-time-link';
+import {
+  applyResolvedCoverageMasks,
+  resolveShotCoverageMasks,
+  type EvaluatedCoverageMask,
+} from './coverage-mask';
 import type { AffineMatrix2D } from '../shared/affine-matrix';
 import type {
   FlaGraphicDefinition,
@@ -33,12 +38,29 @@ import {
   type EvaluatedCharacterNodePose,
 } from './character-node-animation';
 import {
+  characterBonePoseMap,
+  characterBoneProtectedPartIds,
+  evaluateCharacterBonePose,
+  evaluatedCharacterBonePoseList,
+  type EvaluatedCharacterBonePose,
+} from './character-bone-pose';
+import {
+  applyCharacterEndEffectorLocksToValues,
+  characterEndEffectorLayerStageMatrix,
+  characterEndEffectorLockActiveAt,
+  resolveCharacterEndEffectorResidualsFromPose,
+  type CharacterEndEffectorResidual,
+  type CharacterEndEffectorResidualReason,
+} from './character-end-effector-lock';
+import {
   composeAnimatedLayerTransform,
   evaluateLayerRelativeMotionValues,
   layerRootMotionClip,
   resolveLayerAnimationBasis,
   type LayerBasePose,
 } from './layer-animation';
+import { resolveCharacterActionForLayer } from './character-part-animation';
+import { evaluateLayerPinWarp, type EvaluatedPinWarp } from './pin-warp';
 
 /**
  * A single evaluated layer at one exact moment. Its formal fields remain
@@ -49,6 +71,12 @@ import {
  */
 export interface EvaluatedLayer {
   visualEffects?: import('./models/layerVisualEffects').LayerVisualEffects;
+  /**
+   * Resolved author-level coverage mask relation for this exact frame (#1454).
+   * A `mask-layer` Layer supplies coverage and must not be drawn as ordinary
+   * output; a `masked-target` Layer is clipped by `maskLayerId`.
+   */
+  coverageMask?: EvaluatedCoverageMask;
   /** Inherited affine space. The ordinary pose and animation tracks stay local. */
   parentSpace?: AffineMatrix2D;
   parentSpaceUnavailable?: true;
@@ -62,6 +90,25 @@ export interface EvaluatedLayer {
   animationTimeMs?: number;
   /** Transient evaluated Composite Face pose for Character Node Clip v3. */
   faceTransform?: EvaluatedCharacterNodePose;
+  /**
+   * Deterministic parent-first FK Bone pose map for an Adaptive Parts Character
+   * instance (#1455). Transient, plain serializable matrices; Stage, Preview and
+   * Export derive the same Part matrices from this evaluation seam.
+   */
+  characterBonePose?: EvaluatedCharacterBonePose[];
+  /**
+   * Transient per-Layer end-effector lock feedback (#1456). Present only when
+   * an authored lock is active at this time and either could not be reached or
+   * was skipped because a higher-priority lock owns a shared ancestor.
+   */
+  endEffectorResiduals?: CharacterEndEffectorResidual[];
+  /**
+   * Transient bitmap pin-warp evaluation for this exact frame (#1460). Present
+   * only for Layers that author `pinWarp`; Stage, Preview, Export, and the
+   * editor all consume this one evaluated mesh. `invalid` means the local
+   * degradation path (draw the ordinary un-warped image).
+   */
+  pinWarp?: EvaluatedPinWarp;
   id: string;
   assetId: string;
   /** The formal Expression state before any transient Mouth projection. */
@@ -376,7 +423,9 @@ function resolveAnimationFrame(
   const frame = selectedSample ? animation.frames[selectedSample.frameOrdinal] ?? state.frame : state.frame;
   const internalTimeMs = selectedSample?.internalTimeMs ?? state.internalTimeMs;
   return {
-    assetId: frame.assetId,
+    // Native FLA Graphic Definitions have no baked frame media asset; the
+    // structured animationFrame below is their display source.
+    assetId: frame.assetId ?? null,
     currentExpressionId: null,
     animationVisible:
       elapsedMs >= 0 &&
@@ -838,6 +887,10 @@ export function evaluateShotAtTime(
   options?: { graphicFrameTimeMs?: number; includeShake?: boolean },
 ): EvaluatedShot {
   const timeMs = normalizeShotTimeMs(requestedTimeMs, shot.durationMs);
+  // Author-level coverage mask relations are resolved once from the authored
+  // Shot and projected onto the evaluated Layers; Renderers never re-derive
+  // them. Invalid relations degrade locally instead of failing the frame.
+  const coverageMaskResolution = resolveShotCoverageMasks(shot);
 
   const eventsByLayer = new Map<string, TimelineEvent[]>();
   for (const event of shot.timelineEvents) {
@@ -863,8 +916,11 @@ export function evaluateShotAtTime(
       const character = characterId
         ? project.characters.find((candidate) => candidate.id === characterId)
         : undefined;
+      // #1449: an instance-scoped action copy is only playable by the Layer
+      // that owns it. A foreign reference degrades to the shared origin action
+      // and never silently shares the private copy.
       const characterAction = actionEvent?.type === 'character-action'
-        ? character?.actions?.find((candidate) => candidate.id === actionEvent.actionId)
+        ? resolveCharacterActionForLayer(character, actionEvent.actionId, layer.id)
         : undefined;
       const bakedAction = characterAction && 'animationId' in characterAction ? characterAction : undefined;
       const actionAnimation = bakedAction
@@ -893,6 +949,27 @@ export function evaluateShotAtTime(
         eventsByLayer.get(layer.id) ?? [],
         options?.graphicFrameTimeMs,
       );
+      // #1460: the pin-warp mesh is resolved once per frame by the single
+      // formal evaluator; renderers never re-derive poses or deformation.
+      // Asset lookup stays inside the authored-warp branch so a Layer without
+      // `pinWarp` takes the exact pre-#1460 evaluation path (and structural
+      // probe callers without a full Project are unaffected).
+      let pinWarpAsset: { readonly width: number; readonly height: number; readonly kind: string } | null = null;
+      if (layer.pinWarp && layer.source.kind === 'asset') {
+        const sourceAssetId = layer.source.assetId;
+        const sourceAsset = project.assets.find(
+          (candidate) => candidate.id === sourceAssetId,
+        );
+        if (sourceAsset?.kind === 'image') pinWarpAsset = sourceAsset;
+      }
+      const pinWarp = layer.pinWarp
+        ? evaluateLayerPinWarp({
+            pinWarp: layer.pinWarp,
+            sourceKind: layer.source.kind,
+            asset: pinWarpAsset,
+            timeMs,
+          })
+        : undefined;
       const clip = layer.animationClip;
       const clipTimeMs =
         clip?.version === 2 && options?.graphicFrameTimeMs !== undefined
@@ -906,6 +983,18 @@ export function evaluateShotAtTime(
         clip?.version === 3
           ? evaluateCompositeFacePoseAtTime(project, layer, timeMs, animationValues) ??
             undefined
+          : undefined;
+      const characterBonePose =
+        clip?.version === 1 &&
+        character?.mode === 'adaptive-parts' &&
+        (character.bones?.length ?? 0) > 0
+          ? evaluatedCharacterBonePoseList(
+              evaluateCharacterBonePose({
+                character,
+                values: animationValues ?? [],
+                layerId: layer.id,
+              }),
+            )
           : undefined;
       const finalTransform: LayerBasePose =
         rootMotionClip
@@ -943,8 +1032,10 @@ export function evaluateShotAtTime(
 
       return {
         id: layer.id,
+        ...(pinWarp ? { pinWarp } : {}),
         ...(animationValues ? { animationValues, animationTimeMs: timeMs } : {}),
         ...(faceTransform ? { faceTransform } : {}),
+        ...(characterBonePose?.length ? { characterBonePose } : {}),
         assetId: actionFrame?.frame.assetId ?? mouthOpenOverride?.assetId ?? preTrack.assetId ?? '',
         currentExpressionId: preTrack.currentExpressionId,
         ...(activeCharacterAction ? { characterAction: activeCharacterAction } : {}),
@@ -986,10 +1077,153 @@ export function evaluateShotAtTime(
       };
     });
 
+  // The mask projection is resolved exactly once, after the final bone /
+  // parent-space evaluation. The end-effector lock pass (#1456) re-parents the
+  // Shot from the raw Layers, so projecting masks before it would drop them on
+  // every solved frame (#1464 R1).
+  const parentedLayers = applyLayerParenting(project, shot, layers, timeMs);
+  if (!shot.layers.some((layer) => (layer.endEffectorLocks?.length ?? 0) > 0)) {
+    // No authored locks: keep the byte-identical pre-#1456 evaluation path.
+    return {
+      shotId: shot.id,
+      timeMs,
+      backgroundLayerId: shot.backgroundLayerId,
+      layers: applyResolvedCoverageMasks(parentedLayers, coverageMaskResolution),
+    };
+  }
+  const lockedLayers = applyEndEffectorLocks(
+    project,
+    shot,
+    layers,
+    parentedLayers,
+    timeMs,
+  );
   return {
     shotId: shot.id,
     timeMs,
     backgroundLayerId: shot.backgroundLayerId,
-    layers: applyLayerParenting(project, shot, layers, timeMs),
+    layers: applyResolvedCoverageMasks(lockedLayers, coverageMaskResolution),
   };
+}
+
+interface ActiveEndEffectorLockCandidate {
+  readonly character: Extract<Project['characters'][number], { mode: 'adaptive-parts' }>;
+  readonly locks: readonly NonNullable<Layer['endEffectorLocks']>[number][];
+  readonly fixedCharacterCenter: { readonly x: number; readonly y: number };
+}
+
+/**
+ * #1456 end-effector lock post-pass. It runs inside the formal evaluation path
+ * after the Layer world/parent space is known, then reparents at most twice so
+ * an attachment target that follows a solved Bone sees the final Part matrix.
+ * Only Layers with an active lock are touched, so a project without locks is
+ * evaluated byte-identically through the early return above.
+ */
+function applyEndEffectorLocks(
+  project: Project,
+  shot: Shot,
+  baseLayers: EvaluatedLayer[],
+  parentedLayers: EvaluatedLayer[],
+  timeMs: number,
+): EvaluatedLayer[] {
+  const candidates = new Map<string, ActiveEndEffectorLockCandidate>();
+  for (const layer of shot.layers) {
+    const locks = layer.endEffectorLocks;
+    if (!locks?.length) continue;
+    const activeLocks = locks.filter((lock) => characterEndEffectorLockActiveAt(lock, timeMs));
+    if (activeLocks.length === 0) continue;
+    const source = layer.source;
+    if (source.kind !== 'character') continue;
+    if (layer.animationClip?.version !== 1) continue;
+    const character = project.characters.find(({ id }) => id === source.characterId);
+    if (character?.mode !== 'adaptive-parts' || !character.bones?.length) continue;
+    candidates.set(layer.id, {
+      character,
+      locks: activeLocks,
+      fixedCharacterCenter: layer.animationClip.fixedCharacterCenter,
+    });
+  }
+  if (candidates.size === 0) return parentedLayers;
+
+  let currentLayers = baseLayers;
+  let parented = parentedLayers;
+  const structuralReasonsByLayerId = new Map<
+    string,
+    ReadonlyMap<string, CharacterEndEffectorResidualReason>
+  >();
+  for (let pass = 0; pass < 2; pass += 1) {
+    const spacesById = new Map(parented.map((layer) => [layer.id, layer.parentSpace]));
+    let solvedThisPass = false;
+    currentLayers = currentLayers.map((layer): EvaluatedLayer => {
+      const candidate = candidates.get(layer.id);
+      if (!candidate || !layer.animationValues) return layer;
+      const localToStage = characterEndEffectorLayerStageMatrix(
+        { ...layer, parentSpace: spacesById.get(layer.id) },
+        candidate.fixedCharacterCenter,
+      );
+      const applied = applyCharacterEndEffectorLocksToValues({
+        character: candidate.character,
+        values: layer.animationValues,
+        layerId: layer.id,
+        locks: candidate.locks,
+        localToStage,
+        protectedPartIds: characterBoneProtectedPartIds(candidate.character),
+        timeMs,
+      });
+      structuralReasonsByLayerId.set(layer.id, applied.structuralReasons);
+      if (applied.solvedBoneIds.length === 0) return layer;
+      solvedThisPass = true;
+      const poses = evaluateCharacterBonePose({
+        character: candidate.character,
+        values: applied.values,
+        layerId: layer.id,
+      });
+      return {
+        ...layer,
+        animationValues: applied.values,
+        characterBonePose: evaluatedCharacterBonePoseList(poses),
+      };
+    });
+    if (!solvedThisPass) break;
+    const nextParented = applyLayerParenting(project, shot, currentLayers, timeMs);
+    const nextSpaces = new Map(nextParented.map((layer) => [layer.id, layer.parentSpace]));
+    let spacesStable = true;
+    for (const [layerId, space] of spacesById) {
+      if (JSON.stringify(space ?? null) !== JSON.stringify(nextSpaces.get(layerId) ?? null)) {
+        spacesStable = false;
+        break;
+      }
+    }
+    parented = nextParented;
+    if (spacesStable) break;
+  }
+  // #1469: re-measure every active lock against the FINAL returned Layers,
+  // i.e. the final FK pose in the final parent space. The solve loop above may
+  // run a second parent-space pass, so a residual measured mid-loop would
+  // otherwise describe a superseded position.
+  const finalSpacesById = new Map(parented.map((layer) => [layer.id, layer.parentSpace]));
+  return parented.map((layer): EvaluatedLayer => {
+    const candidate = candidates.get(layer.id);
+    if (!candidate) return layer;
+    const localToStage = characterEndEffectorLayerStageMatrix(
+      { ...layer, parentSpace: finalSpacesById.get(layer.id) },
+      candidate.fixedCharacterCenter,
+    );
+    const poses = layer.characterBonePose
+      ? characterBonePoseMap(layer.characterBonePose)
+      : evaluateCharacterBonePose({
+          character: candidate.character,
+          values: layer.animationValues ?? [],
+          layerId: layer.id,
+        });
+    const residuals = resolveCharacterEndEffectorResidualsFromPose({
+      character: candidate.character,
+      poses,
+      locks: candidate.locks,
+      localToStage,
+      timeMs,
+      structuralReasons: structuralReasonsByLayerId.get(layer.id),
+    });
+    return residuals.length > 0 ? { ...layer, endEffectorResiduals: residuals } : layer;
+  });
 }

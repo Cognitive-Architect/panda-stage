@@ -46,9 +46,13 @@ import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTime
 import { CharacterActionAtTimeControl } from '../features/properties/CharacterActionAtTimeControl';
 import { BatchLayerControls } from '../features/properties/BatchLayerControls';
 import { LayerEffectsPreviewControl } from '../features/properties/LayerEffectsPreviewControl';
+import { LayerCoverageMaskControl } from '../features/properties/LayerCoverageMaskControl';
+import { PinWarpControl } from '../features/properties/PinWarpControl';
 import { CharacterMotionTemplateControl } from '../features/properties/CharacterMotionTemplateControl';
 import { CharacterBodyPoseControl } from '../features/properties/CharacterBodyPoseControl';
 import { CharacterArmChainControl } from '../features/properties/CharacterArmChainControl';
+import { CharacterBoneControl } from '../features/properties/CharacterBoneControl';
+import { CharacterVectorSkinControl } from '../features/properties/CharacterVectorSkinControl';
 import { CharacterMotionMappingControl } from '../features/properties/CharacterMotionMappingControl';
 import { GraphicFacePreview } from '../features/characters/GraphicFacePicker';
 import { DialogueInspector } from '../features/dialogue/DialogueInspector';
@@ -792,6 +796,10 @@ export function RightInspector({
           snapshot={snapshot} shot={currentShot} layer={selection.layer} />
         <CharacterArmChainControl key={`arm-chain:${currentShot.id}:${selection.layer.id}`}
           snapshot={snapshot} shot={currentShot} layer={selection.layer} />
+        <CharacterBoneControl key={`bone:${currentShot.id}:${selection.layer.id}`}
+          snapshot={snapshot} shot={currentShot} layer={selection.layer} />
+        <CharacterVectorSkinControl key={`vector-skin:${currentShot.id}:${selection.layer.id}`}
+          snapshot={snapshot} shot={currentShot} layer={selection.layer} />
         <CharacterMotionMappingControl key={`motion-mapping:${currentShot.id}:${selection.layer.id}`}
           snapshot={snapshot} shot={currentShot} layer={selection.layer} />
         </>
@@ -803,6 +811,20 @@ export function RightInspector({
       {snapshot && currentShot && selection.layer && selection.layer.id !== currentShot.backgroundLayerId ?
         <LayerEffectsPreviewControl key={String(editorProjectStore.getProjectInstanceId()) + currentShot.id + selection.layer.id}
           snapshot={snapshot} shotId={currentShot.id} layer={selection.layer} /> : null}
+      {currentShot && selection.layer ? (
+        <LayerCoverageMaskControl
+          key={`mask:${currentShot.id}:${selection.layer.id}`}
+          layer={selection.layer}
+          shot={currentShot}
+        />
+      ) : null}
+      {currentShot && selection.layer ? (
+        <PinWarpControl
+          key={`pin-warp:${currentShot.id}:${selection.layer.id}`}
+          layer={selection.layer}
+          shot={currentShot}
+        />
+      ) : null}
       {landscapeEmptyState ? null : (
         showMotionInspector && motionNode && motionPanelInput && motionTargetKey && currentShot && selection.layer && snapshot ? (
           <details className="right-inspector-section right-inspector-transform-section" data-testid="right-inspector-transform-section" open>

@@ -109,7 +109,8 @@ export function planCharacterMotionTemplate(
       ]
     : [{ property: 'transform.rotationDeg', delta: amplitude }];
   const tracks = properties.map(({ property, delta }) => {
-    const source = clip.tracks.find((track) => track.target.partId === partId && track.property === property);
+    const source = clip.tracks.find((track) =>
+      track.target.kind === 'character-part' && track.target.partId === partId && track.property === property);
     const neutral = property === 'transform.scaleY' ? 1 : 0;
     const keys: AnimationKey[] = Array.from({ length: intervals + 1 }, (_, index) => {
       const frame = Math.round(index * frameCount / intervals);

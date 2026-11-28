@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   resolveTimelineFrameTime,
+  type CharacterAction,
   type CharacterActionEvent,
   type Layer,
   type Project,
@@ -37,7 +38,11 @@ export function CharacterActionAtTimeControl({
   const { currentTimeMs } = useTimelineUi();
   const characterId = layer.source.kind === 'character' ? layer.source.characterId : null;
   const character = characterId ? project.characters.find((candidate) => candidate.id === characterId) : null;
-  const actions = character?.actions ?? [];
+  const allActions: readonly CharacterAction[] = character?.actions ?? [];
+  // #1449: another layer's instance-scoped copy is private to that layer and
+  // must never be offered here; same-layer copies stay selectable.
+  const actions = allActions.filter((action) =>
+    !('instanceScope' in action) || action.instanceScope?.layerId === layer.id);
   const [selectedActionId, setSelectedActionId] = useState(actions[0]?.id ?? '');
   const [editing, setEditing] = useState<{ id: string; actionId: string } | null>(null);
   const [manualRange, setManualRange] = useState<{ startMs: number; endMs: number } | null>(null);
@@ -73,6 +78,14 @@ export function CharacterActionAtTimeControl({
     setError(result.ok ? '' : result.error ?? '无法删除角色动作段。');
     if (result.ok && editing?.id === eventId) resetRange();
   };
+  const copyForInstance = (eventId: string): void => {
+    const result = characterActionAuthoringStore.copyForInstance(eventId);
+    setError(result.ok ? '' : result.error ?? '无法复制角色动作副本。');
+  };
+  const revertFromInstance = (eventId: string): void => {
+    const result = characterActionAuthoringStore.revertFromInstance(eventId);
+    setError(result.ok ? '' : result.error ?? '无法恢复共享角色动作。');
+  };
 
   return (
     <section className="expression-at-time character-action-at-time" data-testid="character-action-at-time">
@@ -105,18 +118,39 @@ export function CharacterActionAtTimeControl({
       {events.length > 0 ? <div className="expression-at-time-events">
         <ul aria-label="角色动作段">
           {events.map((event) => {
-            const name = actions.find((action) => action.id === event.actionId)?.name ?? '未知动作';
+            const eventAction = allActions.find((action) => action.id === event.actionId);
+            // A reference to another layer's private copy degrades to the
+            // shared origin action for display and playback alike.
+            const displayAction = eventAction && 'kind' in eventAction && eventAction.instanceScope &&
+                eventAction.instanceScope.layerId !== layer.id
+              ? allActions.find((action) => action.id === eventAction.originActionId)
+              : eventAction;
+            const name = displayAction?.name ?? '未知动作';
+            const baked = eventAction !== undefined && !('kind' in eventAction);
+            const instanceCopy = eventAction !== undefined && 'kind' in eventAction &&
+              'instanceScope' in eventAction && Boolean(eventAction.instanceScope);
             return <li key={event.id}>
-              <button className="expression-at-time-seek" type="button" onClick={() => timelineUiStore.seek(event.startMs, shot.durationMs)}>
-                <time>{formatTimecode(event.startMs)}–{formatTimecode(event.endMs)}</time><span>{name}</span>
-              </button>
-              <button className="expression-at-time-delete" type="button" disabled={layer.locked}
-                aria-label={`编辑动作段 ${name}`} onClick={() => {
-                  setEditing({ id: event.id, actionId: event.actionId });
-                  setManualRange({ startMs: event.startMs, endMs: event.endMs }); setError('');
-                }}>编辑</button>
-              <button className="expression-at-time-delete" type="button" disabled={layer.locked}
-                aria-label={`删除动作段 ${name}`} onClick={() => remove(event.id)}>删除</button>
+              <div className="character-action-event-row">
+                <button className="expression-at-time-seek" type="button" onClick={() => timelineUiStore.seek(event.startMs, shot.durationMs)}>
+                  <time>{formatTimecode(event.startMs)}–{formatTimecode(event.endMs)}</time><span>{name}</span>
+                </button>
+                <button className="expression-at-time-delete" type="button" disabled={layer.locked}
+                  aria-label={`编辑动作段 ${name}`} onClick={() => {
+                    setEditing({ id: event.id, actionId: event.actionId });
+                    setManualRange({ startMs: event.startMs, endMs: event.endMs }); setError('');
+                  }}>编辑</button>
+                <button className="expression-at-time-delete" type="button" disabled={layer.locked}
+                  aria-label={`删除动作段 ${name}`} onClick={() => remove(event.id)}>删除</button>
+              </div>
+              <div className="character-action-instance-row">
+                {baked
+                  ? <span className="character-action-instance-note">整图动作不支持局部修改</span>
+                  : instanceCopy
+                    ? <button className="character-action-instance-toggle" type="button" disabled={layer.locked}
+                        onClick={() => revertFromInstance(event.id)}>恢复共享动作</button>
+                    : <button className="character-action-instance-toggle" type="button" disabled={layer.locked}
+                        onClick={() => copyForInstance(event.id)}>复制为可编辑副本</button>}
+              </div>
             </li>;
           })}
         </ul>

@@ -168,6 +168,50 @@
   margin-top: var(--ui-space-2);
 }
 
+.character-action-at-time .expression-at-time-events li {
+  display: grid;
+  justify-content: normal;
+  gap: var(--ui-space-1);
+  padding: var(--ui-space-1) 0;
+}
+
+.character-action-event-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-space-2);
+}
+
+.character-action-instance-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.character-action-instance-toggle {
+  min-height: var(--ui-touch-icon);
+  padding: 0 var(--ui-space-2);
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-overlay);
+  color: var(--ui-color-text-primary);
+  font: var(--ui-font-secondary);
+  cursor: pointer;
+}
+
+.character-action-instance-toggle:hover:not(:disabled) {
+  background: var(--ui-color-action-hover);
+}
+
+.character-action-instance-toggle:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.character-action-instance-note {
+  font: var(--ui-font-secondary);
+  color: var(--ui-color-text-muted);
+}
+
 .character-action-range-fields > select {
   grid-column: 1 / -1;
 }

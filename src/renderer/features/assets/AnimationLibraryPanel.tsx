@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Pause, Play, RotateCcw, X } from 'lucide-react';
 import {
   evaluateFlaGraphicVisual,
+  isNativeFlaGraphicDefinition,
   type EvaluatedFlaGraphicVisual,
   type ProjectAnimationDefinition,
   type Project,
@@ -19,6 +20,7 @@ import {
 import { createAnimationImageBlob } from './animationImageBytes';
 import { renderFlaGraphicCanvas } from '../canvas/flaGraphicCanvasRenderer';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
+import { layerStore } from '../../stores/layerStore';
 import { shotStore } from '../../stores/shotStore';
 import {
   writeAnimationDropContext,
@@ -107,7 +109,9 @@ async function readFlaGraphicFramePreview(
     internalTimeMs,
   });
   if (!visual?.structureFrame) {
-    const frameAsset = project.assets.find((asset) => asset.id === frame.assetId);
+    const frameAsset = frame.assetId
+      ? project.assets.find((asset) => asset.id === frame.assetId)
+      : undefined;
     if (
       !frameAsset || frameAsset.kind !== 'image' ||
       frameAsset.sha256 !== frame.sha256
@@ -117,7 +121,7 @@ async function readFlaGraphicFramePreview(
     const frameResponse = await window.pandaStage.assets.readCanvasImage({
       projectRoot,
       assetId: frameAsset.id,
-      sha256: frame.sha256,
+      sha256: frame.sha256 ?? '',
     });
     if (!frameResponse.ok) throw new Error(frameResponse.error.message);
     return {
@@ -266,12 +270,41 @@ export function AnimationLibraryCard({
   const windowScrollRef = useRef({ top: 0, left: 0 });
   const wasOpenRef = useRef(false);
   const draggedCardRef = useRef(false);
+  const [nativeMessage, setNativeMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
   const firstFrame = animation.frames[0];
+  const nativeDefinition = isNativeFlaGraphicDefinition(animation);
   const hasStructuredCover = Boolean(
     'kind' in animation && animation.kind === 'fla-graphic' &&
     firstFrame &&
     animation.structure?.frames.some((frame) => frame.ordinal === firstFrame.ordinal),
   );
+  const duplicateNativeDefinition = (): void => {
+    try {
+      const result = layerStore.duplicateNativeGraphicDefinition(animation.id);
+      setNativeMessage({ kind: 'ok', text: `已创建独立副本“${result.name}”` });
+    } catch (error) {
+      setNativeMessage({
+        kind: 'error',
+        text: error instanceof Error ? error.message : '创建独立副本失败。',
+      });
+    }
+  };
+  const deleteNativeDefinition = (): void => {
+    try {
+      const released = layerStore.deleteNativeGraphicDefinition(animation.id);
+      setNativeMessage({
+        kind: 'ok',
+        text: released.length > 0
+          ? `已删除原生元件；${released.length} 个素材不再被引用，仍保留在素材库。`
+          : '已删除原生元件。',
+      });
+    } catch (error) {
+      setNativeMessage({
+        kind: 'error',
+        text: error instanceof Error ? error.message : '删除原生元件失败。',
+      });
+    }
+  };
 
   useEffect(() => {
     setCover({ url: null, error: false, loading: false });
@@ -279,10 +312,20 @@ export function AnimationLibraryCard({
       setCover({ url: null, error: true, loading: false });
       return undefined;
     }
-    const asset = project.assets.find((candidate) => candidate.id === firstFrame.assetId);
-    if (!asset || asset.kind !== 'image' || asset.sha256 !== firstFrame.sha256) {
-      setCover({ url: null, error: true, loading: false });
-      return undefined;
+    const structuredFrame = 'kind' in animation && animation.kind === 'fla-graphic' &&
+      Boolean(animation.structure?.frames.some((frame) => frame.ordinal === firstFrame.ordinal));
+    // A structured frame renders from the Definition structure; only a
+    // source-backed baked frame needs its SVG asset to exist.
+    if (!structuredFrame) {
+      if (!firstFrame.assetId) {
+        setCover({ url: null, error: true, loading: false });
+        return undefined;
+      }
+      const asset = project.assets.find((candidate) => candidate.id === firstFrame.assetId);
+      if (!asset || asset.kind !== 'image' || asset.sha256 !== firstFrame.sha256) {
+        setCover({ url: null, error: true, loading: false });
+        return undefined;
+      }
     }
     const stage = coverStageRef.current;
     if (!stage) return undefined;
@@ -301,6 +344,7 @@ export function AnimationLibraryCard({
             return { ok: false };
           }
         }
+        if (!firstFrame.assetId || !firstFrame.sha256) return { ok: false };
         return window.pandaStage.assets.readCanvasImage({
           projectRoot,
           assetId: firstFrame.assetId,
@@ -519,11 +563,48 @@ export function AnimationLibraryCard({
             ) : cover.error ? <span>首帧暂不可用</span> : cover.loading ? <span>读取首帧…</span> : null}
           </div>
         </div>
-        <span className="asset-card-type-badge asset-card-type-badge-animation">动画</span>
+        <span
+          className="asset-card-type-badge asset-card-type-badge-animation"
+          data-native-graphic={nativeDefinition ? 'true' : undefined}
+        >
+          {nativeDefinition ? '原生元件' : '动画'}
+        </span>
         <span className="asset-card-copy">
           <strong className="asset-card-name" title={animation.name}>{animation.name}</strong>
           <span className="asset-card-context">{animation.frames.length} 帧 · {formatDuration(animation.durationMs)}</span>
         </span>
+        {nativeDefinition ? (
+          <div
+            className="animation-library-native-actions"
+            onClick={(event) => event.stopPropagation()}
+            onDragStart={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <button
+              data-testid="native-graphic-duplicate"
+              onClick={duplicateNativeDefinition}
+              type="button"
+            >
+              独立副本
+            </button>
+            <button
+              data-testid="native-graphic-delete"
+              onClick={deleteNativeDefinition}
+              type="button"
+            >
+              删除
+            </button>
+          </div>
+        ) : null}
+        {nativeMessage ? (
+          <p
+            className="animation-library-native-message"
+            data-result={nativeMessage.kind}
+            role={nativeMessage.kind === 'error' ? 'alert' : 'status'}
+          >
+            {nativeMessage.text}
+          </p>
+        ) : null}
       </article>
       {dialog && typeof document !== 'undefined' ? createPortal(dialog, document.body) : null}
     </>
@@ -531,7 +612,7 @@ export function AnimationLibraryCard({
 }
 
 export function matchesAnimationSearch(animation: ProjectAnimationDefinition, normalizedQuery: string): boolean {
-  return [animation.name, animation.source.basename, animation.source.targetName]
+  return [animation.name, animation.source.basename ?? '', animation.source.targetName]
     .some((value) => value.toLocaleLowerCase('zh-CN').includes(normalizedQuery));
 }
 
@@ -635,9 +716,15 @@ export function AnimationPreview({
     setLoading(true);
     setError(null);
     try {
-      const asset = project.assets.find((candidate) => candidate.id === frame.assetId);
-      if (!asset || asset.kind !== 'image' || asset.sha256 !== frame.sha256) {
-        throw new Error('项目中的帧图片缺失或哈希不匹配。');
+      const structuredFrame = 'kind' in animation && animation.kind === 'fla-graphic' &&
+        Boolean(animation.structure?.frames.some((candidate) => candidate.ordinal === frame.ordinal));
+      if (!structuredFrame) {
+        const asset = frame.assetId
+          ? project.assets.find((candidate) => candidate.id === frame.assetId)
+          : undefined;
+        if (!asset || asset.kind !== 'image' || asset.sha256 !== frame.sha256) {
+          throw new Error('项目中的帧图片缺失或哈希不匹配。');
+        }
       }
       let previewBytes: Uint8Array;
       let previewMimeType: string;
@@ -652,10 +739,11 @@ export function AnimationPreview({
         previewBytes = preview.bytes;
         previewMimeType = preview.mimeType;
       } else {
+        if (!frame.assetId) throw new Error('项目中的帧图片缺失或哈希不匹配。');
         const response = await window.pandaStage.assets.readCanvasImage({
           projectRoot,
           assetId: frame.assetId,
-          sha256: frame.sha256,
+          sha256: frame.sha256 ?? '',
         });
         if (!response.ok) throw new Error(response.error.message);
         previewBytes = response.bytes;

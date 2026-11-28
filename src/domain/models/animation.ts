@@ -159,10 +159,16 @@ const FlaGraphicDefinitionBaseObject = z.object({
 });
 
 function validateFlaGraphicDefinition(
-  definition: z.infer<typeof FlaGraphicDefinitionBaseObject>,
+  definition: {
+    source: { targetKind: string };
+    frames: { createdBySequenceImport: boolean }[];
+  },
   context: z.RefinementCtx,
 ): void {
-  validateAnimationDefinition(definition, context);
+  validateAnimationDefinition(
+    definition as Parameters<typeof validateAnimationDefinition>[0],
+    context,
+  );
   if (definition.source.targetKind !== 'graphic-symbol') {
     context.addIssue({
       code: 'custom',
@@ -176,6 +182,168 @@ function validateFlaGraphicDefinition(
         code: 'custom',
         path: ['frames', index, 'createdBySequenceImport'],
         message: 'FLA Graphic vector frames are not sequence-import frames.',
+      });
+    }
+  });
+}
+
+/**
+ * Source contract for every FLA Graphic Definition, including native ones.
+ *
+ * An external (source-backed) Definition keeps the original mandatory FLA
+ * provenance: source basename, archive sha256, and render-target id. A native
+ * Definition authored in-app has no external archive, so those three fields are
+ * optional at the shape level and are (a) required for every non-native
+ * Definition and (b) forbidden for a native one by the refinement below. This
+ * never weakens the imported contract; it only widens the accepted shape.
+ */
+const FlaGraphicSourceSchema = z
+  .object({
+    /** `native`: authored in Panda; absent: backed by an external FLA archive. */
+    origin: z.literal('native').optional(),
+    basename: z.string().trim().min(1).max(260).optional(),
+    sha256: Sha256Schema.optional(),
+    renderTargetId: z.string().trim().min(1).max(180).optional(),
+    targetKind: z.enum(['scene', 'timeline', 'graphic-symbol', 'unknown']),
+    targetName: z.string().trim().min(1).max(500),
+    startFrameIndex: z.number().int().nonnegative(),
+    endFrameIndex: z.number().int().nonnegative(),
+    sourceFps: z.number().finite().positive().max(1_000),
+    canvas: z
+      .object({
+        width: z.number().finite().positive(),
+        height: z.number().finite().positive(),
+      })
+      .strict(),
+    anchor: z
+      .object({ x: z.number().finite(), y: z.number().finite() })
+      .strict(),
+    documentCanvas: z
+      .object({
+        width: z.number().finite().positive(),
+        height: z.number().finite().positive(),
+      })
+      .strict(),
+  })
+  .strict();
+
+/**
+ * One FLA Graphic Definition frame. Media framing is optional at the shape
+ * level so a native Definition can honestly have no baked frame asset; the
+ * latest-definition refinement requires it for every external Definition.
+ */
+const FlaGraphicFrameSchema = z
+  .object({
+    ordinal: z.number().int().nonnegative(),
+    sourceFrameIndex: z.number().int().nonnegative(),
+    assetId: IdSchema.optional(),
+    sha256: Sha256Schema.optional(),
+    sourceViewport: z
+      .object({
+        x: z.number().finite(),
+        y: z.number().finite(),
+        width: z.number().finite().positive(),
+        height: z.number().finite().positive(),
+      })
+      .strict(),
+    offset: z
+      .object({ x: z.number().finite().nonnegative(), y: z.number().finite().nonnegative() })
+      .strict(),
+    startMs: z.number().finite().nonnegative(),
+    durationMs: z.number().finite().positive(),
+    createdBySequenceImport: z.boolean(),
+  })
+  .strict()
+  .refine(
+    (frame) => (frame.assetId === undefined) === (frame.sha256 === undefined),
+    'A Graphic frame media reference requires both assetId and sha256.',
+  );
+
+const FlaGraphicDefinitionNativeBaseObject = z.object({
+  ...AnimationDefinitionShape,
+  source: FlaGraphicSourceSchema,
+  kind: z.literal('fla-graphic'),
+  frames: z.array(FlaGraphicFrameSchema).min(1).max(FLA_GRAPHIC_MAX_FRAMES),
+  /** Optional so older SVG-only Definitions keep loading unchanged. */
+  structure: FlaGraphicStructureV1Schema.optional(),
+});
+
+function validateLatestFlaGraphicDefinition(
+  definition: z.infer<typeof FlaGraphicDefinitionNativeBaseObject> & {
+    flaGraphicSharedShapeOverrides?: unknown;
+    sourceFrameLabels?: unknown;
+  },
+  context: z.RefinementCtx,
+): void {
+  validateFlaGraphicDefinition(definition, context);
+  const native = definition.source.origin === 'native';
+  if (!native) {
+    if (!definition.source.basename) {
+      context.addIssue({
+        code: 'custom',
+        path: ['source', 'basename'],
+        message: 'A source-backed FLA Graphic Definition requires its FLA source basename.',
+      });
+    }
+    if (!definition.source.sha256) {
+      context.addIssue({
+        code: 'custom',
+        path: ['source', 'sha256'],
+        message: 'A source-backed FLA Graphic Definition requires its source archive hash.',
+      });
+    }
+    if (!definition.source.renderTargetId) {
+      context.addIssue({
+        code: 'custom',
+        path: ['source', 'renderTargetId'],
+        message: 'A source-backed FLA Graphic Definition requires its render target id.',
+      });
+    }
+    definition.frames.forEach((frame, index) => {
+      if (!frame.assetId || !frame.sha256) {
+        context.addIssue({
+          code: 'custom',
+          path: ['frames', index, 'assetId'],
+          message: 'A source-backed FLA Graphic frame requires its frame image asset.',
+        });
+      }
+    });
+    return;
+  }
+
+  // Native Definitions must not fabricate an external source or media.
+  if (
+    definition.source.basename !== undefined ||
+    definition.source.sha256 !== undefined ||
+    definition.source.renderTargetId !== undefined
+  ) {
+    context.addIssue({
+      code: 'custom',
+      path: ['source'],
+      message: 'A native FLA Graphic Definition must not claim an external FLA source.',
+    });
+  }
+  if (!definition.structure) {
+    context.addIssue({
+      code: 'custom',
+      path: ['structure'],
+      message: 'A native FLA Graphic Definition requires its authored structure.',
+    });
+    return;
+  }
+  definition.frames.forEach((frame, index) => {
+    if (frame.assetId !== undefined || frame.sha256 !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['frames', index, 'assetId'],
+        message: 'A native FLA Graphic frame must not reference fabricated frame media.',
+      });
+    }
+    if (!definition.structure!.frames.some((candidate) => candidate.ordinal === frame.ordinal)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['frames', index, 'ordinal'],
+        message: 'A native FLA Graphic frame requires a matching authored structure frame.',
       });
     }
   });
@@ -205,21 +373,27 @@ const FlaGraphicDefinitionV28Schema = FlaGraphicDefinitionBaseObject
   })
   .strict()
   .superRefine(validateFlaGraphicDefinition);
-export const FlaGraphicDefinitionSchema = FlaGraphicDefinitionV28Schema.safeExtend({
-  sourceFrameLabels: z.array(z.object({
-    sourceFrameIndex: z.number().int().nonnegative(),
-    text: z.string().trim().min(1).max(120),
-  }).strict()).max(FLA_GRAPHIC_MAX_FRAMES).optional(),
-}).superRefine((definition, context) => {
-  const seen = new Set<number>();
-  for (const [index, label] of (definition.sourceFrameLabels ?? []).entries()) {
-    if (seen.has(label.sourceFrameIndex) || label.sourceFrameIndex < definition.source.startFrameIndex ||
-        label.sourceFrameIndex > definition.source.endFrameIndex) {
-      context.addIssue({ code: 'custom', path: ['sourceFrameLabels', index], message: 'Graphic label must identify a unique source frame.' });
+/** Latest readable FLA Graphic Definition: V28 shape plus optional native provenance. */
+export const FlaGraphicDefinitionSchema = FlaGraphicDefinitionNativeBaseObject
+  .extend({
+    flaGraphicSharedShapeOverrides: FlaGraphicShapeOverridesSchema.optional(),
+    sourceFrameLabels: z.array(z.object({
+      sourceFrameIndex: z.number().int().nonnegative(),
+      text: z.string().trim().min(1).max(120),
+    }).strict()).max(FLA_GRAPHIC_MAX_FRAMES).optional(),
+  })
+  .strict()
+  .superRefine((definition, context) => {
+    validateLatestFlaGraphicDefinition(definition, context);
+    const seen = new Set<number>();
+    for (const [index, label] of (definition.sourceFrameLabels ?? []).entries()) {
+      if (seen.has(label.sourceFrameIndex) || label.sourceFrameIndex < definition.source.startFrameIndex ||
+          label.sourceFrameIndex > definition.source.endFrameIndex) {
+        context.addIssue({ code: 'custom', path: ['sourceFrameLabels', index], message: 'Graphic label must identify a unique source frame.' });
+      }
+      seen.add(label.sourceFrameIndex);
     }
-    seen.add(label.sourceFrameIndex);
-  }
-});
+  });
 export const ProjectAnimationDefinitionV28Schema = z.union([
   AnimationDefinitionSchema, FlaGraphicDefinitionV28Schema,
 ]);
@@ -242,4 +416,11 @@ export function isFlaGraphicDefinition(
   definition: ProjectAnimationDefinition,
 ): definition is FlaGraphicDefinition {
   return 'kind' in definition && definition.kind === 'fla-graphic';
+}
+
+/** True when a Definition was authored in-app and has no external FLA source. */
+export function isNativeFlaGraphicDefinition(
+  definition: ProjectAnimationDefinition,
+): definition is FlaGraphicDefinition {
+  return isFlaGraphicDefinition(definition) && definition.source.origin === 'native';
 }

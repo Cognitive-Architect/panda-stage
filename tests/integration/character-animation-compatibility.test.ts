@@ -127,6 +127,7 @@ describe('Adaptive Parts and animation compatibility', () => {
     const mediaIds = new Set(collectExportPreparationMedia(reopened.project).map(({ asset }) => asset.id));
     const definition = reopened.project.animations.find(({ id }) => id === IDS.animation)!;
     for (const frame of definition.frames) {
+      if (!frame.assetId) continue;
       expect(mediaIds.has(frame.assetId)).toBe(true);
     }
   });

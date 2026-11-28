@@ -23,7 +23,11 @@ import {
   evaluateFlaGraphicVisual,
   type EvaluatedFlaGraphicVisual,
 } from '../evaluate-fla-graphic';
-import { selectFlaGraphicSubtreeVisual } from '../fla-graphic-subtree';
+import {
+  measureFlaGraphicSubtreeBounds,
+  selectFlaGraphicSubtreeVisual,
+  type FlaGraphicAssetDimensionLike,
+} from '../fla-graphic-subtree';
 import {
   evaluateFlaVideoClock,
   flaVideoFrameAssetKey,
@@ -38,6 +42,17 @@ import {
 import {
   captureCharacterPartAnimationBasis, composeAnimatedCharacterPartTransform, resolveLayeredCharacterPartTransforms,
 } from '../character-part-animation';
+import { characterBonePartDeltas, characterBonePoseMap, characterBoneProtectedPartIds, evaluateCharacterBonePose, type EvaluatedCharacterBonePose } from '../character-bone-pose';
+import type { AnimationClipV0 } from '../models/animationCore';
+import type { EvaluatedAnimationValue } from '../evaluate-animation-core';
+import {
+  evaluateVectorSkinDeformation,
+  vectorSkinAnchorWeightsMap,
+  vectorSkinBoneRestSegments,
+  vectorSkinClipDeltas,
+  type CharacterVectorSkinFallbackCode,
+} from '../character-vector-skin';
+import { multiplyAffineMatrices } from '../../shared/affine-matrix';
 import {
   evaluateCompositeFacePoseAtTime,
   type EvaluatedCharacterNodePose,
@@ -131,7 +146,7 @@ export interface VisualPartRenderTransform {
 export type VisualPartSource =
   | { kind: 'character-face-fla-graphic'; animationId: string; firstFrame: number }
   | { kind: 'asset'; assetId: string }
-  | { kind: 'animation-frame'; animationId: string; assetId: string }
+  | { kind: 'animation-frame'; animationId: string; assetId?: string }
   | { kind: 'character-body'; assetId: string }
   | { kind: 'character-head'; assetId: string }
   | { kind: 'character-expression'; expressionId: string; assetId: string }
@@ -143,6 +158,20 @@ export type VisualPartSource =
       animationId: string;
     };
 
+/** Runtime status of one evaluated two-Bone vector skin (#1459); never persisted. */
+export interface LayerVisualPartVectorSkinStatus {
+  readonly skinId: string;
+  readonly boneIds: readonly [string, string];
+  /** Anchors that received a non-empty binding. */
+  readonly anchorCount: number;
+  /** Every path point (anchors plus curve controls) inspected by the skin. */
+  readonly pointCount: number;
+  /** True when this frame actually deformed the authored geometry. */
+  readonly deformed: boolean;
+  /** Typed local fallback; the Part keeps its undeformed visual when present. */
+  readonly fallback?: CharacterVectorSkinFallbackCode;
+}
+
 export interface LayerVisualPart {
   /** Stable runtime identity; never persisted as a Project Layer. */
   partId: string;
@@ -152,6 +181,8 @@ export interface LayerVisualPart {
   assetId?: string;
   /** Per-part structured FLA Graphic visual when sourced from an FLA Graphic Definition. */
   flaGraphic?: EvaluatedFlaGraphicVisual;
+  /** Evaluated vector skin status; present only on a Part that carries a skin binding. */
+  vectorSkin?: LayerVisualPartVectorSkinStatus;
   localRect: VisualLocalRect;
   /** Static rotation about this part's center, before the shared Head Group. */
   rotationDeg: number;
@@ -1301,6 +1332,83 @@ export function adaptiveCharacterSourceAnchor(
   };
 }
 
+/**
+ * Applies every resolved two-Bone vector skin (#1459) to its Part's evaluated
+ * FLA Graphic vector regions. Rest geometry comes from the Definition and the
+ * Bone rest world transforms; an invalid binding falls back locally with a
+ * typed reason while every other Part keeps its normal evaluation.
+ */
+function applyCharacterVectorSkinVisuals(input: {
+  character: AdaptivePartsCharacter;
+  clip: AnimationClipV0;
+  values: readonly EvaluatedAnimationValue[];
+  layerId: string;
+  assets: readonly FlaGraphicAssetDimensionLike[];
+  parts: readonly LayerVisualPart[];
+  poses?: ReadonlyMap<string, EvaluatedCharacterBonePose>;
+}): LayerVisualPart[] {
+  const skins = input.character.vectorSkins ?? [];
+  if (skins.length === 0) return [...input.parts];
+  const skinByPartId = new Map(skins.map((skin) => [skin.partId, skin]));
+  const poses = input.poses ?? evaluateCharacterBonePose({
+    character: input.character,
+    values: input.values,
+    layerId: input.layerId,
+  });
+  const boneSegments = vectorSkinBoneRestSegments(input.character, poses);
+  const clipDeltas = vectorSkinClipDeltas(poses, input.clip.fixedCharacterCenter);
+  const basisByPartId = new Map(input.clip.targetBases.map((basis) => [basis.target.partId, basis]));
+  return input.parts.map((part): LayerVisualPart => {
+    if (part.source.kind !== 'adaptive-part-fla-graphic') return part;
+    const skin = skinByPartId.get(part.source.characterPartId);
+    if (!skin) return part;
+    const statusBase = {
+      skinId: skin.id,
+      boneIds: skin.boneIds,
+      anchorCount: 0,
+      pointCount: 0,
+      deformed: false,
+    };
+    const fallback = (code: CharacterVectorSkinFallbackCode): LayerVisualPart => ({
+      ...part,
+      vectorSkin: { ...statusBase, fallback: code },
+    });
+    if (!part.flaGraphic) return fallback('not-vector-content');
+    if (!part.imageTransform) return fallback('missing-part');
+    const basis = basisByPartId.get(skin.partId);
+    if (!basis) return fallback('missing-part');
+    const result = evaluateVectorSkinDeformation({
+      visual: part.flaGraphic,
+      posedClipTransform: part.imageTransform,
+      restCharacterTransform: basis.baseTransform,
+      clipDeltas,
+      skin,
+      boneSegments,
+      overrides: vectorSkinAnchorWeightsMap(skin),
+    });
+    if (!result.ok) return fallback(result.code);
+    // #1471 R2: the authored `localRect` is the rest bounds, but LBS rewrites
+    // the region geometry. Reuse the same vector range utilities the raster
+    // consumes so this frame's runtime visual bounds cover the deformed shape
+    // instead of clipping it in the Character composite/effect cache. Rest and
+    // fallback frames keep their authored bounds bit for bit.
+    const deformedBounds = result.deformed
+      ? measureFlaGraphicSubtreeBounds(result.visual, input.assets)
+      : null;
+    return {
+      ...part,
+      flaGraphic: result.visual,
+      ...(deformedBounds ? { localRect: deformedBounds } : {}),
+      vectorSkin: {
+        ...statusBase,
+        anchorCount: result.anchorCount,
+        pointCount: result.pointCount,
+        deformed: result.deformed,
+      },
+    };
+  });
+}
+
 function baseResult(
   evaluated: EvaluatedLayer,
   kind: LayerVisualKind,
@@ -1558,7 +1666,30 @@ export function resolveLayerVisualParts(
             drawOrder: 0,
             ownerZIndex: evaluated.zIndex,
           }]
-        : [];
+        : flaGraphic.structureFrame
+          ? [{
+              // A native Definition has no baked frame asset; the structured
+              // visual above is the only display source (same render path as a
+              // source-backed Definition).
+              partId: layer.id + ':animation-frame',
+              ownerLayerId: layer.id,
+              slot: 'single',
+              source: {
+                kind: 'animation-frame',
+                animationId: animation.id,
+              },
+              localRect: {
+                x: -flaGraphic.canvas.width / 2,
+                y: -flaGraphic.canvas.height / 2,
+                width: flaGraphic.canvas.width,
+                height: flaGraphic.canvas.height,
+              },
+              rotationDeg: 0,
+              flipX: false,
+              drawOrder: 0,
+              ownerZIndex: evaluated.zIndex,
+            }]
+          : [];
       const required = flaGraphic.resourceAssetIds.flatMap((assetId) => {
         const resource = project.assets.find(
           (candidate) => candidate.id === assetId && candidate.kind === 'image',
@@ -1631,12 +1762,14 @@ export function resolveLayerVisualParts(
       drawOrder: 0,
       ownerZIndex: evaluated.zIndex,
     };
-    const otherFrames = animation.frames
-      .filter((candidate) => candidate.assetId !== asset.id)
-      .map((candidate) => ({
-        assetId: candidate.assetId,
-        reason: 'animation-frame' as const,
-      }));
+    const otherFrames = animation.frames.flatMap((candidate) =>
+      candidate.assetId && candidate.assetId !== asset.id
+        ? [{
+            assetId: candidate.assetId,
+            reason: 'animation-frame' as const,
+          }]
+        : [],
+    );
     return {
       ...baseResult(
         evaluated,
@@ -1677,15 +1810,52 @@ export function resolveLayerVisualParts(
         !values.some(value => sameAnimationTarget(value.target, track.target) && value.property === track.property),
       )) throw new Error('Animation Clip requires complete Shot-time evaluation.');
       const layeredTransforms = layeredAction ? resolveLayeredCharacterPartTransforms(clip, character, values, layeredAction) : undefined;
+      // One authored Bone delta on top of one authored Part pose. Parts without
+      // a Bone keep today's matrices exactly; protected face/mouth/head Parts
+      // never take a Bone delta.
+      // A skinned Part is deformed by both of its Bones instead of one rigid
+      // Bone delta, so its own Bone binding (if any) must not be applied twice.
+      const rigidDeltaExcludedPartIds = new Set([
+        ...characterBoneProtectedPartIds(character),
+        ...(character.vectorSkins ?? []).map((skin) => skin.partId),
+      ]);
+      const poses = evaluated.characterBonePose
+        ? characterBonePoseMap(evaluated.characterBonePose)
+        : undefined;
+      const boneDeltas = (character.bones?.length ?? 0) > 0
+        ? characterBonePartDeltas({
+            character,
+            values,
+            layerId: layer.id,
+            fixedCharacterCenter: clip.fixedCharacterCenter,
+            protectedPartIds: rigidDeltaExcludedPartIds,
+            // Reuse the FK pose already evaluated for this Layer instance.
+            ...(poses ? { poses } : {}),
+          })
+        : undefined;
       visualDefinition = {
         sourceRootTransform: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 },
-        parts: clip.targetBases.map(basis => ({
-          partId: basis.target.partId, visualSource: basis.visualSource,
-          restTransform: layeredTransforms?.get(basis.target.partId) ?? composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, values),
-          visible: basis.visible, drawOrder: basis.drawOrder,
-        })),
+        parts: clip.targetBases.map(basis => {
+          const partId = basis.target.partId;
+          const posed = layeredTransforms?.get(partId) ?? composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, values);
+          const delta = boneDeltas?.get(partId);
+          return {
+            partId, visualSource: basis.visualSource,
+            restTransform: delta ? multiplyAffineMatrices(delta, posed) : posed,
+            visible: basis.visible, drawOrder: basis.drawOrder,
+          };
+        }),
       };
       parts = adaptivePartVisuals(project, visualDefinition, layer.id, evaluated.zIndex, layer.startTimeMs ?? 0, evaluated.animationTimeMs ?? timeMs);
+      parts = applyCharacterVectorSkinVisuals({
+        character,
+        clip,
+        values,
+        layerId: layer.id,
+        assets: project.assets,
+        parts,
+        ...(poses ? { poses } : {}),
+      });
     } else {
       const sourceParts = adaptivePartVisuals(
         project,

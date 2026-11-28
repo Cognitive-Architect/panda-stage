@@ -7,6 +7,7 @@ import {
   GitBranch,
   Link2,
   Lock,
+  Scan,
   Unlink2,
 } from 'lucide-react';
 import { validBatchLayerParentTargets } from '../../../domain';
@@ -432,6 +433,7 @@ export function ShotLayerListPanel({
                   }}
                 >
                   {row.isControl ? <Crosshair size={11} aria-label="空控制层" /> : null}
+                  {row.layer.maskTargets !== undefined ? <Scan size={11} aria-label="遮罩图层" /> : null}
                   {row.isDynamicBinding ? <Clock size={11} aria-label="动态交接" /> : null}
                   {row.parentMissing ? (
                     <AlertTriangle

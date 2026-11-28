@@ -111,7 +111,7 @@ describe('shared FLA Graphic Canvas renderer', () => {
     { name: 'scale/rotate', matrix: { a: 0, b: 3, c: -2, d: 0, tx: 2, ty: 2 }, rect: { x: -16, y: -10, width: 26, height: 26 } },
   ])('keeps a nested Child visible outside authored bounds: $name (#1092 B)', ({ matrix: childMatrix, rect }) => {
     const base = buildProjectWithAnimation().animations[0]!;
-    const assetId = base.frames[0]!.assetId;
+    const assetId = base.frames[0]!.assetId!;
     const definition = FlaGraphicDefinitionSchema.parse({
       ...base, kind: 'fla-graphic', durationMs: 1000 / base.source.sourceFps,
       source: { ...base.source, endFrameIndex: 0, canvas: { width: 20, height: 20 }, anchor: { x: 0, y: 0 } },
@@ -157,7 +157,7 @@ describe('shared FLA Graphic Canvas renderer', () => {
 
   it.each([true, false])('applies occurrence color once with structured frame = %s', (structured) => {
     const base = buildProjectWithAnimation().animations[0]!;
-    const assetId = base.frames[0]!.assetId;
+    const assetId = base.frames[0]!.assetId!;
     const definition = FlaGraphicDefinitionSchema.parse({
       ...base, kind: 'fla-graphic', durationMs: 1000 / base.source.sourceFps,
       source: { ...base.source, endFrameIndex: 0, canvas: { width: 20, height: 20 }, anchor: { x: 0, y: 0 } },
@@ -190,7 +190,7 @@ describe('shared FLA Graphic Canvas renderer', () => {
 
   it('reports small drawable bounds separately from the authored Graphic canvas', () => {
     const base = buildProjectWithAnimation().animations[0]!;
-    const assetId = base.frames[0]!.assetId;
+    const assetId = base.frames[0]!.assetId!;
     const definition = FlaGraphicDefinitionSchema.parse({
       ...base, kind: 'fla-graphic', durationMs: 1000 / base.source.sourceFps,
       source: { ...base.source, endFrameIndex: 0, canvas: { width: 1920, height: 1080 }, anchor: { x: 0, y: 0 } },
@@ -562,7 +562,7 @@ describe('shared FLA Graphic Canvas renderer', () => {
 
   it('applies full 4-channel RGBA with positive alphaOffset only inside valid coverage without tinting canvas padding (E-F03)', () => {
     const base = buildProjectWithAnimation().animations[0]!;
-    const assetId = base.frames[0]!.assetId;
+    const assetId = base.frames[0]!.assetId!;
     const definition = FlaGraphicDefinitionSchema.parse({
       ...base,
       kind: 'fla-graphic',
@@ -697,7 +697,7 @@ describe('shared FLA Graphic Canvas renderer', () => {
     }
 
     const base = buildProjectWithAnimation().animations[0]!;
-    const assetId = base.frames[0]!.assetId;
+    const assetId = base.frames[0]!.assetId!;
     const captured = captureFlaGraphicStructure(resolved.displayList, {
       fallbackAssetId: assetId,
       resolveIsolatedShape: () => ({ scope: 'subtree', viewBox: { x: 0, y: 0, width: 20, height: 20 } }),

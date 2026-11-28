@@ -2,12 +2,14 @@ import {
   isFlaGraphicDefinition,
   ProjectSchema,
   resolveCharacterPartVisualSource,
+  type AnimationDefinition,
   type Asset,
   type Character,
   type CharacterAction,
   type CharacterBodyPose,
   type CharacterExpression,
   type CharacterMotionMapping,
+  type FlaGraphicDefinition,
   type FlaGraphicStructure,
   type FlaGraphicStructureNode,
   type ImageAsset,
@@ -344,10 +346,10 @@ export function collectProjectResourceClosure(
       );
       if (hasStructureFrame) {
         // Optional display/fallback SVG frame asset if present in source project.
-        if (assetsById.has(frame.assetId)) {
+        if (frame.assetId && assetsById.has(frame.assetId)) {
           collectAsset(frame.assetId, 'image', animLabel);
         }
-      } else {
+      } else if (frame.assetId) {
         collectAsset(frame.assetId, 'image', animLabel);
       }
     }
@@ -720,6 +722,96 @@ function remapFlaGraphicStructure(
   };
 }
 
+/**
+ * Resolves the shared action an authored action ultimately belongs to. An
+ * instance-scoped copy is private to the Character Layer instance named in
+ * `instanceScope`; importing a Character never brings the source Shot's Layers,
+ * and a target project merely containing a same-id/same-name Layer never proves
+ * ownership. The shared origin is therefore the only action identity an import
+ * may expose (#1469 F2 / #1449).
+ */
+function resolveSharedActionForImport(
+  action: CharacterAction,
+  actionsById: ReadonlyMap<string, CharacterAction>,
+): CharacterAction | undefined {
+  let current: CharacterAction | undefined = action;
+  const seen = new Set<string>();
+  while (current) {
+    if (seen.has(current.id)) return undefined;
+    seen.add(current.id);
+    if (!('kind' in current) || !current.instanceScope) return current;
+    current = current.originActionId
+      ? actionsById.get(current.originActionId)
+      : undefined;
+  }
+  return undefined;
+}
+
+interface ImportedMotionMappingCandidate {
+  readonly mapping: CharacterMotionMapping;
+  /** True when the authored source action was the shared action itself. */
+  readonly preferShared: boolean;
+  /** Authored (source-project) ids, used only for the deterministic tie-break. */
+  readonly sourceActionId: string;
+  readonly generatedActionId: string;
+}
+
+/**
+ * #1470: after #1469 F2, every private copy aliases its shared origin, so two
+ * formally distinct mappings can remap onto the same
+ * `(sourceCharacterId, sourceActionId)` pair while the source project was
+ * valid. The target schema allows one reusable mapping per source action, so
+ * collapse the collision deterministically:
+ * 1. a mapping authored against the shared origin wins,
+ * 2. otherwise the smallest authored source action id wins (stable under any
+ *    authored/incoming order),
+ * 3. ties fall back to the smallest authored generated action id.
+ * Collapsed-away mappings only lose their mapping row; their generated actions
+ * stay independent and the private source actions are never promoted.
+ */
+function dedupeImportedMotionMappings(
+  candidates: readonly ImportedMotionMappingCandidate[],
+): CharacterMotionMapping[] | undefined {
+  if (candidates.length === 0) return undefined;
+  const winners = new Map<string, ImportedMotionMappingCandidate>();
+  let hasConflict = false;
+  for (const candidate of candidates) {
+    const key = `${candidate.mapping.sourceCharacterId}\u0000${candidate.mapping.sourceActionId}`;
+    const current = winners.get(key);
+    if (!current) {
+      winners.set(key, candidate);
+      continue;
+    }
+    hasConflict = true;
+    if (candidate.preferShared !== current.preferShared) {
+      if (candidate.preferShared) winners.set(key, candidate);
+      continue;
+    }
+    if (compareMotionMappingCandidates(candidate, current) < 0) {
+      winners.set(key, candidate);
+    }
+  }
+  if (!hasConflict) return candidates.map((candidate) => candidate.mapping);
+  // A conflict makes the surviving rows a deterministic set, independent of the
+  // authored mapping order or of the order the batch was planned in.
+  return [...winners.entries()]
+    .sort(([leftKey], [rightKey]) => (leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0))
+    .map(([, candidate]) => candidate.mapping);
+}
+
+function compareMotionMappingCandidates(
+  left: ImportedMotionMappingCandidate,
+  right: ImportedMotionMappingCandidate,
+): number {
+  if (left.sourceActionId !== right.sourceActionId) {
+    return left.sourceActionId < right.sourceActionId ? -1 : 1;
+  }
+  if (left.generatedActionId !== right.generatedActionId) {
+    return left.generatedActionId < right.generatedActionId ? -1 : 1;
+  }
+  return 0;
+}
+
 function remapCharacterActions(
   actions: readonly CharacterAction[] | undefined,
   remapAnimation: (sourceId: string) => string,
@@ -727,15 +819,26 @@ function remapCharacterActions(
   allocateId: () => string,
   preallocatedActionIdMap?: ReadonlyMap<string, string>,
 ): { actions?: CharacterAction[]; actionIdMap: Map<string, string> } {
-  const actionIdMap = new Map<string, string>();
+  // The preallocated map covers every imported shared action, plus every
+  // importable private copy as an alias of its imported shared origin.
+  const actionIdMap = new Map<string, string>(preallocatedActionIdMap ?? []);
   if (!actions) return { actionIdMap };
-  const mapped: CharacterAction[] = actions.map((action) => {
-    const nextId = preallocatedActionIdMap?.get(action.id) ?? allocateId();
+  const mapped: CharacterAction[] = [];
+  for (const action of actions) {
+    // #1469 F2: instance isolation is the default. A private modified copy is
+    // never silently promoted into the target project's shared action library:
+    // it is excluded here, while references to it resolve to the imported
+    // shared origin through `actionIdMap` (or degrade when that origin is
+    // missing). The copy's private owner Layer lives in the source project and
+    // cannot be re-created by a resource import.
+    if ('kind' in action && action.instanceScope) continue;
+    const nextId = actionIdMap.get(action.id) ?? allocateId();
     actionIdMap.set(action.id, nextId);
     if ('kind' in action) {
-      return {
-        ...action,
+      mapped.push({
         id: nextId,
+        name: action.name,
+        kind: 'layered',
         tracks: action.tracks.map((track) => ({
           ...track,
           partId: remapPartId(track.partId),
@@ -753,16 +856,20 @@ function remapCharacterActions(
               })),
             }
           : {}),
-      };
+      });
+      continue;
     }
-    return {
+    mapped.push({
       ...action,
       id: nextId,
       animationId: remapAnimation(action.animationId),
       placement: { ...action.placement },
-    };
-  });
-  return { actions: mapped, actionIdMap };
+    });
+  }
+  return {
+    ...(mapped.length > 0 ? { actions: mapped } : {}),
+    actionIdMap,
+  };
 }
 
 function remapMouthPoseSet(
@@ -931,6 +1038,12 @@ export function buildImportedProjectCandidate(options: {
   const characterNameMap = new Map<string, string>();
   const characterPartIdMaps = new Map<string, Map<string, string>>();
   const characterActionIdMaps = new Map<string, Map<string, string>>();
+  /**
+   * Source action ids that are shared (not instance-private) per Character. A
+   * `motionMapping` that already referenced a shared origin must win the #1470
+   * dedupe over one that only referenced a private copy.
+   */
+  const characterSharedActionIds = new Map<string, Set<string>>();
   const voiceProfileIdMap = new Map<string, string>();
   const occupiedCharacterNames = new Set(
     targetProject.characters.map((character) =>
@@ -963,11 +1076,29 @@ export function buildImportedProjectCandidate(options: {
       characterPartIdMaps.set(character.id, partIdMap);
     }
     if (character.actions && character.actions.length > 0) {
+      const actionsById = new Map(
+        character.actions.map((action) => [action.id, action]),
+      );
       const actionIdMap = new Map<string, string>();
+      const sharedActionIds = new Set<string>();
+      // #1469 F2: allocate one target id per imported shared action and alias
+      // every importable private copy to it, so `motionMappings` and any other
+      // formal reference remap deterministically regardless of authored order.
       for (const action of character.actions) {
-        actionIdMap.set(action.id, allocateId());
+        const sharedAction = resolveSharedActionForImport(action, actionsById);
+        if (!sharedAction) continue;
+        const targetId = actionIdMap.get(sharedAction.id) ?? allocateId();
+        actionIdMap.set(sharedAction.id, targetId);
+        actionIdMap.set(action.id, targetId);
+        // #1470: remember which source ids are real shared actions so a
+        // collapsed alias group can prefer the mapping that was authored
+        // against the shared origin.
+        if (sharedAction.id === action.id) sharedActionIds.add(action.id);
       }
       characterActionIdMaps.set(character.id, actionIdMap);
+      if (sharedActionIds.size > 0) {
+        characterSharedActionIds.set(character.id, sharedActionIds);
+      }
     }
   }
   for (const voiceProfile of closure.voiceProfiles) {
@@ -990,6 +1121,10 @@ export function buildImportedProjectCandidate(options: {
     }
     return targetId;
   };
+  // #1449: an instance-scoped action copy is private to the Character Layer
+  // instance that owns it in the source project. Cross-project import never
+  // brings that Shot/Layer, so no target-project Layer id can re-establish the
+  // private owner (#1469 F2).
 
   // Phase 2: Rewrite all formal references.
   const importedAssets: Asset[] = [];
@@ -1027,11 +1162,11 @@ export function buildImportedProjectCandidate(options: {
     (animation) => {
       const targetId = remapAnimation(animation.id);
       const targetName = animationNameMap.get(animation.id)!;
-      const frames = animation.frames.map((frame) => ({
-        ...frame,
-        assetId: remapAssetOptional(frame.assetId),
-      }));
       if (isFlaGraphicDefinition(animation)) {
+        const frames: FlaGraphicDefinition['frames'] = animation.frames.map((frame) => ({
+          ...frame,
+          ...(frame.assetId ? { assetId: remapAssetOptional(frame.assetId) } : {}),
+        }));
         return {
           ...animation,
           id: targetId,
@@ -1047,11 +1182,15 @@ export function buildImportedProjectCandidate(options: {
             : {}),
         };
       }
+      const plainFrames: AnimationDefinition['frames'] = animation.frames.map((frame) => ({
+        ...frame,
+        assetId: remapAssetOptional(frame.assetId as string),
+      }));
       return {
         ...animation,
         id: targetId,
         name: targetName,
-        frames,
+        frames: plainFrames,
       };
     },
   );
@@ -1148,13 +1287,39 @@ export function buildImportedProjectCandidate(options: {
             tip: { ...character.armChain.tip },
           }
         : undefined;
+      const armChains = character.armChains?.map((entry) => ({
+        ...entry,
+        chain: {
+          ...entry.chain,
+          segments: entry.chain.segments.map((segment) => ({
+            ...segment,
+            partId: remapPartId(segment.partId),
+            joint: { ...segment.joint },
+          })),
+          tip: { ...entry.chain.tip },
+        },
+      }));
+      // #1455: a Bone `partId` references the Character's own Part identity,
+      // so it must reuse the same Part remap as the Parts/arm chains.
+      // `parentBoneId` is Character-local and stays intact, keeping the tree
+      // shape unchanged.
+      const bones = character.bones?.map((bone) => ({
+        ...bone,
+        ...(bone.partId ? { partId: remapPartId(bone.partId) } : {}),
+      }));
+      // #1459: a vector skin's Bone ids are Character-local like `parentBoneId`,
+      // while its Part identity must reuse the same Part remap as the Parts.
+      const vectorSkins = character.vectorSkins?.map((skin) => ({
+        ...skin,
+        partId: remapPartId(skin.partId),
+      }));
       // Preserve motionMappings only when the referenced source character, its
       // source action, every rule's sourcePartId, the generatedActionId, and
       // every defined targetPartId are all completely remapped in this batch.
       // When the source character is not imported, drop the dangling mapping
       // while keeping the target character's independent generatedAction usable.
-      const motionMappings: CharacterMotionMapping[] | undefined =
-        character.motionMappings?.flatMap((mapping): CharacterMotionMapping[] => {
+      const mappingCandidates: ImportedMotionMappingCandidate[] =
+        character.motionMappings?.flatMap((mapping): ImportedMotionMappingCandidate[] => {
           const mappedSourceCharacterId = characterIdMap.get(
             mapping.sourceCharacterId,
           );
@@ -1204,14 +1369,23 @@ export function buildImportedProjectCandidate(options: {
           }
           return [
             {
-              ...mapping,
-              sourceCharacterId: mappedSourceCharacterId,
-              sourceActionId: mappedSourceActionId,
-              generatedActionId: mappedGeneratedActionId,
-              rules: remappedRules,
+              mapping: {
+                ...mapping,
+                sourceCharacterId: mappedSourceCharacterId,
+                sourceActionId: mappedSourceActionId,
+                generatedActionId: mappedGeneratedActionId,
+                rules: remappedRules,
+              },
+              preferShared:
+                characterSharedActionIds
+                  .get(mapping.sourceCharacterId)
+                  ?.has(mapping.sourceActionId) ?? false,
+              sourceActionId: mapping.sourceActionId,
+              generatedActionId: mapping.generatedActionId,
             },
           ];
-        });
+        }) ?? [];
+      const motionMappings = dedupeImportedMotionMappings(mappingCandidates);
 
       return {
         ...character,
@@ -1256,9 +1430,14 @@ export function buildImportedProjectCandidate(options: {
           : {}),
         ...(mouthPoseSet ? { mouthPoseSet } : {}),
         ...(expressionTalkingSources ? { expressionTalkingSources } : {}),
-        ...(actions ? { actions } : {}),
+        // #1469 F2: clearing this explicitly prevents the source Character's
+        // promoted private actions from leaking through `...character`.
+        ...(actions ? { actions } : { actions: undefined }),
         ...(bodyPoses ? { bodyPoses } : {}),
         ...(armChain ? { armChain } : {}),
+        ...(armChains ? { armChains } : {}),
+        ...(bones ? { bones } : {}),
+        ...(vectorSkins ? { vectorSkins } : {}),
         ...(motionMappings && motionMappings.length > 0
           ? { motionMappings }
           : { motionMappings: undefined }),
@@ -1323,7 +1502,9 @@ export function buildImportedProjectCandidate(options: {
         : {}),
       ...(mouthPoseSet ? { mouthPoseSet } : {}),
       ...(expressionTalkingSources ? { expressionTalkingSources } : {}),
-      ...(actions ? { actions } : {}),
+      // #1469 F2: clearing this explicitly prevents the source Character's
+      // promoted private actions from leaking through `...character`.
+      ...(actions ? { actions } : { actions: undefined }),
     };
 
     if (character.mode === 'composite') {
@@ -1364,6 +1545,14 @@ export function buildImportedProjectCandidate(options: {
     ) {
       const rest = { ...character };
       delete rest.motionMappings;
+      // #1469 F2: a source Character whose whole action library was private
+      // must not keep its promoted copies through the spread above.
+      if (character.actions === undefined) delete rest.actions;
+      return rest;
+    }
+    if (character.actions === undefined) {
+      const rest = { ...character };
+      delete rest.actions;
       return rest;
     }
     return character;

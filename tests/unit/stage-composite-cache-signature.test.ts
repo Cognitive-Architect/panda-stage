@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type {
-  LayerVisualHeadGroup,
+import {
+  evaluatePinWarpMesh,
+  pinWarpRectForImage,
+  seedPinWarpPoints,
+  type EvaluatedPinWarp,
+  type EvaluatedPinWarpMesh,
+  type LayerVisualHeadGroup,
 } from '../../src/domain';
 import { defaultLayerVisualEffects } from '../../src/domain/models/layerVisualEffects';
 import type { StageRenderPart } from '../../src/shared/stage/render-model';
@@ -351,4 +356,60 @@ it('invalidates effect caching on parameter, structured frame geometry, and reso
   } })).not.toBe(original);
   expect(signature({ ...base, layerEffects: { ...layerEffects, resources: [{ ...resource, sourceUrl: 'blob:mask:2' }] } })).not.toBe(original);
   expect(signature({ ...base, layerEffects, images: new Map([...base.images, ['mask', {}]]) })).not.toBe(original);
+});
+
+describe('stage composite cache signature: evaluated pin-warp mesh (#1471 R3)', () => {
+  const PIN_RECT = pinWarpRectForImage(100, 120)!;
+
+  function poseMesh(dx: number, dy: number): EvaluatedPinWarpMesh {
+    const restPins = seedPinWarpPoints(PIN_RECT);
+    const pins = restPins.map((pin, index) =>
+      index === 1 ? { x: pin.x + dx, y: pin.y + dy } : pin,
+    );
+    const result = evaluatePinWarpMesh({
+      restPins,
+      pins,
+      mesh: { columns: 3, rows: 2 },
+      rect: PIN_RECT,
+    });
+    if (result.status !== 'valid') throw new Error('expected a valid mesh');
+    return result.mesh;
+  }
+
+  function validPose(mesh: EvaluatedPinWarpMesh): EvaluatedPinWarp {
+    return { status: 'valid', mesh, pins: seedPinWarpPoints(PIN_RECT), mode: 'exact' };
+  }
+
+  it('invalidates between two deformation poses with identical transforms and bounds', () => {
+    const base = baseInput();
+    // The reported defect: same Layer transform, same effect parameters, but a
+    // different deformation must not reuse the previous composite/effects cache.
+    const first = signature({ ...base, pinWarp: validPose(poseMesh(18, 24)) });
+    const second = signature({ ...base, pinWarp: validPose(poseMesh(18, 48)) });
+    expect(second).not.toBe(first);
+  });
+
+  it('stays stable for the same pose recreated with fresh mesh objects', () => {
+    const base = baseInput();
+    expect(signature({ ...base, pinWarp: validPose(poseMesh(18, 24)) })).toBe(
+      signature({ ...base, pinWarp: validPose(poseMesh(18, 24)) }),
+    );
+  });
+
+  it('keeps the pre-#1471 signature byte-identical when no pin warp is evaluated', () => {
+    const base = baseInput();
+    const legacy = signature(base);
+    expect(legacy).not.toContain('"pinWarp"');
+    expect(signature({ ...base, pinWarp: undefined })).toBe(legacy);
+    expect(signature({ ...base, pinWarp: null })).toBe(legacy);
+    // A now-invalid warp changes the signature so effects cannot stay frozen.
+    expect(signature({ ...base, pinWarp: { status: 'invalid', reason: 'non-finite' } })).not.toBe(legacy);
+  });
+
+  it('distinguishes a valid warp from an invalid one at the same transform', () => {
+    const base = baseInput();
+    expect(
+      signature({ ...base, pinWarp: { status: 'invalid', reason: 'non-finite' } }),
+    ).not.toBe(signature({ ...base, pinWarp: validPose(poseMesh(0, 0)) }));
+  });
 });

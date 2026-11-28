@@ -15,13 +15,17 @@ import {
 } from 'react-konva';
 import {
   clampLayerPosition,
+  type EvaluatedPinWarpMesh,
   type Layer,
   type LayerTransformInput,
+  type PinWarpMeshDensity,
+  type PinWarpPoint,
   visualPartRenderTransform,
   visualHeadGroupRenderTransform,
   type LayerVisualParts,
 } from '../../../domain';
 import type { StageLayerRenderInstruction } from '../../../shared/stage/layer-render-contract';
+import { PinWarpEditorLayer } from './PinWarpEditorLayer';
 import type {
   PositionAuthoringCommitResult,
   PositionAuthoringSessionHandle,
@@ -34,6 +38,7 @@ import {
 import { visibleImageRect } from '../characters/characterAssemblyPreview';
 import { measureImageVisibleBounds } from '../characters/measureImageVisibleBounds';
 import { cacheLayerVisualEffects } from '../../stage/layerVisualEffects';
+import { resolvePinWarpDrawBounds } from '../../stage/pinWarpCanvas';
 import type { LayerVisualEffects } from '../../../domain/models/layerVisualEffects';
 import { renderFlaGraphicCanvas } from './flaGraphicCanvasRenderer';
 
@@ -48,6 +53,30 @@ export interface AxisTransformInput {
   scaleX: number;
   scaleY: number;
   rotationDeg: number;
+}
+
+/**
+ * Editor-only projection of a Layer's authored pin warp plus the shared
+ * evaluated pins/mesh (#1460). The evaluated mesh stays the single commit
+ * source; the drag preview below only recomputes the same pure function.
+ */
+export interface SelectableLayerPinWarp {
+  readonly mesh: PinWarpMeshDensity;
+  readonly restPins: readonly PinWarpPoint[];
+  readonly pins: readonly PinWarpPoint[];
+  readonly rect: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+  readonly committed: EvaluatedPinWarpMesh;
+}
+
+export interface SelectableLayerPinWarpEditing {
+  readonly enabled: boolean;
+  readonly pinRadius: number;
+  readonly onCommitPin: (pinIndex: number, point: PinWarpPoint) => void;
 }
 
 export interface SelectableLayerProps {
@@ -91,6 +120,9 @@ export interface SelectableLayerProps {
   /** The visual-only Shake offset that must not be baked into Position. */
   positionAuthoringShakeOffset?: Point | null;
   flaGraphicEditProjection?: FlaGraphicStructureProjectionProps | null;
+  /** Warped bitmap rendering + pin handles for a valid pin warp (#1460). */
+  pinWarp?: SelectableLayerPinWarp | null;
+  pinWarpEditing?: SelectableLayerPinWarpEditing | null;
   onPositionAuthoringCommit?: (result: PositionAuthoringCommitResult) => void;
   onError: (message: string) => void;
 }
@@ -128,6 +160,8 @@ export function SelectableLayer({
   positionAuthoringSession = null,
   positionAuthoringShakeOffset = null,
   flaGraphicEditProjection = null,
+  pinWarp = null,
+  pinWarpEditing = null,
   onPositionAuthoringCommit = () => undefined,
   onError,
 }: SelectableLayerProps): React.JSX.Element {
@@ -163,7 +197,13 @@ export function SelectableLayer({
       ownerZIndex: render.zIndex,
     },
   ];
-  const visualBounds = visual?.combinedLocalBounds ?? legacyBounds;
+  // #1471 R3: a warped Layer uses its evaluated deformed draw bounds so the
+  // editor effects cache / selection outline cannot clip the deformation; every
+  // other Layer keeps its existing combined bounds.
+  const visualBounds = resolvePinWarpDrawBounds(
+    visual?.combinedLocalBounds ?? legacyBounds,
+    pinWarp?.committed,
+  );
   const firstPart = visualParts[0];
   const imageForPart = (
     part: (typeof visualParts)[number],
@@ -282,6 +322,22 @@ export function SelectableLayer({
             y={flaGraphicCanvas.rect.y + part.flaGraphic.canvas.height / 2}
           />
         </Group>
+      );
+    }
+    if (pinWarp && partImage && resolvedPartImages.length === 1) {
+      // #1460: the pin-warped bitmap + pin handles live in a hook-owning child
+      // so this adapter stays a pure function of its props. Mesh vertices are
+      // Layer-local, so the child applies no part transform.
+      return (
+        <PinWarpEditorLayer
+          bounds={visualBounds}
+          canSelect={listening}
+          editing={pinWarpEditing}
+          image={partImage}
+          key={part.partId}
+          onSelect={select}
+          pinWarp={pinWarp}
+        />
       );
     }
     return (

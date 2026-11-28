@@ -390,7 +390,7 @@ describe('Issue #1175 UI-02 – Adaptive Part row overflow menu and safe removal
         updatedLayer.animationClip.targetBases.some((b) => b.target.partId === PART_IDS[1]),
       ).toBe(false);
       expect(
-        updatedLayer.animationClip.tracks.some((t) => t.target.partId === PART_IDS[1]),
+        updatedLayer.animationClip.tracks.some((t) => t.target.kind === 'character-part' && t.target.partId === PART_IDS[1]),
       ).toBe(false);
       // Kept part's targetBasis and keyframes remain intact!
       expect(
@@ -398,7 +398,7 @@ describe('Issue #1175 UI-02 – Adaptive Part row overflow menu and safe removal
       ).toBe(true);
       expect(
         updatedLayer.animationClip.tracks.some(
-          (t) => t.target.partId === PART_IDS[0] && t.keys.length > 0,
+          (t) => t.target.kind === 'character-part' && t.target.partId === PART_IDS[0] && t.keys.length > 0,
         ),
       ).toBe(true);
     }
@@ -418,7 +418,7 @@ describe('Issue #1175 UI-02 – Adaptive Part row overflow menu and safe removal
       ).toBe(true);
       expect(
         restoredLayer.animationClip.tracks.some(
-          (t) => t.target.partId === PART_IDS[1] && t.keys.length > 0,
+          (t) => t.target.kind === 'character-part' && t.target.partId === PART_IDS[1] && t.keys.length > 0,
         ),
       ).toBe(true);
     }
@@ -585,16 +585,16 @@ describe('Issue #1175 UI-02 – Adaptive Part row overflow menu and safe removal
         beforeClip!.fixedCharacterCenter,
       );
       expect(
-        updatedLayer.animationClip.tracks.some((t) => t.target.partId === partC),
+        updatedLayer.animationClip.tracks.some((t) => t.target.kind === 'character-part' && t.target.partId === partC),
       ).toBe(false);
       expect(
         updatedLayer.animationClip.tracks.some(
-          (t) => t.target.partId === partA && t.keys.length > 0,
+          (t) => t.target.kind === 'character-part' && t.target.partId === partA && t.keys.length > 0,
         ),
       ).toBe(true);
       expect(
         updatedLayer.animationClip.tracks.some(
-          (t) => t.target.partId === partB && t.keys.length > 0,
+          (t) => t.target.kind === 'character-part' && t.target.partId === partB && t.keys.length > 0,
         ),
       ).toBe(true);
       const afterBasisA = updatedLayer.animationClip.targetBases.find(
@@ -626,7 +626,7 @@ describe('Issue #1175 UI-02 – Adaptive Part row overflow menu and safe removal
       ]);
       expect(
         afterUndoLayer.animationClip.tracks.some(
-          (t) => t.target.partId === partC && t.keys.length > 0,
+          (t) => t.target.kind === 'character-part' && t.target.partId === partC && t.keys.length > 0,
         ),
       ).toBe(true);
     }
@@ -644,7 +644,7 @@ describe('Issue #1175 UI-02 – Adaptive Part row overflow menu and safe removal
         [partB, 1],
       ]);
       expect(
-        afterRedoLayer.animationClip.tracks.some((t) => t.target.partId === partC),
+        afterRedoLayer.animationClip.tracks.some((t) => t.target.kind === 'character-part' && t.target.partId === partC),
       ).toBe(false);
     }
   });

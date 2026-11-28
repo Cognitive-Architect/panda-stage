@@ -15,7 +15,7 @@ import type Konva from 'konva';
 import type { DialogueSilence } from '../../../shared/dialogue-silence';
 import { CharacterMotionGesture } from './characterMotionGesture';
 import { CharacterArmAssemblyOverlay, characterArmAssemblyPrompt } from './CharacterArmAssemblyOverlay';
-import { updateArmAssemblyPart, useCharacterArmAssembly, useCharacterArmTool } from './CharacterArmTool';
+import { characterArmChainLabels, updateArmAssemblyPart, useCharacterArmAssembly, useCharacterArmTool } from './CharacterArmTool';
 import { CharacterArmHandle } from './CharacterArmHandle';
 import type { AnimationCurveDraft } from '../timeline/AnimationCurveDraft';
 import type { CharacterMotionCanvas } from './CharacterMotionPart';
@@ -31,6 +31,8 @@ import {
   characterNodeMotionScaleBounds,
   composeAnimatedCharacterPartTransform,
   compareCameraDrawingLayers,
+  characterBonePartDeltas,
+  characterBoneProtectedPartIds,
   resolveLayerCameraTransform,
   createCharacterPartAnimationClip,
   evaluateAnimationClipAtTime,
@@ -61,13 +63,17 @@ import {
   resolveImageAsset,
   resolveRuntimeImageAsset,
   resolveCharacterArmAssemblyParts,
+  resolveCharacterArmChains,
   resolveTimelineFrameTime,
   resolveCharacterActionRootPatch,
+  buildCoverageMaskClips,
+  type CharacterArmChainEntry,
+  type CoverageMaskClipMap,
   type ImageAsset,
   type Shot,
   type ViewportTransform,
 } from '../../../domain';
-import type { AffineMatrix2D } from '../../../shared/affine-matrix';
+import { multiplyAffineMatrices, type AffineMatrix2D } from '../../../shared/affine-matrix';
 import type { EditorProjectSnapshot } from '../../stores/EditorProjectStore';
 import { editorProjectStore } from '../../stores/EditorProjectStore';
 import {
@@ -100,8 +106,10 @@ import {
   structuredChildTransformerScales,
 } from './LayerTransformer';
 import { ParentLayerTransformer } from './ParentLayerTransformer';
-import { SelectableLayer } from './SelectableLayer';
+import { SelectableLayer, type SelectableLayerPinWarp, type SelectableLayerPinWarpEditing } from './SelectableLayer';
+import { resolvePinWarpMesh } from '../../stage/pinWarpCanvas';
 import { StageLayerSpace } from '../../stage/StageLayerSpace';
+import { CoverageMaskClipGroup } from '../../stage/coverageMaskClip';
 import { SubtitleRenderer } from '../subtitles/SubtitleRenderer';
 import {
   timelineUiStore,
@@ -368,12 +376,13 @@ export function CanvasStage({
     selectionStore.getSelectedLayerId,
   );
   const armDraft = useCharacterArmAssembly();
-  const { setAssembly, readAssemblyParts } = useCharacterArmTool({
+  const { setAssembly, readAssemblyParts, chainId: armChainId } = useCharacterArmTool({
     projectInstanceId, shotId: currentShotId ?? '', layerId: selectedLayerId ?? '',
   });
   const armShot = armDraft && snapshot?.project.shots.find(({ id }) => id === currentShotId);
   const armAssembly = armDraft && armDraft.target.projectInstanceId === projectInstanceId &&
     armDraft.target.shotId === currentShotId && armDraft.target.layerId === selectedLayerId &&
+    armDraft.target.chainId === armChainId &&
     armDraft.revision === snapshot?.revision && armShot &&
     armDraft.timeMs === resolveTimelineFrameTime(timelineUi.currentTimeMs, armShot.durationMs) &&
     !positionAuthoringSession && !flaGraphicEditScope ? armDraft : undefined;
@@ -739,8 +748,12 @@ export function CanvasStage({
           if (!authoringState.canEditTransform) {
             setInteractionStatus(
               authoringState.reason === 'trs-unsafe-readonly'
-                ? '当前节点包含倾斜变换，内部时间轴暂不支持编辑。'
-                : '当前时间点没有关键帧，请先添加关键帧后再编辑。',
+                ? '当前节点变换含退化或无法无损分解的分量，内部时间轴暂不支持编辑。'
+                : authoringState.reason === 'affine-unsafe-readonly'
+                  ? '相邻关键帧缩放方向相反，补间会经过退化帧，暂不支持编辑。'
+                  : authoringState.reason === 'identity-readonly'
+                    ? '当前节点无稳定身份，请先在元件内部时间轴建立节点关联。'
+                    : '当前时间点没有关键帧，请先添加关键帧后再编辑。',
             );
             return;
           }
@@ -956,6 +969,7 @@ export function CanvasStage({
         x,
         y,
         svgText,
+        ...(sharedInternalTimeMs !== undefined ? { internalTimeMs: sharedInternalTimeMs } : {}),
       });
     } catch (error) {
       setInteractionStatus(
@@ -1030,6 +1044,20 @@ export function CanvasStage({
     );
   }, [continuityMode, temporalCanvasModel, temporalContextKey]);
   const stageModel = temporalCanvasModel?.stageModel ?? null;
+  // Author-level coverage masks are resolved once per frame; the same geometry
+  // clips every target Layer and mirrors Preview/Export (#1454).
+  const coverageMaskClips = useMemo<CoverageMaskClipMap>(() => {
+    if (!stageModel) {
+      return { clips: new Map(), unresolvedMaskLayerIds: new Set<string>(), emptyMaskLayerIds: new Set<string>(), issues: [] };
+    }
+    const imageSizes = new Map<string, { width: number; height: number }>();
+    for (const [assetId, asset] of projectImageDimensions) {
+      if (typeof asset.width === 'number' && typeof asset.height === 'number') {
+        imageSizes.set(assetId, { width: asset.width, height: asset.height });
+      }
+    }
+    return buildCoverageMaskClips(stageModel, displayCamera, imageSizes);
+  }, [displayCamera, projectImageDimensions, stageModel]);
   const armVisualStatus = armAssembly && temporalCanvasModel?.visualStatusByLayer.get(armAssembly.target.layerId);
   // Continuity may display the previous pose while this frame's art loads.
   const waitingForArmVisual = armVisualStatus === 'previous-complete' || armVisualStatus === 'pending';
@@ -1304,6 +1332,14 @@ export function CanvasStage({
     stageModel?.layers.find(
       ({ layer }) => layer.id === selectedLayerId,
     ) ?? null;
+  const selectedArmLayerSource = selectedStageLayer?.layer.source;
+  let selectedArmChain: CharacterArmChainEntry | undefined;
+  if (snapshot && selectedArmLayerSource?.kind === 'character') {
+    const character = snapshot.project.characters.find(({ id }) => id === selectedArmLayerSource.characterId);
+    if (character?.mode === 'adaptive-parts') {
+      selectedArmChain = resolveCharacterArmChains(character).find(({ id }) => id === armChainId);
+    }
+  }
   const selectedLayerProjection = selectedStageLayer
     ? resolveLayerCameraTransform(selectedStageLayer.evaluated, displayCamera, PROJECT_WIDTH, PROJECT_HEIGHT)
     : null;
@@ -1365,11 +1401,27 @@ export function CanvasStage({
         const clip = createCharacterPartAnimationClip(snapshot.project, shot.id, motionLayer.id);
         const basis = clip.targetBases.find((b) => b.target.partId === targetId)!;
         if (!basis) return { x: 0, y: 0 };
-        const matrix = composeAnimatedCharacterPartTransform(
+        const values = evaluateAnimationClipAtTime(clip, timelineUi.currentTimeMs);
+        const characterId = motionLayer.source.kind === 'character' ? motionLayer.source.characterId : undefined;
+        const character = characterId
+          ? snapshot.project.characters.find((candidate) => candidate.id === characterId)
+          : undefined;
+        // Bone-bound Parts rotate around the final (post-FK) pivot.
+        const boneDelta = character?.mode === 'adaptive-parts' && (character.bones?.length ?? 0) > 0
+          ? characterBonePartDeltas({
+              character,
+              values,
+              layerId: motionLayer.id,
+              fixedCharacterCenter: clip.fixedCharacterCenter,
+              protectedPartIds: characterBoneProtectedPartIds(character),
+            }).get(targetId)
+          : undefined;
+        const posed = composeAnimatedCharacterPartTransform(
           basis,
           clip.fixedCharacterCenter,
-          evaluateAnimationClipAtTime(clip, timelineUi.currentTimeMs),
+          values,
         );
+        const matrix = boneDelta ? multiplyAffineMatrices(boneDelta, posed) : posed;
         return {
           x: matrix.a * basis.pivot.x + matrix.c * basis.pivot.y + matrix.tx,
           y: matrix.b * basis.pivot.x + matrix.d * basis.pivot.y + matrix.ty,
@@ -1671,6 +1723,30 @@ export function CanvasStage({
               data-scene-preview-active={String(Boolean(activeScenePreview))}
               data-scene-preview-shot-id={activeScenePreview?.previewShotId ?? ''}
               data-layer-json={JSON.stringify(shot?.layers ?? [])}
+              data-coverage-mask-layer-ids={JSON.stringify(
+                (stageModel?.layers ?? [])
+                  .filter((stageLayer) => stageLayer.evaluated.coverageMask?.role === 'mask-layer')
+                  .map((stageLayer) => stageLayer.layer.id),
+              )}
+              data-coverage-mask-target-json={JSON.stringify(
+                [...coverageMaskClips.clips].map(([targetLayerId, clip]) => ({
+                  targetLayerId,
+                  maskLayerId: clip.maskLayerId,
+                })),
+              )}
+              data-pin-warp-layer-ids={JSON.stringify(
+                (stageModel?.layers ?? [])
+                  .filter((stageLayer) => stageLayer.evaluated.pinWarp?.status === 'valid')
+                  .map((stageLayer) => stageLayer.layer.id),
+              )}
+              data-pin-warp-invalid-layer-ids={JSON.stringify(
+                (stageModel?.layers ?? [])
+                  .filter((stageLayer) => stageLayer.evaluated.pinWarp?.status === 'invalid')
+                  .map((stageLayer) => stageLayer.layer.id),
+              )}
+              data-coverage-mask-unresolved-layer-ids={JSON.stringify([
+                ...coverageMaskClips.unresolvedMaskLayerIds,
+              ])}
               data-evaluated-layer-json={JSON.stringify(
                 temporalCanvasModel?.evaluatedShot.layers ?? [],
               )}
@@ -1741,10 +1817,76 @@ export function CanvasStage({
                         const { layer, render, visual } = stageLayer;
                         const projection = resolveLayerCameraTransform(stageLayer.evaluated, displayCamera, PROJECT_WIDTH, PROJECT_HEIGHT);
                         if (!projection) return null;
+                        const coverageClip = coverageMaskClips.clips.get(layer.id) ?? null;
+                        const maskLayerEditing =
+                          stageLayer.evaluated.coverageMask?.role === 'mask-layer';
                         const characterView = snapshot && !positionAuthoringSession && !render.isBackground
                           ? resolveCharacterView(snapshot.project, layer, visual)
                           : null;
                         const image = imageForStageLayer(stageLayer);
+                        // #1460: one shared decision + evaluated mesh for the
+                        // bitmap pin-warp path, matching Stage/Preview/Export.
+                        // #1471 R1: authoring uses the mesh directly (the pin
+                        // handles must stay visible) while `resolvePinWarpDrawPlan`
+                        // routes a strict rest mesh to the plain bitmap path.
+                        const pinWarpMesh = resolvePinWarpMesh(
+                          stageLayer.evaluated,
+                          visual,
+                          { isBackground: render.isBackground },
+                        );
+                        const evaluatedPinWarp = stageLayer.evaluated.pinWarp;
+                        const pinWarp: SelectableLayerPinWarp | null =
+                          pinWarpMesh &&
+                          layer.pinWarp &&
+                          evaluatedPinWarp?.status === 'valid'
+                            ? {
+                                mesh: layer.pinWarp.mesh,
+                                restPins: layer.pinWarp.restPins,
+                                pins: evaluatedPinWarp.pins,
+                                rect: pinWarpMesh.rect,
+                                committed: pinWarpMesh,
+                              }
+                            : null;
+                        const pinWarpEditing: SelectableLayerPinWarpEditing | null =
+                          pinWarp && selectedLayerId === layer.id &&
+                          !displayCamera && !cameraTool && !pickingParent
+                            ? {
+                                enabled:
+                                  !layer.locked &&
+                                  !activeScenePreview &&
+                                  !render.isBackground &&
+                                  !armAssembly,
+                                pinRadius: Math.max(
+                                  6,
+                                  Math.min(
+                                    48,
+                                    16 /
+                                      Math.max(
+                                        0.1,
+                                        transform.scale *
+                                          Math.abs(stageLayer.render.scaleX),
+                                      ),
+                                  ),
+                                ),
+                                onCommitPin: (pinIndex, point) => {
+                                  try {
+                                    layerStore.setPinWarpPin(
+                                      layer.id,
+                                      timelineUiStore.getSnapshot().currentTimeMs,
+                                      pinIndex,
+                                      point,
+                                    );
+                                    setInteractionStatus('控制点姿态已记录。');
+                                  } catch (error) {
+                                    setInteractionStatus(
+                                      error instanceof Error
+                                        ? error.message
+                                        : '无法记录控制点姿态。',
+                                    );
+                                  }
+                                },
+                              }
+                            : null;
                         const editProjection =
                           flaGraphicEditActive &&
                           flaGraphicEditScope &&
@@ -1787,7 +1929,7 @@ export function CanvasStage({
                                 onError: setInteractionStatus,
                               }
                             : undefined;
-                        return (
+                        const content = (
                           <StageLayerSpace key={render.id} space={stageLayer.evaluated.parentSpace} projection={displayCamera ? projection : undefined}>
                           <SelectableLayer
                             characterMotion={displayCamera || cameraTool || pickingParent ? undefined : motionCanvasForLayer(layer, characterView)}
@@ -2039,6 +2181,8 @@ export function CanvasStage({
                                  : null
                              }
                             effects={activeEffects?.layerId === layer.id ? activeEffects.effects : layer.visualEffects}
+                            pinWarp={pinWarp}
+                            pinWarpEditing={pinWarpEditing}
                             selected={selectedLayerId === layer.id}
                             visualSourceKeys={
                               temporalCanvasModel?.visualSourceKeysByLayer.get(
@@ -2048,6 +2192,20 @@ export function CanvasStage({
                             visual={visual}
                           />
                           </StageLayerSpace>
+                        );
+                        if (maskLayerEditing) {
+                          // The mask Layer is authoring-only output, but stays
+                          // selectable/editable on the Canvas as a dimmed aid.
+                          return (
+                            <Group key={render.id} opacity={0.35}>
+                              {content}
+                            </Group>
+                          );
+                        }
+                        return (
+                          <CoverageMaskClipGroup clip={coverageClip} key={render.id}>
+                            {content}
+                          </CoverageMaskClipGroup>
                         );
                       })
                     : null}
@@ -2133,8 +2291,10 @@ export function CanvasStage({
               {armAssembly && !waitingForArmVisual && !armVisualUnavailable ? <CharacterArmAssemblyOverlay assembly={armAssembly} scale={transform.scale}
                 update={next => setAssembly?.(current => current === armAssembly ? next : current)} /> : null}
               {snapshot && shot && selectedLayerId && !armAssembly && !displayCamera && !cameraTool && !selectedStageLayer?.evaluated.parentSpace ? <CharacterArmHandle
-                key={JSON.stringify([projectInstanceId, shot.id, selectedLayerId, timelineUi.currentTimeMs, snapshot.revision])}
+                key={JSON.stringify([projectInstanceId, shot.id, selectedLayerId, armChainId, timelineUi.currentTimeMs, snapshot.revision])}
                 snapshot={snapshot}
+                chainId={armChainId}
+                tipLabel={characterArmChainLabels(selectedArmChain?.kind).handle}
                 address={{ shotId: shot.id, layerId: selectedLayerId,
                   timeMs: resolveTimelineFrameTime(timelineUi.currentTimeMs, shot.durationMs) }}
               /> : null}

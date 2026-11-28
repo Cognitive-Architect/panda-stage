@@ -177,12 +177,15 @@ export function shotThumbnailFingerprint(
   try {
     const model = buildEditorStageRenderModel(project, shot);
     return JSON.stringify({
-      version: 3,
+      version: 4,
       stage: { width: model.width, height: model.height },
       backgroundLayerId: model.backgroundLayerId,
-      layers: model.layers.map(({ render, visual }) => ({
+      layers: model.layers.map(({ evaluated, render, visual }) => ({
         kind: visual.kind,
         background: render.isBackground,
+        // Author-level coverage masks (#1454) hide their mask Layer from the
+        // thumbnail; the formal clipping itself is applied by Stage/Preview/Export.
+        coverageMask: evaluated.coverageMask ?? null,
         owner: visual.ownerTransform,
         facePlacement: visual.facePlacement,
         parts: visual.parts.map((part) => ({
@@ -509,8 +512,12 @@ export async function createShotThumbnailDataUrl(
       (entry): entry is readonly [string, HTMLImageElement] => entry !== null,
     ),
   ]);
-  for (const { render, visual } of model.layers) {
+  for (const { evaluated, render, visual } of model.layers) {
     if (!render.visible) continue;
+    // Author-level mask Layers are authoring-only output (#1454). Thumbnails are
+    // a reduced-fidelity base-composition preview (like Camera/Parenting), so the
+    // mask art is hidden here; the exact clip ships in the shared Stage renderer.
+    if (evaluated.coverageMask?.role === 'mask-layer') continue;
     const structuredCanvas = visual.flaGraphic
       ? renderFlaGraphicCanvas(visual.flaGraphic, images, scale)
       : null;

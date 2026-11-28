@@ -19,6 +19,7 @@ import { evaluateFlaGraphicFrame } from '../shared/fla-graphic-playback';
 import {
   applyFlaGraphicSubtreeViewBox,
   isFlaGraphicNodeTransformable,
+  resolveFlaGraphicStructureFrame,
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicDefinition,
   type FlaGraphicStructure,
@@ -31,15 +32,21 @@ import {
   type FlaGraphicInternalTimeline,
 } from './models/flaGraphicTimeline';
 import {
+  evaluateFlaShapeTweenTrack,
+  withFlaShapeTweenContours,
+  type FlaShapeTweenTrack,
+} from './models/flaShapeTween';
+import {
   flaGraphicInstanceNodePathKey,
   getFlaGraphicInstanceTransformOverride,
   type FlaGraphicInstanceTransformOverrides,
 } from './models/flaGraphicInstanceOverrides';
-import type {
-  FlaEditableShapeRegion,
-  FlaEditableStroke,
-  FlaGraphicShapeNodeOverride,
-  FlaGraphicShapeOverrides,
+import {
+  cloneFlaGraphicShapeNodeOverride,
+  type FlaEditableShapeRegion,
+  type FlaEditableStroke,
+  type FlaGraphicShapeNodeOverride,
+  type FlaGraphicShapeOverrides,
 } from './fla-shape-vector';
 
 const identity: AffineMatrix2D = {
@@ -210,6 +217,7 @@ export interface EvaluatedFlaGraphicLayer {
  */
 export interface EvaluatedFlaGraphicVisual {
   readonly mode: FlaGraphicEvaluationMode;
+  /** Played Definition frame ordinal (exposure cell). */
   readonly frameOrdinal: number;
   readonly frameAssetId: string;
   readonly instanceColor?: FlaInstanceColor;
@@ -217,6 +225,11 @@ export interface EvaluatedFlaGraphicVisual {
   readonly frameViewport: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   readonly canvas: { readonly width: number; readonly height: number };
   readonly anchor: { readonly x: number; readonly y: number };
+  /**
+   * Authored structure frame that supplies this cell's content. For an ordinary
+   * frame this is the frame at `frameOrdinal`; for a held exposure cell it is
+   * the earlier authored keyframe that is exposed (its `ordinal` differs).
+   */
   readonly structureFrame: FlaGraphicStructureFrame | null;
   readonly layers: readonly EvaluatedFlaGraphicLayer[] | null;
   /** Unique Project asset references needed by this frame, including fallback. */
@@ -298,6 +311,137 @@ function resolveEffectiveShapeNodeOverride(
   return definition.flaGraphicSharedShapeOverrides?.[frameKey]?.[pathKey];
 }
 
+const EMPTY_SHAPE_TWEEN_TRACKS: readonly FlaShapeTweenTrack[] = [];
+
+function flaShapeTweenOwnerKey(
+  ownerKind: 'frame' | 'symbol',
+  ownerSymbolDefId: string | null,
+): string {
+  return `${ownerKind}\u0000${ownerSymbolDefId ?? ''}`;
+}
+
+interface FlaShapeTweenTrackIndex {
+  readonly byOwner: ReadonlyMap<string, readonly FlaShapeTweenTrack[]>;
+  readonly byOwnerAndNode: ReadonlyMap<string, readonly FlaShapeTweenTrack[]>;
+}
+
+/**
+ * Indexes author Shape Tween tracks by timeline owner and by the same stable
+ * node identity the internal timeline uses. Tracks whose target no longer
+ * exists simply never match a node and stay inert.
+ */
+function indexFlaShapeTweenTracks(
+  tracks: readonly FlaShapeTweenTrack[] | undefined,
+): FlaShapeTweenTrackIndex {
+  const byOwner = new Map<string, FlaShapeTweenTrack[]>();
+  const byOwnerAndNode = new Map<string, FlaShapeTweenTrack[]>();
+  for (const track of tracks ?? []) {
+    const ownerKey = flaShapeTweenOwnerKey(
+      track.target.ownerKind,
+      track.target.ownerSymbolDefId ?? null,
+    );
+    const ownerTracks = byOwner.get(ownerKey);
+    if (ownerTracks) ownerTracks.push(track);
+    else byOwner.set(ownerKey, [track]);
+    const nodeKey = `${ownerKey}\u0000${track.target.nodeTrackId}`;
+    const nodeTracks = byOwnerAndNode.get(nodeKey);
+    if (nodeTracks) nodeTracks.push(track);
+    else byOwnerAndNode.set(nodeKey, [track]);
+  }
+  return { byOwner, byOwnerAndNode };
+}
+
+/**
+ * Recover the authored node override that a tween was created from when the
+ * currently evaluated source frame does not carry one. The stable target
+ * identity still decides which node the tween applies to; this only supplies
+ * the surrounding override content (region order, residue strokes, defs).
+ */
+function resolveFlaShapeTweenSourceOverride(
+  definition: FlaGraphicDefinition,
+  mode: FlaGraphicEvaluationMode,
+  tracks: readonly FlaShapeTweenTrack[],
+  instanceShapeOverrides?: FlaGraphicShapeOverrides,
+): FlaGraphicShapeNodeOverride | undefined {
+  for (const track of tracks) {
+    const frameKey = String(track.target.sourceFrameOrdinal);
+    const pathKey = flaGraphicInstanceNodePathKey(track.target.sourceNodePath);
+    if (mode === 'instance') {
+      const instanceEntry = instanceShapeOverrides?.[frameKey]?.[pathKey];
+      if (instanceEntry) return instanceEntry;
+    }
+    const sharedEntry = definition.flaGraphicSharedShapeOverrides?.[frameKey]?.[pathKey];
+    if (sharedEntry) return sharedEntry;
+  }
+  return undefined;
+}
+
+/**
+ * Replaces the targeted region's contours with the evaluated shape-tween
+ * geometry. Pure: works on a clone, never mutates the structure's stored
+ * geometry. Unsupported / stale targets degrade to the authored override.
+ */
+function applyFlaShapeTweensToShapeNodeOverride(input: {
+  readonly nodeOverride: FlaGraphicShapeNodeOverride | undefined;
+  readonly fallbackSourceOverride: FlaGraphicShapeNodeOverride | undefined;
+  readonly tracks: readonly FlaShapeTweenTrack[];
+  readonly internalTimeMs: number;
+}): FlaGraphicShapeNodeOverride | undefined {
+  if (input.tracks.length === 0) return input.nodeOverride;
+  const base = input.nodeOverride ?? input.fallbackSourceOverride;
+  if (!base) return input.nodeOverride;
+  let augmented: FlaGraphicShapeNodeOverride | undefined;
+  for (const track of input.tracks) {
+    const evaluation = evaluateFlaShapeTweenTrack(track, input.internalTimeMs);
+    if (!evaluation.ok) continue;
+    const current = augmented ?? base;
+    const regionIndex = current.regions.findIndex(
+      (region) => region.regionRef === track.target.regionRef,
+    );
+    const extractedIndex =
+      regionIndex < 0
+        ? current.extractedRegions.findIndex(
+            (entry) => entry.regionRef === track.target.regionRef,
+          )
+        : -1;
+    if (regionIndex < 0 && extractedIndex < 0) continue;
+    if (!augmented) augmented = cloneFlaGraphicShapeNodeOverride(current);
+    if (regionIndex >= 0) {
+      augmented.regions[regionIndex] = withFlaShapeTweenContours(
+        augmented.regions[regionIndex]!,
+        evaluation.contours,
+      );
+    } else {
+      const entry = augmented.extractedRegions[extractedIndex]!;
+      entry.region = withFlaShapeTweenContours(entry.region, evaluation.contours);
+    }
+  }
+  return augmented ?? input.nodeOverride;
+}
+
+/**
+ * True when an authored Shape Tween on some other source frame can read this
+ * instance's Shape overrides, so the cached visual depends on instance data that
+ * the currently displayed authored frame does not carry. Without this partition,
+ * two instances sharing a Definition but overriding different tween source
+ * frames would reuse each other's cached tween geometry.
+ */
+function shapeTweenReadsOtherFrameInstanceOverrides(
+  definition: FlaGraphicDefinition,
+  currentFrameKey: string,
+  instanceShapeOverrides: FlaGraphicShapeOverrides | undefined,
+): boolean {
+  const tracks = definition.structure?.shapeTweenTracks;
+  if (!tracks || tracks.length === 0 || !instanceShapeOverrides) return false;
+  for (const track of tracks) {
+    const sourceFrameKey = String(track.target.sourceFrameOrdinal);
+    if (sourceFrameKey === currentFrameKey) continue;
+    const frameOverrides = instanceShapeOverrides[sourceFrameKey];
+    if (frameOverrides && Object.keys(frameOverrides).length > 0) return true;
+  }
+  return false;
+}
+
 function visualCacheFor(input: {
   readonly definition: FlaGraphicDefinition;
   readonly frameOrdinal: number;
@@ -321,7 +465,14 @@ function visualCacheFor(input: {
     return cache;
   }
 
-  const frameKey = String(frameOrdinal);
+  // Instance overrides are authored against the exposed authored keyframe, so a
+  // held exposure cell must select its cache bucket with the same ordinal the
+  // evaluator reads. Without this, two instances showing different overrides on
+  // the same held cell could reuse each other's cached visual.
+  const authoredFrameOrdinal = definition.structure
+    ? resolveFlaGraphicStructureFrame(definition.structure, frameOrdinal)?.authoredOrdinal ?? frameOrdinal
+    : frameOrdinal;
+  const frameKey = String(authoredFrameOrdinal);
   const frameTransformOverrides = instanceTransformOverrides?.[frameKey];
   const frameShapeOverrides = instanceShapeOverrides?.[frameKey];
   const hasTransformOverrides = Boolean(
@@ -330,7 +481,14 @@ function visualCacheFor(input: {
   const hasShapeOverrides = Boolean(
     frameShapeOverrides && Object.keys(frameShapeOverrides).length > 0,
   );
-  if (!hasTransformOverrides && !hasShapeOverrides) {
+  // A Shape Tween authored on another frame reads that source frame's instance
+  // Shape override, so the whole instance shape-override map is the partition.
+  const tweenReadsOtherFrameOverride = shapeTweenReadsOtherFrameInstanceOverrides(
+    definition,
+    frameKey,
+    instanceShapeOverrides,
+  );
+  if (!hasTransformOverrides && !hasShapeOverrides && !tweenReadsOtherFrameOverride) {
     let cache = instanceAuthoredVisualCache.get(definition);
     if (!cache) {
       cache = new Map();
@@ -344,7 +502,7 @@ function visualCacheFor(input: {
       ? instanceTransformOverrides
       : EMPTY_TRANSFORM_OVERRIDES;
   const sKey =
-    hasShapeOverrides && instanceShapeOverrides
+    (hasShapeOverrides || tweenReadsOtherFrameOverride) && instanceShapeOverrides
       ? instanceShapeOverrides
       : EMPTY_SHAPE_OVERRIDES;
 
@@ -482,15 +640,25 @@ export function evaluateFlaGraphicVisual(input: {
   if (cachedVisual) return cachedVisual;
   const frame = definition.frames.find((candidate) => candidate.ordinal === frameOrdinal);
   if (!frame) return null;
-  const structureFrame = definition.structure?.frames.find(
-    (candidate) => candidate.ordinal === frameOrdinal,
-  ) ?? null;
-  const resourceAssetIds = new Set<string>(structureFrame ? [] : [frame.assetId]);
+  // Exposure editing is expressed as structure frames: a held cell resolves to
+  // the earlier authored keyframe that is exposed, so playback, seek, Stage,
+  // Preview and Export all read the same authored content. Structures without
+  // hold markers (every source-backed structure) resolve to their own ordinal.
+  const resolvedStructureFrame = definition.structure
+    ? resolveFlaGraphicStructureFrame(definition.structure, frameOrdinal)
+    : null;
+  const structureFrame = resolvedStructureFrame?.frame ?? null;
+  const authoredFrameOrdinal = resolvedStructureFrame?.authoredOrdinal ?? frameOrdinal;
+  // A native Definition frame has no baked media asset; it renders from its structure.
+  const frameAssetId = frame.assetId ?? '';
+  const resourceAssetIds = new Set<string>(
+    structureFrame || !frame.assetId ? [] : [frame.assetId],
+  );
   if (!structureFrame) {
     const visual: EvaluatedFlaGraphicVisual = {
       mode,
       frameOrdinal,
-      frameAssetId: frame.assetId,
+      frameAssetId,
       ...(instanceColor ? { instanceColor } : {}),
       frameOffset: frame.offset,
       frameViewport: frame.sourceViewport,
@@ -516,6 +684,7 @@ export function evaluateFlaGraphicVisual(input: {
     ? input.instanceShapeOverrides
     : undefined;
   const structure = definition.structure!;
+  const shapeTweenIndex = indexFlaShapeTweenTracks(structure.shapeTweenTracks);
   interface TimelineEvaluationContext {
     readonly ownerKind: 'frame' | 'symbol';
     readonly ownerSymbolDefId: string | null;
@@ -535,30 +704,39 @@ export function evaluateFlaGraphicVisual(input: {
       .sort((left, right) => left.drawOrder - right.drawOrder)
       .flatMap((node): readonly EvaluatedFlaGraphicNode[] => {
         const path = [...parentPath, node.id];
-        const replacement = textOverrides?.[String(frameOrdinal)]?.[flaGraphicInstanceNodePathKey(path)];
+        const nodeTrackId = isFlaGraphicNodeTransformable(node)
+          ? resolveFlaGraphicStableNodeIdentity(
+              node,
+              structure,
+              timelineContext.ownerKind,
+              timelineContext.ownerSymbolDefId,
+              timelineContext.containerRootNodes,
+              authoredFrameOrdinal,
+            )
+          : null;
+        const shapeTweenTracksForNode = nodeTrackId
+          ? shapeTweenIndex.byOwnerAndNode.get(
+              `${flaShapeTweenOwnerKey(
+                timelineContext.ownerKind,
+                timelineContext.ownerSymbolDefId,
+              )}\u0000${nodeTrackId}`,
+            ) ?? EMPTY_SHAPE_TWEEN_TRACKS
+          : EMPTY_SHAPE_TWEEN_TRACKS;
+        const replacement = textOverrides?.[String(authoredFrameOrdinal)]?.[flaGraphicInstanceNodePathKey(path)];
         const editableText = node.type === 'opaque' && node.opaqueKind === 'text' ? node.editableText : undefined;
         const staticText = editableText && replacement !== undefined
           ? { ...editableText, runs: [{ ...editableText.runs[0], characters: replacement }] }
           : undefined;
         let authoredLocalTransform = node.localTransform;
-        if (isFlaGraphicNodeTransformable(node) && timelineContext.timeline) {
-          const trackId = resolveFlaGraphicStableNodeIdentity(
-            node,
-            structure,
-            timelineContext.ownerKind,
-            timelineContext.ownerSymbolDefId,
-            timelineContext.containerRootNodes,
+        if (nodeTrackId && timelineContext.timeline) {
+          const track = timelineContext.timeline.tracks.find(
+            (candidate) => candidate.trackId === nodeTrackId,
           );
-          if (trackId) {
-            const track = timelineContext.timeline.tracks.find(
-              (candidate) => candidate.trackId === trackId,
-            );
-            const evaluatedMatrix = track
-              ? evaluateFlaGraphicTrackAtTime(track, timelineContext.internalTimeMs)
-              : null;
-            if (evaluatedMatrix) {
-              authoredLocalTransform = evaluatedMatrix;
-            }
+          const evaluatedMatrix = track
+            ? evaluateFlaGraphicTrackAtTime(track, timelineContext.internalTimeMs)
+            : null;
+          if (evaluatedMatrix) {
+            authoredLocalTransform = evaluatedMatrix;
           }
         }
         if (
@@ -579,7 +757,7 @@ export function evaluateFlaGraphicVisual(input: {
         const authoredOrOverrideTransform = isFlaGraphicNodeTransformable(node)
           ? getFlaGraphicInstanceTransformOverride(
               overrides,
-              frameOrdinal,
+              authoredFrameOrdinal,
               path,
             ) ?? authoredLocalTransform
           : authoredLocalTransform;
@@ -590,9 +768,40 @@ export function evaluateFlaGraphicVisual(input: {
           node,
           authoredOrOverrideTransform,
         );
+        const authoredShapeNodeOverride =
+          node.type === 'opaque'
+            ? resolveEffectiveShapeNodeOverride(
+                definition,
+                mode,
+                authoredFrameOrdinal,
+                path,
+                instanceShapeOverrides,
+              )
+            : undefined;
+        const authoredExcludedRegionRefs = authoredShapeNodeOverride
+          ? new Set(authoredShapeNodeOverride.excludedRegionRefs)
+          : null;
+        const authoredRemainingRegions = authoredShapeNodeOverride
+          ? authoredShapeNodeOverride.regions.filter(
+              (region) => !authoredExcludedRegionRefs?.has(region.regionRef),
+            )
+          : null;
+        /**
+         * Authored-native Shapes draw from their editable vector regions, so a
+         * frame image fallback is not required for them. Imported opaque nodes
+         * keep the exact previous fallback requirement.
+         */
+        const authoredNativeVectorContent = Boolean(
+          node.type === 'opaque' &&
+            node.authored === 'native' &&
+            authoredRemainingRegions &&
+            (authoredRemainingRegions.length > 0 || (authoredShapeNodeOverride?.residueStrokes?.length ?? 0) > 0),
+        );
         const worldTransform = compose(parentEffectiveWorld, localTransform);
-        const fallbackReady = node.type !== 'opaque' || safeOpaqueFallback(node);
-        const clipResult = node.type === 'opaque' && fallbackReady && node.fallbackScope === 'frame-crop'
+        const fallbackReady = node.type !== 'opaque' ||
+          safeOpaqueFallback(node) ||
+          authoredNativeVectorContent;
+        const clipResult = node.type === 'opaque' && safeOpaqueFallback(node) && node.fallbackScope === 'frame-crop'
           // Safe opaque fallback images already contain their authored mask.
           ? { clips: [], valid: true }
           : evaluateClipPaths(node, parentAuthoredWorld, parentEffectiveWorld);
@@ -647,15 +856,19 @@ export function evaluateFlaGraphicVisual(input: {
           );
         }
         const shapeNodeOverride =
-          node.type === 'opaque'
-            ? resolveEffectiveShapeNodeOverride(
-                definition,
-                mode,
-                frameOrdinal,
-                path,
-                instanceShapeOverrides,
-              )
-            : undefined;
+          node.type === 'opaque' && shapeTweenTracksForNode.length > 0
+            ? applyFlaShapeTweensToShapeNodeOverride({
+                nodeOverride: authoredShapeNodeOverride,
+                fallbackSourceOverride: resolveFlaShapeTweenSourceOverride(
+                  definition,
+                  mode,
+                  shapeTweenTracksForNode,
+                  instanceShapeOverrides,
+                ),
+                tracks: shapeTweenTracksForNode,
+                internalTimeMs: timelineContext.internalTimeMs,
+              })
+            : authoredShapeNodeOverride;
         const excludedRegionRefs = shapeNodeOverride
           ? new Set(shapeNodeOverride.excludedRegionRefs)
           : null;
@@ -696,7 +909,7 @@ export function evaluateFlaGraphicVisual(input: {
             const entryTransform =
               getFlaGraphicInstanceTransformOverride(
                 overrides,
-                frameOrdinal,
+                authoredFrameOrdinal,
                 entryPath,
               ) ?? entry.localTransform;
             const entryLocalTransform =
@@ -771,7 +984,7 @@ export function evaluateFlaGraphicVisual(input: {
   const visual: EvaluatedFlaGraphicVisual = {
     mode,
     frameOrdinal,
-    frameAssetId: frame.assetId,
+    frameAssetId,
     ...(instanceColor ? { instanceColor } : {}),
     frameOffset: frame.offset,
     frameViewport: frame.sourceViewport,

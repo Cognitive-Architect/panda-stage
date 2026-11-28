@@ -10,7 +10,9 @@ import {
   evaluateFlaGraphicTrackAtTime,
   evaluateFlaGraphicVisual,
   evaluateShotAtTime,
+  resolveFlaGraphicInternalAuthoringState,
   resolveFlaGraphicStableNodeIdentity,
+  resolveFlaGraphicTimelineTarget,
   resolveLayerVisualParts,
   type FlaGraphicDefinition,
   type FlaGraphicStructure,
@@ -660,4 +662,370 @@ describe('FLA Graphic Internal Timeline Editing (E6)', () => {
       500,
     )!.tx).toBeCloseTo(60, 5);
   });
+});
+
+describe('FLA Graphic internal affine (skew/shear) transform keys (#1451)', () => {
+  const SHEAR_A: AffineMatrix2D = { a: 1, b: 0, c: 0.45, d: 1, tx: 12, ty: -8 };
+  const SHEAR_B: AffineMatrix2D = { a: 0.8, b: 0.35, c: -0.2, d: 1.1, tx: 60, ty: 30 };
+  const MIRRORED_SHEAR: AffineMatrix2D = { a: 1, b: 0, c: 0.2, d: -1, tx: -4, ty: 9 };
+  const MATRIX_KEYS = ['a', 'b', 'c', 'd', 'tx', 'ty'] as const;
+
+  const determinant = (matrix: AffineMatrix2D): number =>
+    matrix.a * matrix.d - matrix.b * matrix.c;
+
+  function expectMatrixFinite(matrix: AffineMatrix2D): void {
+    expect(MATRIX_KEYS.every((key) => Number.isFinite(matrix[key]))).toBe(true);
+  }
+
+  it('makes a losslessly decomposable shear node editable, keys it, reopens it, and reproduces the exact matrix', () => {
+    const { project: initial, shotId, layerAId, service } = e6Project();
+    const sheared = service.updateFlaGraphicSharedDefinitionTransform(
+      initial,
+      shotId,
+      layerAId,
+      0,
+      ['arm-bmp'],
+      SHEAR_A,
+    );
+    const shearedDefinition = sheared.animations[0] as FlaGraphicDefinition;
+    const target = resolveFlaGraphicTimelineTarget(
+      shearedDefinition.structure!,
+      0,
+      ['arm-bmp'],
+    );
+    expect(target?.trsSafe).toBe(false);
+    expect(target?.affineDecomposable).toBe(true);
+    expect(target?.interpolationSafe).toBe(true);
+    expect(target?.authoringCapability).toBe('editable');
+    const state = resolveFlaGraphicInternalAuthoringState({
+      structure: shearedDefinition.structure,
+      frameOrdinal: 0,
+      nodePath: ['arm-bmp'],
+      internalTimeMs: 0,
+      timelineAuthoringActive: true,
+    });
+    expect(state.canAddKeyframe).toBe(true);
+    expect(state.reason).toBe('no-key-readonly');
+
+    let project = service.addFlaGraphicTimelineKeyframe(
+      sheared,
+      shotId,
+      layerAId,
+      0,
+      ['arm-bmp'],
+      0,
+      'linear',
+    );
+    project = service.addFlaGraphicTimelineKeyframe(
+      project,
+      shotId,
+      layerAId,
+      0,
+      ['arm-bmp'],
+      1_000,
+      'linear',
+    );
+    project = service.updateFlaGraphicTimelineKeyframeTransform(
+      project,
+      shotId,
+      layerAId,
+      0,
+      ['arm-bmp'],
+      0,
+      SHEAR_A,
+    );
+    project = service.updateFlaGraphicTimelineKeyframeTransform(
+      project,
+      shotId,
+      layerAId,
+      0,
+      ['arm-bmp'],
+      1_000,
+      SHEAR_B,
+    );
+
+    const keyedDefinition = project.animations[0] as FlaGraphicDefinition;
+    const track = keyedDefinition.structure!.timeline!.tracks[0]!;
+    expect(track.keyframes).toHaveLength(2);
+    expect(
+      track.keyframes.some((keyframe) => keyframe.transform.skewXDeg !== undefined),
+    ).toBe(true);
+
+    const evaluateAt = (
+      definition: FlaGraphicDefinition,
+      timeMs: number,
+    ): AffineMatrix2D =>
+      findEvalTransform(
+        evaluateFlaGraphicVisual({
+          definition,
+          frameOrdinal: 0,
+          mode: 'definition',
+          internalTimeMs: timeMs,
+        }),
+        ['arm-bmp'],
+      )!;
+
+    // Endpoints are exact (decompose -> key -> compose round-trip).
+    for (const [timeMs, expected] of [
+      [0, SHEAR_A],
+      [1_000, SHEAR_B],
+    ] as const) {
+      const evaluated = evaluateAt(keyedDefinition, timeMs);
+      for (const key of MATRIX_KEYS) {
+        expect(evaluated[key]).toBeCloseTo(expected[key], 9);
+      }
+    }
+    // Mid-frame is finite and keeps the determinant sign (no unexpected flip).
+    const mid = evaluateAt(keyedDefinition, 500);
+    expectMatrixFinite(mid);
+    expect(Math.sign(determinant(mid))).toBe(Math.sign(determinant(SHEAR_A)));
+
+    // Save -> reopen through the strict Project schema -> evaluate identically.
+    const reopened = ProjectSchema.parse(JSON.parse(JSON.stringify(project)));
+    const reopenedDefinition = reopened.animations[0] as FlaGraphicDefinition;
+    const reopenedTrack = reopenedDefinition.structure!.timeline!.tracks[0]!;
+    expect(
+      reopenedTrack.keyframes.some(
+        (keyframe) => keyframe.transform.skewXDeg !== undefined,
+      ),
+    ).toBe(true);
+    for (const [timeMs, expected] of [
+      [0, SHEAR_A],
+      [1_000, SHEAR_B],
+    ] as const) {
+      const evaluated = evaluateAt(reopenedDefinition, timeMs);
+      for (const key of MATRIX_KEYS) {
+        expect(evaluated[key]).toBeCloseTo(expected[key], 9);
+      }
+    }
+  });
+
+  it('decomposes and keyframes a mirrored + sheared matrix exactly without flipping the mid-frame', () => {
+    const { project: initial, shotId, layerAId, service } = e6Project();
+    const mirrored = service.updateFlaGraphicSharedDefinitionTransform(
+      initial,
+      shotId,
+      layerAId,
+      0,
+      ['arm-bmp'],
+      MIRRORED_SHEAR,
+    );
+    const target = resolveFlaGraphicTimelineTarget(
+      (mirrored.animations[0] as FlaGraphicDefinition).structure!,
+      0,
+      ['arm-bmp'],
+    );
+    expect(target?.trsSafe).toBe(false);
+    expect(target?.affineDecomposable).toBe(true);
+    expect(target?.authoringCapability).toBe('editable');
+
+    let project = service.addFlaGraphicTimelineKeyframe(
+      mirrored,
+      shotId,
+      layerAId,
+      0,
+      ['arm-bmp'],
+      0,
+      'linear',
+    );
+    project = service.addFlaGraphicTimelineKeyframe(
+      project,
+      shotId,
+      layerAId,
+      0,
+      ['arm-bmp'],
+      1_000,
+      'linear',
+    );
+    // A mirrored key is legal; only a sign flip *between* keys is refused.
+    project = service.updateFlaGraphicTimelineKeyframeTransform(
+      project,
+      shotId,
+      layerAId,
+      0,
+      ['arm-bmp'],
+      1_000,
+      { ...MIRRORED_SHEAR, tx: 80, ty: 40, c: -0.35, a: 0.9 },
+    );
+    const definition = project.animations[0] as FlaGraphicDefinition;
+    const mid = findEvalTransform(
+      evaluateFlaGraphicVisual({
+        definition,
+        frameOrdinal: 0,
+        mode: 'definition',
+        internalTimeMs: 500,
+      }),
+      ['arm-bmp'],
+    )!;
+    expectMatrixFinite(mid);
+    expect(Math.sign(determinant(mid))).toBe(-1);
+  });
+
+  it('interpolates 170° -> -170° the short way at evaluation time with exact endpoints', () => {
+    const { project: initial, shotId, layerAId, service } = e6Project();
+    let project = service.addFlaGraphicTimelineKeyframe(
+      initial,
+      shotId,
+      layerAId,
+      0,
+      ['arm-bmp'],
+      0,
+      'linear',
+    );
+    project = service.addFlaGraphicTimelineKeyframe(
+      project,
+      shotId,
+      layerAId,
+      0,
+      ['arm-bmp'],
+      1_000,
+      'linear',
+    );
+    project = service.updateFlaGraphicTimelineKeyframeTransform(
+      project,
+      shotId,
+      layerAId,
+      0,
+      ['arm-bmp'],
+      0,
+      composeAffineMatrix({ tx: 0, ty: 0, rotationDeg: 170, scaleX: 1, scaleY: 1 }),
+    );
+    project = service.updateFlaGraphicTimelineKeyframeTransform(
+      project,
+      shotId,
+      layerAId,
+      0,
+      ['arm-bmp'],
+      1_000,
+      composeAffineMatrix({ tx: 0, ty: 0, rotationDeg: -170, scaleX: 1, scaleY: 1 }),
+    );
+    const definition = project.animations[0] as FlaGraphicDefinition;
+    const evaluateAt = (timeMs: number): AffineMatrix2D =>
+      findEvalTransform(
+        evaluateFlaGraphicVisual({
+          definition,
+          frameOrdinal: 0,
+          mode: 'definition',
+          internalTimeMs: timeMs,
+        }),
+        ['arm-bmp'],
+      )!;
+    expect(decomposeAffineMatrix(evaluateAt(0)).rotationDeg).toBeCloseTo(170, 6);
+    expect(decomposeAffineMatrix(evaluateAt(1_000)).rotationDeg).toBeCloseTo(-170, 6);
+    const mid = decomposeAffineMatrix(evaluateAt(500));
+    expect(Math.abs(mid.rotationDeg)).toBeCloseTo(180, 6);
+    expect(mid.scaleX).toBeCloseTo(1, 6);
+  });
+
+  it('keeps a determinant sign-flip track locally read-only and evaluates persisted legacy pairs finitely', () => {
+    const { project: initial, shotId, layerAId, service } = e6Project();
+    const animation = initial.animations[0] as FlaGraphicDefinition;
+    const structure = FlaGraphicStructureSchema.parse({
+      ...animation.structure,
+      timeline: {
+        tracks: [
+          {
+            trackId: 'addr:Hero/Layer1/arm',
+            keyframes: [
+              {
+                timeMs: 0,
+                transform: { tx: 10, ty: 20, rotationDeg: 0, scaleX: 1, scaleY: 1 },
+                easing: 'linear',
+              },
+              {
+                timeMs: 1_000,
+                transform: { tx: 10, ty: 20, rotationDeg: 0, scaleX: 1, scaleY: -1 },
+                easing: 'linear',
+              },
+            ],
+          },
+        ],
+      },
+    });
+    const hazardProject = ProjectSchema.parse({
+      ...initial,
+      animations: [{ ...animation, structure }],
+    });
+    const target = resolveFlaGraphicTimelineTarget(structure, 0, ['arm-bmp']);
+    expect(target?.interpolationSafe).toBe(false);
+    expect(target?.authoringCapability).toBe('readonly-affine-unsafe');
+    const state = resolveFlaGraphicInternalAuthoringState({
+      structure,
+      frameOrdinal: 0,
+      nodePath: ['arm-bmp'],
+      internalTimeMs: 500,
+      timelineAuthoringActive: true,
+    });
+    expect(state.authoringCapability).toBe('readonly-affine-unsafe');
+    expect(state.reason).toBe('affine-unsafe-readonly');
+    expect(state.canEditTransform).toBe(false);
+    expect(state.canAddKeyframe).toBe(false);
+
+    const editor = new EditorProjectStore();
+    editor.open('D:\\PandaStage-Acceptance\\e6-signflip.pandastage', hazardProject);
+    const store = new LayerStore(
+      editor,
+      { getCurrentShotId: () => shotId },
+      service,
+    );
+    expect(() =>
+      store.addFlaGraphicTimelineKeyframe(layerAId, 0, ['arm-bmp'], 500, 'linear'),
+    ).toThrow();
+    expect(editor.history.getSnapshot().undoCount).toBe(0);
+
+    // Persisted legacy pairs keep the historical interpolation (finite collapse),
+    // so pre-existing projects evaluate byte-identically.
+    const mid = evaluateFlaGraphicTrackAtTime(
+      structure.timeline!.tracks[0]!,
+      500,
+    )!;
+    expectMatrixFinite(mid);
+    expect(mid.a).toBeCloseTo(1, 9);
+    expect(mid.d).toBeCloseTo(0, 9);
+  });
+
+  it('records exactly one History entry per affine key edit and undo restores the previous key', () => {
+    const { project: initial, shotId, layerAId, service } = e6Project();
+    const sheared = service.updateFlaGraphicSharedDefinitionTransform(
+      initial,
+      shotId,
+      layerAId,
+      0,
+      ['arm-bmp'],
+      SHEAR_A,
+    );
+    const editor = new EditorProjectStore();
+    editor.open('D:\\PandaStage-Acceptance\\e6-affine-undo.pandastage', sheared);
+    const store = new LayerStore(
+      editor,
+      { getCurrentShotId: () => shotId },
+      service,
+    );
+    const evaluateSnapshotAtZero = (): AffineMatrix2D =>
+      findEvalTransform(
+        evaluateFlaGraphicVisual({
+          definition: editor.getSnapshot()!.project.animations[0] as FlaGraphicDefinition,
+          frameOrdinal: 0,
+          mode: 'definition',
+          internalTimeMs: 0,
+        }),
+        ['arm-bmp'],
+      )!;
+    store.addFlaGraphicTimelineKeyframe(layerAId, 0, ['arm-bmp'], 0, 'linear');
+    expect(editor.history.getSnapshot().undoCount).toBe(1);
+    for (const key of MATRIX_KEYS) {
+      expect(evaluateSnapshotAtZero()[key]).toBeCloseTo(SHEAR_A[key], 9);
+    }
+    store.updateFlaGraphicTimelineKeyframeTransform(layerAId, 0, ['arm-bmp'], 0, SHEAR_B);
+    expect(editor.history.getSnapshot().undoCount).toBe(2);
+    for (const key of MATRIX_KEYS) {
+      expect(evaluateSnapshotAtZero()[key]).toBeCloseTo(SHEAR_B[key], 9);
+    }
+    expect(editor.undo()).toBe(true);
+    expect(editor.history.getSnapshot().undoCount).toBe(1);
+    for (const key of MATRIX_KEYS) {
+      expect(evaluateSnapshotAtZero()[key]).toBeCloseTo(SHEAR_A[key], 9);
+    }
+  });
+
 });

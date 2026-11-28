@@ -13,9 +13,13 @@ import {
   upsertTargetKeyValues,
   type TargetRetimePolicy,
 } from '../animation-track-ops';
-import { createCharacterPartAnimationClip } from '../character-part-animation';
 import {
-  AnimationClipV0Schema,
+  characterFaceAndMouthPartIds,
+  createCharacterPartAnimationClip,
+} from '../character-part-animation';
+import { evaluateAnimationTrackAtTime } from '../evaluate-animation-core';
+import {
+  CharacterPoseAnimationClipV0Schema,
   AnimationInterpolationSchema,
   type AnimationClipV0,
   type AnimationInterpolation,
@@ -24,6 +28,11 @@ import {
 } from '../models/animationCore';
 import { ProjectSchema, type Project } from '../models/project';
 import { CharacterService } from './CharacterService';
+import {
+  resolveCharacterActionInstanceEditForInput,
+  writeCharacterActionInstanceValues,
+  type CharacterActionInstanceEdit,
+} from './CharacterActionCopyService';
 import {
   characterPartSourceBounds,
   characterPartTransformFromStaticAdjustment,
@@ -44,6 +53,11 @@ export const CHARACTER_MOTION_PROPERTIES: readonly AnimationProperty[] = [
 export type CharacterMotionValues = Record<AnimationProperty, number>;
 export interface CharacterMotionInput {
   shotId: string; layerId: string; partId: string; timeMs: number; autoKey: boolean;
+  /**
+   * Optional explicit instance-copy edit context. When omitted the service
+   * resolves the active instance-scoped action copy from the project itself.
+   */
+  actionEdit?: CharacterActionInstanceEdit;
 }
 export interface CharacterMotionKeyTargetInput {
   shotId: string; layerId: string; partId: string;
@@ -106,11 +120,23 @@ export function characterMotionValues(project: Project, input: CharacterMotionIn
       'transform.scaleX': adjustment?.scale ?? 1, 'transform.scaleY': adjustment?.scale ?? 1,
     };
   }
-  return evaluateTargetMotionValues(
+  const values = evaluateTargetMotionValues(
     (layer.animationClip?.version === 1 ? layer.animationClip.tracks : []),
     partTargetRef(layer.id, input.partId),
     input.timeMs,
   );
+  // Instance-scoped copies are the only edit target inside an action segment:
+  // their tracks are appended after base values by the shared evaluator.
+  // Protected face/mouth Parts are excluded exactly like layered-action playback.
+  const actionEdit = resolveCharacterActionInstanceEditForInput(project, input);
+  if (!actionEdit || characterFaceAndMouthPartIds(character).has(input.partId)) {
+    return values;
+  }
+  for (const track of actionEdit.action.tracks) {
+    if (track.partId !== input.partId) continue;
+    values[track.property] = evaluateAnimationTrackAtTime(track, actionEdit.localTimeMs);
+  }
+  return values;
 }
 
 /** UI aggregation only: no Composite Key data is ever persisted. */
@@ -129,6 +155,7 @@ export function hasAuthoredCharacterPartMotion(
   return Boolean(
     layer?.animationClip?.version === 1 && layer.animationClip.tracks.some(
       (track) =>
+        track.target.kind === 'character-part' &&
         track.target.partId === partId &&
         (track.keys.length > 1 ||
           track.keys.some(
@@ -174,7 +201,7 @@ function replaceLayerAnimationClip(
   layerId: string,
   clip: AnimationClipV0,
 ): Project {
-  const validatedClip = AnimationClipV0Schema.parse(clip);
+  const validatedClip = CharacterPoseAnimationClipV0Schema.parse(clip);
   return ProjectSchema.parse({
     ...project,
     shots: project.shots.map((shot) =>
@@ -202,10 +229,12 @@ export class CharacterMotionService {
     const { shot, layer, character } = context(project, input);
     if (layer.locked) throw new Error('角色图层已锁定。');
     if (!isValidFrameTime(input.timeMs) || input.timeMs > shot.durationMs) throw new Error('请选择镜头内的有效帧。');
+    const actionEdit = resolveCharacterActionInstanceEditForInput(project, input);
     const current = characterMotionValues(project, input);
     const properties = (Object.keys(changes) as AnimationProperty[]).filter(property => changes[property] !== current[property]);
     if (!properties.length) return project;
     if (!input.autoKey) {
+      if (actionEdit) throw new Error('当前动作段使用独立副本，请开启自动关键帧后再调整姿势。');
       const part = character.parts.find(p => p.partId === input.partId);
       if (!part) throw new Error('角色默认姿势中已没有此部件。');
       const values = { ...current, ...changes };
@@ -222,6 +251,16 @@ export class CharacterMotionService {
         sourceRestTransform, staticAdjustment: adjustment,
         restTransform: characterPartTransformFromStaticAdjustment(character.sourceRootTransform, sourceRestTransform, bounds, adjustment),
       });
+    }
+    if (actionEdit) {
+      const writable: Partial<Record<AnimationProperty, number>> = {};
+      for (const property of properties) writable[property] = changes[property];
+      return writeCharacterActionInstanceValues(
+        project,
+        actionEdit,
+        input.partId,
+        writable,
+      );
     }
     const clip = createCharacterPartAnimationClip(project, shot.id, layer.id);
     const basis = clip.targetBases.find(b => b.target.partId === input.partId);

@@ -9,6 +9,7 @@ import {
   FLA_GRAPHIC_STRUCTURE_MAX_NODES,
   FlaStructureMatrixV1Schema,
   isFlaGraphicNodeTransformable,
+  resolveFlaGraphicStructureFrame,
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicStructure,
   type FlaGraphicStructureNode,
@@ -142,7 +143,7 @@ export function findFlaGraphicStructureNodeAtPath(
   nodePath: readonly string[],
 ): FlaGraphicStructureNode | null {
   if (nodePath.length === 0) return null;
-  const frame = structure.frames.find((candidate) => candidate.ordinal === frameOrdinal);
+  const frame = resolveFlaGraphicStructureFrame(structure, frameOrdinal)?.frame;
   if (!frame) return null;
   let nodes: readonly FlaGraphicStructureNode[] = frame.layers.flatMap(
     (layer) => layer.nodes,
@@ -181,7 +182,10 @@ function updateNodeTransformInList(
   if (index < 0) return null;
   const target = nodes[index]!;
   if (rest.length === 0) {
-    if (target.type === 'opaque') return null;
+    // Imported opaque nodes keep their display in a fallback SVG and are never
+    // authored through the structure; authored-native shape nodes own their
+    // vector regions and are the only opaque nodes whose transform lives here.
+    if (target.type === 'opaque' && target.authored !== 'native') return null;
     if (matricesEqual(target.localTransform, localTransform)) return null;
     const nextNodes = [...nodes];
     nextNodes[index] = { ...target, localTransform: { ...localTransform } };
@@ -226,8 +230,12 @@ export function updateFlaGraphicStructureAuthoredTransform(
   ) {
     return structure;
   }
+  // A held exposure cell edits the authored keyframe it exposes; an ordinary
+  // frame resolves to itself, so imported shared edits stay unchanged.
+  const resolved = resolveFlaGraphicStructureFrame(structure, frameOrdinal);
+  if (!resolved) return structure;
   const frameIndex = structure.frames.findIndex(
-    (candidate) => candidate.ordinal === frameOrdinal,
+    (candidate) => candidate.ordinal === resolved.authoredOrdinal,
   );
   if (frameIndex < 0) return structure;
   const frame = structure.frames[frameIndex]!;

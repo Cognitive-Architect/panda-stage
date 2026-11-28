@@ -3,6 +3,11 @@ import { multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine
 import { FlaSupportedBlendModeSchema, type FlaSupportedBlendMode } from '../../shared/fla-blend-mode';
 import { FlaRgbaTransformSchema, type FlaRgbaTransform } from '../../shared/fla-instance-color';
 import { FlaGraphicInternalTimelineV1Schema } from './flaGraphicTimeline';
+import {
+  FLA_SHAPE_TWEEN_MAX_TRACKS,
+  FlaShapeTweenTrackSchema,
+  flaShapeTweenTargetKey,
+} from './flaShapeTween';
 import { FlaGraphicEditableTextSchema, type FlaGraphicEditableText } from './flaGraphicInstanceText';
 
 /**
@@ -18,6 +23,12 @@ export const FLA_GRAPHIC_STRUCTURE_MAX_DEPTH = 64;
 export const FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES = 8 * 1024 * 1024;
 export const FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH = 512 * 1024;
 export const FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATHS_PER_SHAPE = 256;
+/** Persisted author identity-capability mapping keys are container + node scoped. */
+export const FLA_GRAPHIC_STRUCTURE_IDENTITY_CONTAINER_FRAME_PATTERN = /^frame:(?:0|[1-9]\d{0,2})$/u;
+export const FLA_GRAPHIC_STRUCTURE_IDENTITY_CONTAINER_SYMBOL_PATTERN = /^sym:[\s\S]{1,1000}$/u;
+/** Ids authored by the editor for a stable identity; never source-derived. */
+export const FLA_GRAPHIC_IDENTITY_ALIAS_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u;
+export const FLA_GRAPHIC_STRUCTURE_MAX_IDENTITY_ALIAS_ENTRIES = FLA_GRAPHIC_STRUCTURE_MAX_NODES;
 
 export const FLA_GRAPHIC_STRUCTURE_MASK_PATH_PATTERN = /^[MLQCZ0-9.,+\-\s]+$/u;
 const maskPathTextEncoder = new TextEncoder();
@@ -77,6 +88,12 @@ const NodeBase = {
   /** Stable node identity: the source address, or a deterministic path fallback. */
   id: SourceTextSchema,
   sourceAddress: SourceTextSchema.optional(),
+  /**
+   * Present when this node's content was authored inside Panda (native Graphic
+   * Definition) rather than captured from an external FLA archive. Imported
+   * nodes never carry it, so imported editability rules stay unchanged.
+   */
+  authored: z.literal('native').optional(),
   /** Index among siblings in authored back-to-front draw order. */
   drawOrder: z.number().int().nonnegative(),
   localTransform: FlaStructureMatrixV1Schema,
@@ -97,6 +114,7 @@ export type FlaGraphicStructureNode =
       type: 'group';
       id: string;
       sourceAddress?: string;
+      authored?: 'native';
       drawOrder: number;
       localTransform: z.infer<typeof FlaStructureMatrixV1Schema>;
       clipPaths?: z.infer<typeof FlaStructureClipPathV1Schema>[];
@@ -107,6 +125,7 @@ export type FlaGraphicStructureNode =
       type: 'symbol';
       id: string;
       sourceAddress?: string;
+      authored?: 'native';
       drawOrder: number;
       localTransform: z.infer<typeof FlaStructureMatrixV1Schema>;
       clipPaths?: z.infer<typeof FlaStructureClipPathV1Schema>[];
@@ -131,6 +150,7 @@ export type FlaGraphicStructureNode =
       type: 'bitmap';
       id: string;
       sourceAddress?: string;
+      authored?: 'native';
       drawOrder: number;
       localTransform: z.infer<typeof FlaStructureMatrixV1Schema>;
       clipPaths?: z.infer<typeof FlaStructureClipPathV1Schema>[];
@@ -145,6 +165,7 @@ export type FlaGraphicStructureNode =
       type: 'opaque';
       id: string;
       sourceAddress?: string;
+      authored?: 'native';
       drawOrder: number;
       localTransform: z.infer<typeof FlaStructureMatrixV1Schema>;
       clipPaths?: z.infer<typeof FlaStructureClipPathV1Schema>[];
@@ -256,6 +277,14 @@ const FlaGraphicStructureFrameV1Schema = z
   .object({
     ordinal: z.number().int().nonnegative(),
     layers: z.array(FlaGraphicStructureLayerV1Schema).max(1_000),
+    /**
+     * Exposure hold marker (native Definition authoring only). When present this
+     * frame is a held exposure cell of the authored frame at that ordinal: it
+     * carries no layer content of its own and the evaluator resolves its
+     * content from the referenced authored frame. Additive optional data;
+     * source-backed structures never carry it, so imported timing is unchanged.
+     */
+    holdFromOrdinal: z.number().int().nonnegative().optional(),
   })
   .strict();
 
@@ -274,15 +303,100 @@ const FlaGraphicNestedSymbolDefinitionV1Schema = z
 
 export type FlaGraphicNestedSymbolDefinition = z.infer<typeof FlaGraphicNestedSymbolDefinitionSchema>;
 
+const FlaGraphicIdentityContainerKeySchema = z
+  .string()
+  .refine(
+    (key) =>
+      FLA_GRAPHIC_STRUCTURE_IDENTITY_CONTAINER_FRAME_PATTERN.test(key) ||
+      FLA_GRAPHIC_STRUCTURE_IDENTITY_CONTAINER_SYMBOL_PATTERN.test(key),
+    'Identity alias containers must be a frame ordinal or a shared Symbol definition.',
+  );
+
+export const FlaGraphicIdentityAliasIdSchema = z
+  .string()
+  .regex(FLA_GRAPHIC_IDENTITY_ALIAS_ID_PATTERN);
+
+/**
+ * Persisted author association for nodes whose cross-frame identity cannot be
+ * proven from the source (`addr:` / `sym:` / `node:`). Keys are scoped by the
+ * owning timeline container so a shared Symbol definition and a concrete frame
+ * never share aliases. An alias is only consulted when no proven identity
+ * exists, so it can never overwrite a source-proven identity.
+ */
+export const FlaGraphicNodeIdentityAliasesV1Schema = z
+  .record(
+    FlaGraphicIdentityContainerKeySchema,
+    z.record(SourceTextSchema, FlaGraphicIdentityAliasIdSchema),
+  )
+  .superRefine((aliases, context) => {
+    let entryCount = 0;
+    for (const [containerKey, assignments] of Object.entries(aliases)) {
+      const seenAliasIds = new Set<string>();
+      for (const [nodeId, aliasId] of Object.entries(assignments)) {
+        entryCount += 1;
+        if (seenAliasIds.has(aliasId)) {
+          context.addIssue({
+            code: 'custom',
+            path: [containerKey, nodeId],
+            message:
+              'Nodes in one Graphic identity container must not share an alias identity.',
+          });
+        }
+        seenAliasIds.add(aliasId);
+      }
+    }
+    if (entryCount > FLA_GRAPHIC_STRUCTURE_MAX_IDENTITY_ALIAS_ENTRIES) {
+      context.addIssue({
+        code: 'custom',
+        message: 'A Graphic structure cannot contain more identity aliases than nodes.',
+      });
+    }
+  });
+
+export type FlaGraphicNodeIdentityAliases = z.infer<
+  typeof FlaGraphicNodeIdentityAliasesV1Schema
+>;
+
 export const FlaGraphicStructureV1Schema = z
   .object({
     version: z.literal(1),
     symbolDefinitions: z.record(SourceTextSchema, FlaGraphicNestedSymbolDefinitionV1Schema).optional(),
     frames: z.array(FlaGraphicStructureFrameV1Schema).min(1).max(256),
     timeline: FlaGraphicInternalTimelineV1Schema.optional(),
+    /**
+     * Author-assigned stable identities for otherwise ambiguous nodes. Additive
+     * optional data: absent means every node follows the source-proven rules.
+     */
+    nodeIdentityAliases: FlaGraphicNodeIdentityAliasesV1Schema.optional(),
+    /** Author-created native Shape Tweens (#1457); additive so older files load unchanged. */
+    shapeTweenTracks: z
+      .array(FlaShapeTweenTrackSchema)
+      .max(FLA_SHAPE_TWEEN_MAX_TRACKS)
+      .optional(),
   })
   .strict()
   .superRefine((structure, context) => {
+    const seenTweenIds = new Set<string>();
+    const seenTweenTargets = new Set<string>();
+    for (const [tweenIndex, track] of (structure.shapeTweenTracks ?? []).entries()) {
+      if (seenTweenIds.has(track.tweenId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['shapeTweenTracks', tweenIndex, 'tweenId'],
+          message: 'Shape tween ids must be unique.',
+        });
+      }
+      seenTweenIds.add(track.tweenId);
+      const targetKey = flaShapeTweenTargetKey(track.target);
+      if (seenTweenTargets.has(targetKey)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['shapeTweenTracks', tweenIndex, 'target'],
+          message: 'One region can own only one shape tween.',
+        });
+      }
+      seenTweenTargets.add(targetKey);
+    }
     const seenIds = new Set<string>();
     let count = 0;
     let maskPathBytes = 0;
@@ -341,9 +455,36 @@ export const FlaGraphicStructureV1Schema = z
     for (const [defId, def] of Object.entries(structure.symbolDefinitions ?? {})) {
       walk(def.children, ['symbolDefinitions', defId, 'children'], 1);
     }
+    const authoredOrdinals = new Set(
+      structure.frames
+        .filter((frame) => frame.holdFromOrdinal === undefined)
+        .map((frame) => frame.ordinal),
+    );
     structure.frames.forEach((frame, frameIndex) => {
       if (frame.ordinal !== frameIndex) {
         context.addIssue({ code: 'custom', path: ['frames', frameIndex, 'ordinal'], message: 'Structure frame ordinals must be contiguous from zero.' });
+      }
+      if (frame.holdFromOrdinal !== undefined) {
+        if (frame.holdFromOrdinal >= frame.ordinal) {
+          context.addIssue({
+            code: 'custom',
+            path: ['frames', frameIndex, 'holdFromOrdinal'],
+            message: 'A held exposure frame must reference an earlier authored frame.',
+          });
+        } else if (!authoredOrdinals.has(frame.holdFromOrdinal)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['frames', frameIndex, 'holdFromOrdinal'],
+            message: 'A held exposure frame must reference an authored frame, not another hold.',
+          });
+        }
+        if (frame.layers.length > 0) {
+          context.addIssue({
+            code: 'custom',
+            path: ['frames', frameIndex, 'layers'],
+            message: 'A held exposure frame must not carry its own layer content.',
+          });
+        }
       }
       frame.layers.forEach((layer, layerIndex) =>
         walk(layer.nodes, ['frames', frameIndex, 'layers', layerIndex, 'nodes'], 1));
@@ -358,6 +499,7 @@ export const FlaGraphicStructureNodeSchema = FlaGraphicStructureNodeV1Schema;
 export const FlaGraphicStructureLayerSchema = FlaGraphicStructureLayerV1Schema;
 export const FlaGraphicStructureFrameSchema = FlaGraphicStructureFrameV1Schema;
 export const FlaGraphicNestedSymbolDefinitionSchema = FlaGraphicNestedSymbolDefinitionV1Schema;
+export const FlaGraphicNodeIdentityAliasesSchema = FlaGraphicNodeIdentityAliasesV1Schema;
 export const FlaGraphicStructureSchema = FlaGraphicStructureV1Schema;
 
 export interface ReconstructedFlaStructureNode {
@@ -385,6 +527,48 @@ export function resolveFlaGraphicSymbolChildren(
 }
 
 /**
+ * The authored frame that supplies content for an exposure cell, plus its
+ * authored ordinal. A held exposure frame (native authoring only) resolves to
+ * the authored frame it references; every ordinary frame resolves to itself, so
+ * source-backed structures keep their exact previous ordinal semantics.
+ */
+export interface ResolvedFlaGraphicStructureFrame {
+  readonly frame: FlaGraphicStructureFrame;
+  readonly authoredOrdinal: number;
+}
+
+/**
+ * Resolve one Definition frame ordinal to the authored frame that owns its
+ * content. Exposure hold markers are only persisted by native Definition
+ * authoring; their target is validated by the structure schema to be an earlier
+ * authored frame, so resolution is deterministic and never loops.
+ */
+export function resolveFlaGraphicStructureFrame(
+  structure: Pick<FlaGraphicStructure, 'frames'>,
+  frameOrdinal: number,
+): ResolvedFlaGraphicStructureFrame | null {
+  if (!Number.isSafeInteger(frameOrdinal) || frameOrdinal < 0) return null;
+  const direct = structure.frames.find((candidate) => candidate.ordinal === frameOrdinal);
+  if (!direct) return null;
+  if (direct.holdFromOrdinal === undefined) {
+    return { frame: direct, authoredOrdinal: direct.ordinal };
+  }
+  const authored = structure.frames.find(
+    (candidate) => candidate.ordinal === direct.holdFromOrdinal,
+  );
+  if (!authored || authored.holdFromOrdinal !== undefined) return null;
+  return { frame: authored, authoredOrdinal: authored.ordinal };
+}
+
+/** Authored content ordinal for an exposure cell; `null` when unresolvable. */
+export function resolveFlaGraphicAuthoredFrameOrdinal(
+  structure: Pick<FlaGraphicStructure, 'frames'>,
+  frameOrdinal: number,
+): number | null {
+  return resolveFlaGraphicStructureFrame(structure, frameOrdinal)?.authoredOrdinal ?? null;
+}
+
+/**
  * Read a persisted structure back as a flat, ordered (pre-order, back-to-front)
  * list with world matrices recomposed from the stored parent-local matrices.
  */
@@ -392,7 +576,7 @@ export function reconstructFlaGraphicStructure(
   structure: FlaGraphicStructure,
   frameOrdinal = 0,
 ): ReconstructedFlaStructureNode[] {
-  const frame = structure.frames.find((candidate) => candidate.ordinal === frameOrdinal);
+  const frame = resolveFlaGraphicStructureFrame(structure, frameOrdinal)?.frame;
   if (!frame) return [];
   const result: ReconstructedFlaStructureNode[] = [];
   const identity: AffineMatrix2D = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
@@ -429,6 +613,7 @@ function canonicalizeStructureNode(node: FlaGraphicStructureNode): unknown {
       ty: node.localTransform.ty,
     },
     ...(node.sourceAddress ? { sourceAddress: node.sourceAddress } : {}),
+    ...(node.authored ? { authored: node.authored } : {}),
     ...(node.clipPaths ? { clipPaths: node.clipPaths } : {}),
   };
   if (node.type === 'group') {
@@ -483,6 +668,11 @@ function canonicalizeStructureNode(node: FlaGraphicStructureNode): unknown {
  * project-bound storage IDs (such as image assetId and fallbackAssetId) and
  * transient runtime IDs so that identical authored definitions can be
  * compared and reused across different occurrences and commit runs.
+ *
+ * Author node-identity aliases are deliberately NOT part of this projection:
+ * they are post-import author metadata rather than a source-authored fact, so
+ * re-importing the same source must reuse the existing (aliased) definition
+ * instead of treating it as a different structure.
  */
 export function canonicalizeFlaGraphicStructure(structure: FlaGraphicStructure): unknown {
   const symbolDefinitions = structure.symbolDefinitions
@@ -506,12 +696,46 @@ export function canonicalizeFlaGraphicStructure(structure: FlaGraphicStructure):
     ...(symbolDefinitions ? { symbolDefinitions } : {}),
     frames: structure.frames.map((frame) => ({
       ordinal: frame.ordinal,
+      ...(frame.holdFromOrdinal !== undefined
+        ? { holdFromOrdinal: frame.holdFromOrdinal }
+        : {}),
       layers: frame.layers.map((layer) => ({
         name: layer.name,
         nodes: layer.nodes.map(canonicalizeStructureNode),
       })),
     })),
     ...(structure.timeline ? { timeline: structure.timeline } : {}),
+    ...(structure.shapeTweenTracks?.length
+      ? {
+          shapeTweenTracks: structure.shapeTweenTracks.map((track) => ({
+            tweenId: track.tweenId,
+            target: {
+              nodeTrackId: track.target.nodeTrackId,
+              ownerKind: track.target.ownerKind,
+              ...(track.target.ownerSymbolDefId
+                ? { ownerSymbolDefId: track.target.ownerSymbolDefId }
+                : {}),
+              regionRef: track.target.regionRef,
+              sourceFrameOrdinal: track.target.sourceFrameOrdinal,
+              sourceNodePath: [...track.target.sourceNodePath],
+            },
+            startTimeMs: track.startTimeMs,
+            endTimeMs: track.endTimeMs,
+            easing: track.easing,
+            from: track.from,
+            to: track.to,
+            ...(track.hints?.length
+              ? {
+                  hints: track.hints.map((hint) => ({
+                    hintId: hint.hintId,
+                    from: hint.from,
+                    to: hint.to,
+                  })),
+                }
+              : {}),
+          })),
+        }
+      : {}),
   };
 }
 
@@ -533,8 +757,10 @@ export function sameAuthoredStructure(
 }
 
 /**
- * Whether an `opaque` node is an isolated Shape SVG that can be safely moved,
- * rotated, and scaled as a whole block without touching sibling/frame-crop nodes.
+ * Whether an `opaque` node is an editable isolated Shape that can be safely
+ * moved, rotated, and scaled as a whole block without touching sibling/frame-crop
+ * nodes. Authored-native Shapes carry their vector regions in the Definition's
+ * shape overrides instead of a fallback SVG asset, so they qualify too.
  */
 export function isFlaGraphicEditableSubtreeShapeNode(
   node: FlaGraphicStructureNode,
@@ -543,7 +769,8 @@ export function isFlaGraphicEditableSubtreeShapeNode(
     node.type === 'opaque' &&
     node.opaqueKind === 'shape' &&
     node.fallbackScope === 'subtree' &&
-    Boolean(node.fallbackAssetId && node.fallbackViewBox)
+    Boolean(node.fallbackViewBox) &&
+    (node.authored === 'native' || Boolean(node.fallbackAssetId))
   );
 }
 

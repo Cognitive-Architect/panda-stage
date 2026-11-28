@@ -1,20 +1,19 @@
 import { useRef, useState, type PointerEvent } from 'react';
 import { PROJECT_HEIGHT, PROJECT_WIDTH } from '../../../domain';
 import { canvasStagePointer } from './canvasStagePointer';
-import type { CharacterArmAssembly } from './CharacterArmTool';
+import { characterArmChainLabels, type CharacterArmAssembly } from './CharacterArmTool';
 import './character-arm-assembly.css';
 
-const PART_NAMES = ['上臂', '前臂', '手部'];
-const JOINT_NAMES = ['肩', '肘', '腕', '末端'];
 const KEYBOARD_OFFSET: Readonly<Record<string, Point>> = {
   ArrowLeft: { x: -1, y: 0 }, ArrowRight: { x: 1, y: 0 },
   ArrowUp: { x: 0, y: -1 }, ArrowDown: { x: 0, y: 1 },
 };
 
-export function characterArmAssemblyPrompt({ chain, nextPoint }: CharacterArmAssembly): string {
+export function characterArmAssemblyPrompt({ chain, nextPoint, kind }: CharacterArmAssembly): string {
+  const labels = characterArmChainLabels(kind);
   const missing = chain.segments.findIndex(({ partId }) => !partId);
-  if (missing >= 0) return `选择${PART_NAMES[missing]}`;
-  return nextPoint <= chain.segments.length ? `定位${JOINT_NAMES[nextPoint]}` : '拖动关节微调';
+  if (missing >= 0) return `选择${labels.parts[missing]}`;
+  return nextPoint <= chain.segments.length ? `定位${labels.joints[nextPoint]}` : '拖动关节微调';
 }
 
 type Point = { x: number; y: number };
@@ -33,7 +32,8 @@ export function CharacterArmAssemblyOverlay({ assembly, scale, update }: {
 }): React.JSX.Element {
   const [dragPoint, setDragPoint] = useState<Point>();
   const gesture = useRef<Gesture | undefined>(undefined);
-  const { chain, parts, nextPoint } = assembly;
+  const { chain, parts, nextPoint, kind } = assembly;
+  const labels = characterArmChainLabels(kind);
   const complete = chain.segments.every(({ partId }) => parts.has(partId));
   const owners = [...chain.segments.map(({ partId }) => partId), chain.segments.at(-1)!.partId];
   const points = [...chain.segments.map(({ joint }) => joint), chain.tip].map((point, index) =>
@@ -108,7 +108,7 @@ export function CharacterArmAssemblyOverlay({ assembly, scale, update }: {
       className="character-arm-joint" data-testid={`character-arm-joint-${index}`}
       data-current={pendingPoint && index === nextPoint} data-canvas-interactive-chrome="true"
       disabled={pendingPoint && index !== nextPoint}
-      aria-label={JOINT_NAMES[index]} title={JOINT_NAMES[index]}
+      aria-label={labels.joints[index]} title={labels.joints[index]}
       style={{ left: point.x, top: point.y, transform: `translate(-50%, -50%) scale(${1 / scale})` }}
       onPointerDown={event => start(event, index)} onPointerMove={move}
       onPointerUp={event => finish(event, true)} onPointerCancel={event => finish(event, false)}

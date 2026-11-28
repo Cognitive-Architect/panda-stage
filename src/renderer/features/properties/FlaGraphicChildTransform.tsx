@@ -2,10 +2,19 @@ import { useState } from 'react';
 import Konva from 'konva';
 import { FLA_STATIC_TEXT_LIMITS } from '../../../shared/fla-static-text';
 import {
+  composeAffineMatrix,
+  decomposeAffineMatrix,
+  findFlaShapeTweenTrackForTarget,
+  FLA_SHAPE_TWEEN_MAX_HINTS,
+  isAffineMatrixTimelineRepresentable,
   listFlaShapeRegionVertices,
+  listFlaShapeTweenHintAnchors,
   resolveFlaGraphicInternalAuthoringState,
+  resolveFlaGraphicTimelineTarget,
   unapplyFlaGraphicSubtreeViewBox,
   type EvaluatedFlaGraphicNode,
+  type FlaShapeTweenEasing,
+  type FlaShapeTweenHintLocation,
 } from '../../../domain';
 import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
@@ -32,6 +41,10 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
   } = useStructuredGraphicSelection();
   const time = useTimelineUi();
   const [error, setError] = useState('');
+  const [tweenDurationInput, setTweenDurationInput] = useState('1000');
+  const [hintFormOpen, setHintFormOpen] = useState(false);
+  const [fromHintAnchor, setFromHintAnchor] = useState('');
+  const [toHintAnchor, setToHintAnchor] = useState('');
   if (!target || !scope || !path?.length) return null;
   const node = getFlaGraphicNodeAtPath(
     target.frame,
@@ -75,7 +88,15 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
   };
   const evaluatedMatrix = find(visual?.layers?.flatMap(layer => layer.nodes) ?? [])?.localTransform;
   const matrix = evaluatedMatrix ? unapplyFlaGraphicSubtreeViewBox(node, evaluatedMatrix) : node.localTransform;
-  const decomposition = new Konva.Transform([matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty]).decompose();
+  const decomposition = decomposeAffineMatrix(matrix);
+  // Progressive disclosure: the shear field only appears for a sheared node, so
+  // ordinary TRS nodes keep the historical five-field inspector.
+  const skewFieldVisible = decomposition.skewXDeg !== undefined;
+  // A base/instance matrix that is neither TRS-safe nor exactly decomposable
+  // (e.g. near-singular sheared source data) keeps the historical Konva skew
+  // composition so editing one field never silently drops its shear.
+  const legacySkewComposition =
+    !internal && !isAffineMatrixTimelineRepresentable(matrix);
   const editable = !target.layer.locked && flaGraphicNodeCanTransform(node) && (!internal || resolveFlaGraphicInternalAuthoringState({
     structure: target.animation.structure, frameOrdinal: scope.frameOrdinal, nodePath: path, internalTimeMs: internalTimeMs ?? 0, timelineAuthoringActive: true,
   }).canEditTransform);
@@ -98,6 +119,34 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
   });
   const activeRegion = shapeEditInfo?.activeRegion ?? null;
   const vertexHandles = activeRegion ? listFlaShapeRegionVertices(activeRegion) : [];
+  const tweenStructure = target.animation.structure;
+  const tweenTargetInfo =
+    tweenStructure && activeRegion && !shapeEditInfo?.isExtractedSibling
+      ? resolveFlaGraphicTimelineTarget(tweenStructure, scope.frameOrdinal, path)
+      : null;
+  const shapeTween = tweenStructure && activeRegion && tweenTargetInfo?.trackId
+    ? findFlaShapeTweenTrackForTarget(tweenStructure.shapeTweenTracks, {
+        nodeTrackId: tweenTargetInfo.trackId,
+        ownerKind: tweenTargetInfo.ownerKind,
+        ...(tweenTargetInfo.ownerSymbolDefId
+          ? { ownerSymbolDefId: tweenTargetInfo.ownerSymbolDefId }
+          : {}),
+        regionRef: activeRegion.regionRef,
+        sourceFrameOrdinal: scope.frameOrdinal,
+        sourceNodePath: [...path],
+      })
+    : null;
+  const tweenDurationMs = shapeTween
+    ? shapeTween.endTimeMs - shapeTween.startTimeMs
+    : 1000;
+  const canCreateTween = Boolean(
+    internal &&
+      activeRegion &&
+      !shapeEditInfo?.isExtractedSibling &&
+      tweenTargetInfo?.trackId &&
+      !shapeTween &&
+      !target.layer.locked,
+  );
   const activeVertex =
     (selectedVertex
       ? vertexHandles.find(
@@ -110,21 +159,108 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
     vertexHandles[0] ??
     null;
 
+  const transformFields = [
+    ['x', 'X', decomposition.tx],
+    ['y', 'Y', decomposition.ty],
+    ['scaleX', '缩放 X %', decomposition.scaleX * 100],
+    ['scaleY', '缩放 Y %', decomposition.scaleY * 100],
+    ['rotation', '旋转 °', decomposition.rotationDeg],
+    ...(skewFieldVisible
+      ? [['skew', '斜切 °', decomposition.skewXDeg ?? 0] as const]
+      : []),
+  ] as const;
+  const transformFieldNames = transformFields.map(([name]) => name);
+  const shapeTweenHints = shapeTween?.hints ?? [];
+  const fromHintAnchors: ReturnType<typeof listFlaShapeTweenHintAnchors> = shapeTween
+    ? listFlaShapeTweenHintAnchors(shapeTween.from)
+    : [];
+  const toHintAnchors: ReturnType<typeof listFlaShapeTweenHintAnchors> = shapeTween
+    ? listFlaShapeTweenHintAnchors(shapeTween.to)
+    : [];
+  const hintAnchorValue = (location: FlaShapeTweenHintLocation): string =>
+    JSON.stringify({
+      contourIndex: location.contourIndex,
+      segmentIndex: location.segmentIndex,
+      t: location.t,
+    });
+  const hintAnchorOptions = (
+    anchors: ReturnType<typeof listFlaShapeTweenHintAnchors>,
+  ): readonly { readonly value: string; readonly label: string }[] =>
+    anchors.map((anchor) => ({
+      value: hintAnchorValue(anchor),
+      label: `轮廓 ${anchor.contourIndex + 1} · (${anchor.x.toFixed(1)}, ${anchor.y.toFixed(1)})`,
+    }));
+  const fromHintOptions = hintAnchorOptions(fromHintAnchors);
+  const toHintOptions = hintAnchorOptions(toHintAnchors);
+  const resolvedFromHintAnchor =
+    fromHintOptions.some((option) => option.value === fromHintAnchor)
+      ? fromHintAnchor
+      : fromHintOptions[0]?.value ?? '';
+  const resolvedToHintAnchor =
+    toHintOptions.some((option) => option.value === toHintAnchor)
+      ? toHintAnchor
+      : toHintOptions[0]?.value ?? '';
+
+  const parseHintAnchorValue = (raw: string): FlaShapeTweenHintLocation | null => {
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown> | null;
+      const contourIndex = parsed?.contourIndex;
+      const segmentIndex = parsed?.segmentIndex;
+      const t = parsed?.t;
+      if (
+        typeof contourIndex !== 'number' ||
+        !Number.isInteger(contourIndex) ||
+        contourIndex < 0 ||
+        typeof segmentIndex !== 'number' ||
+        !Number.isInteger(segmentIndex) ||
+        segmentIndex < 0 ||
+        typeof t !== 'number' ||
+        !Number.isFinite(t) ||
+        t < 0 ||
+        t > 1
+      ) {
+        return null;
+      }
+      return { contourIndex, segmentIndex, t };
+    } catch {
+      return null;
+    }
+  };
+
   const commit = (form: HTMLFormElement) => {
     if (!editable) return;
     const values = new FormData(form);
-    const originals = [decomposition.x, decomposition.y, decomposition.scaleX * 100, decomposition.scaleY * 100, decomposition.rotation];
-    const numbers = ['x', 'y', 'scaleX', 'scaleY', 'rotation'].map((key, index) => {
+    const originals = transformFields.map(([, , value]) => value);
+    const numbers = transformFieldNames.map((key, index) => {
       const raw = String(values.get(key) ?? '').trim();
+      if (!raw && key === 'skew') return originals[index]!;
       const number = raw ? Number(raw) : NaN;
       return number === Number(originals[index]!.toFixed(3)) ? originals[index]! : number;
     });
     if (!numbers.every(Number.isFinite)) { setError('请输入有效数值。'); return; }
-    const [x, y, scaleX, scaleY, rotation] = numbers as [number, number, number, number, number];
-    const transform = new Konva.Transform(); transform.translate(x, y); transform.rotate(rotation * Math.PI / 180);
-    transform.skew(decomposition.skewX, decomposition.skewY); transform.scale(scaleX / 100, scaleY / 100);
-    const [a, b, c, d, tx, ty] = transform.getMatrix() as [number, number, number, number, number, number];
-    const next = { a, b, c, d, tx, ty };
+    const [x, y, scaleX, scaleY, rotation, skew = 0] = numbers as [number, number, number, number, number, number?];
+    let next: { a: number; b: number; c: number; d: number; tx: number; ty: number };
+    if (legacySkewComposition) {
+      const konvaDecomposition = new Konva.Transform([
+        matrix.a, matrix.b, matrix.c, matrix.d, matrix.tx, matrix.ty,
+      ]).decompose();
+      const transform = new Konva.Transform();
+      transform.translate(x, y);
+      transform.rotate(rotation * Math.PI / 180);
+      transform.skew(konvaDecomposition.skewX, konvaDecomposition.skewY);
+      transform.scale(scaleX / 100, scaleY / 100);
+      const [a, b, c, d, tx, ty] = transform.getMatrix() as [number, number, number, number, number, number];
+      next = { a, b, c, d, tx, ty };
+    } else {
+      next = composeAffineMatrix({
+        tx: x,
+        ty: y,
+        rotationDeg: rotation,
+        scaleX: scaleX / 100,
+        scaleY: scaleY / 100,
+        ...(skewFieldVisible || skew !== 0 ? { skewXDeg: skew } : {}),
+      });
+    }
     if (Object.keys(next).every(key => Math.abs(next[key as keyof typeof next] - matrix[key as keyof typeof matrix]) < 1e-9)) return;
     try {
       if (scope.editMode === 'instance') layerStore.updateFlaGraphicInstanceTransform(target.layerId, scope.frameOrdinal, path, next);
@@ -179,12 +315,162 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
         x: nextX,
         y: nextY,
         svgText,
+        ...(internalTimeMs !== undefined ? { internalTimeMs } : {}),
       });
       setError('');
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : '顶点坐标修改失败。');
     }
   };
+
+  const resolveTweenDurationMs = (raw: string): number | null => {
+    const duration = Math.round(Number(raw));
+    if (!Number.isFinite(duration) || duration <= 0) {
+      setError('补间时长必须为正整数毫秒。');
+      return null;
+    }
+    return duration;
+  };
+
+  const handleCreateShapeTween = () => {
+    if (!activeRegion || !internal) return;
+    const durationMs = resolveTweenDurationMs(tweenDurationInput);
+    if (durationMs === null) return;
+    try {
+      layerStore.createFlaGraphicShapeTween({
+        layerId: target.layerId,
+        frameOrdinal: scope.frameOrdinal,
+        nodePath: path,
+        regionRef: activeRegion.regionRef,
+        mode: scope.editMode,
+        svgText,
+        startTimeMs: Math.max(0, Math.round(internalTimeMs ?? 0)),
+        durationMs,
+      });
+      setError('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '创建形状补间失败。');
+    }
+  };
+
+  const handleShapeTweenDurationCommit = (raw: string) => {
+    if (!shapeTween) return;
+    const durationMs = resolveTweenDurationMs(raw);
+    if (durationMs === null) return;
+    try {
+      layerStore.updateFlaGraphicShapeTween({
+        layerId: target.layerId,
+        tweenId: shapeTween.tweenId,
+        endTimeMs: shapeTween.startTimeMs + durationMs,
+      });
+      setError('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '修改补间时长失败。');
+    }
+  };
+
+  const handleShapeTweenEasingChange = (easing: FlaShapeTweenEasing) => {
+    if (!shapeTween) return;
+    try {
+      layerStore.updateFlaGraphicShapeTween({
+        layerId: target.layerId,
+        tweenId: shapeTween.tweenId,
+        easing,
+      });
+      setError('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '修改补间缓动失败。');
+    }
+  };
+
+  const handleDeleteShapeTween = () => {
+    if (!shapeTween) return;
+    try {
+      layerStore.deleteFlaGraphicShapeTween({
+        layerId: target.layerId,
+        tweenId: shapeTween.tweenId,
+      });
+      setError('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '删除形状补间失败。');
+    }
+  };
+
+  const handleAddShapeTweenHint = () => {
+    if (!shapeTween) return;
+    const from = parseHintAnchorValue(resolvedFromHintAnchor);
+    const to = parseHintAnchorValue(resolvedToHintAnchor);
+    if (!from || !to) {
+      setError('请选择有效的提示点位置。');
+      return;
+    }
+    try {
+      layerStore.addFlaGraphicShapeTweenHint({
+        layerId: target.layerId,
+        tweenId: shapeTween.tweenId,
+        from,
+        to,
+      });
+      setHintFormOpen(false);
+      setError('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '添加形状提示点失败。');
+    }
+  };
+
+  const handleShapeTweenHintChange = (
+    hintId: string,
+    side: 'from' | 'to',
+    raw: string,
+  ) => {
+    if (!shapeTween) return;
+    const location = parseHintAnchorValue(raw);
+    if (!location) {
+      setError('请选择有效的提示点位置。');
+      return;
+    }
+    try {
+      layerStore.updateFlaGraphicShapeTweenHint({
+        layerId: target.layerId,
+        tweenId: shapeTween.tweenId,
+        hintId,
+        ...(side === 'from' ? { from: location } : { to: location }),
+      });
+      setError('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '修改形状提示点失败。');
+    }
+  };
+
+  const handleRemoveShapeTweenHint = (hintId: string) => {
+    if (!shapeTween) return;
+    try {
+      layerStore.removeFlaGraphicShapeTweenHint({
+        layerId: target.layerId,
+        tweenId: shapeTween.tweenId,
+        hintId,
+      });
+      setError('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '删除形状提示点失败。');
+    }
+  };
+
+  const renderHintOptions = (
+    options: readonly { readonly value: string; readonly label: string }[],
+    current: string,
+  ): React.JSX.Element => (
+    <>
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+      {options.some((option) => option.value === current) ? null : (
+        <option value={current}>当前位置</option>
+      )}
+    </>
+  );
 
   return <div className="fla-child-transform-wrap">
     {textValue !== undefined ? (
@@ -217,7 +503,7 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
       onSubmit={event => { event.preventDefault(); commit(event.currentTarget); }}
       onBlur={event => { if (event.target instanceof HTMLInputElement) commit(event.currentTarget); }}>
       <fieldset disabled={!editable}>
-        {([['x', 'X', decomposition.x], ['y', 'Y', decomposition.y], ['scaleX', '缩放 X %', decomposition.scaleX * 100], ['scaleY', '缩放 Y %', decomposition.scaleY * 100], ['rotation', '旋转 °', decomposition.rotation]] as const).map(([name, label, value]) =>
+        {transformFields.map(([name, label, value]) =>
           <label key={name}>{label}<input aria-label={label} name={name} type="number" step="any" defaultValue={Number(value.toFixed(3))} /></label>)}
       </fieldset>
     </form>
@@ -255,6 +541,193 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
             </button>
           </div>
         )}
+        {!shapeEditInfo?.hasUnrenderableResidue && internal && !shapeEditInfo?.isExtractedSibling && activeRegion ? (
+          <div className="fla-shape-tween-row" data-testid="fla-shape-tween-row">
+            {shapeTween ? (
+              <>
+                <output data-testid="fla-shape-tween-range">
+                  形状补间 {shapeTween.startTimeMs}–{shapeTween.endTimeMs} ms
+                </output>
+                <label>
+                  <span>时长</span>
+                  <input
+                    aria-label="形状补间时长"
+                    data-testid="fla-shape-tween-duration"
+                    key={`${shapeTween.tweenId}:${tweenDurationMs}`}
+                    min={1}
+                    step={1}
+                    type="number"
+                    defaultValue={tweenDurationMs}
+                    onChange={(event) => setTweenDurationInput(event.currentTarget.value)}
+                    onBlur={(event) => handleShapeTweenDurationCommit(event.currentTarget.value)}
+                  />
+                </label>
+                <select
+                  aria-label="形状补间缓动"
+                  data-testid="fla-shape-tween-easing"
+                  value={shapeTween.easing}
+                  onChange={(event) =>
+                    handleShapeTweenEasingChange(event.currentTarget.value as FlaShapeTweenEasing)
+                  }
+                >
+                  <option value="linear">线性</option>
+                  <option value="ease">平滑</option>
+                  <option value="hold">保持</option>
+                </select>
+                <button
+                  type="button"
+                  className="fla-subtree-stage-button"
+                  data-testid="fla-shape-tween-delete"
+                  onClick={handleDeleteShapeTween}
+                >
+                  删除补间
+                </button>
+                <span className="fla-subtree-note">拖到补间起点或终点可直接编辑对应姿态</span>
+                <div className="fla-shape-tween-hints" data-testid="fla-shape-tween-hints">
+                  <div className="fla-shape-vector-row">
+                    <output data-testid="fla-shape-tween-hint-count">
+                      {shapeTweenHints.length > 0
+                        ? `提示点 ${shapeTweenHints.length} 个`
+                        : '未设置提示点'}
+                    </output>
+                    <button
+                      type="button"
+                      className="fla-subtree-stage-button"
+                      data-testid="fla-shape-tween-hint-add"
+                      aria-expanded={hintFormOpen}
+                      disabled={
+                        fromHintOptions.length === 0 ||
+                        toHintOptions.length === 0 ||
+                        shapeTweenHints.length >= FLA_SHAPE_TWEEN_MAX_HINTS
+                      }
+                      onClick={() => setHintFormOpen((open) => !open)}
+                    >
+                      {hintFormOpen ? '收起提示点' : '添加提示点'}
+                    </button>
+                  </div>
+                  {hintFormOpen ? (
+                    <div
+                      className="fla-shape-vector-row"
+                      data-testid="fla-shape-tween-hint-form"
+                    >
+                      <label>
+                        <span>起点</span>
+                        <select
+                          aria-label="提示点起点"
+                          data-testid="fla-shape-tween-hint-from"
+                          value={resolvedFromHintAnchor}
+                          onChange={(event) => setFromHintAnchor(event.currentTarget.value)}
+                        >
+                          {renderHintOptions(fromHintOptions, resolvedFromHintAnchor)}
+                        </select>
+                      </label>
+                      <label>
+                        <span>终点</span>
+                        <select
+                          aria-label="提示点终点"
+                          data-testid="fla-shape-tween-hint-to"
+                          value={resolvedToHintAnchor}
+                          onChange={(event) => setToHintAnchor(event.currentTarget.value)}
+                        >
+                          {renderHintOptions(toHintOptions, resolvedToHintAnchor)}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="fla-subtree-stage-button"
+                        data-testid="fla-shape-tween-hint-confirm"
+                        onClick={handleAddShapeTweenHint}
+                      >
+                        确认添加
+                      </button>
+                    </div>
+                  ) : null}
+                  {shapeTweenHints.map((hint, index) => {
+                    const fromValue = hintAnchorValue(hint.from);
+                    const toValue = hintAnchorValue(hint.to);
+                    return (
+                      <div
+                        className="fla-shape-vector-row"
+                        key={hint.hintId}
+                        data-testid="fla-shape-tween-hint-row"
+                      >
+                        <label>
+                          <span>起点</span>
+                          <select
+                            aria-label={`提示点起点 ${index + 1}`}
+                            value={fromValue}
+                            onChange={(event) =>
+                              handleShapeTweenHintChange(
+                                hint.hintId,
+                                'from',
+                                event.currentTarget.value,
+                              )
+                            }
+                          >
+                            {renderHintOptions(fromHintOptions, fromValue)}
+                          </select>
+                        </label>
+                        <label>
+                          <span>终点</span>
+                          <select
+                            aria-label={`提示点终点 ${index + 1}`}
+                            value={toValue}
+                            onChange={(event) =>
+                              handleShapeTweenHintChange(
+                                hint.hintId,
+                                'to',
+                                event.currentTarget.value,
+                              )
+                            }
+                          >
+                            {renderHintOptions(toHintOptions, toValue)}
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          className="fla-subtree-stage-button"
+                          data-testid="fla-shape-tween-hint-delete"
+                          aria-label={`删除提示点 ${index + 1}`}
+                          onClick={() => handleRemoveShapeTweenHint(hint.hintId)}
+                        >
+                          删除
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : tweenTargetInfo?.trackId ? (
+              <>
+                <label>
+                  <span>时长</span>
+                  <input
+                    aria-label="形状补间时长"
+                    data-testid="fla-shape-tween-duration"
+                    min={1}
+                    step={1}
+                    type="number"
+                    value={tweenDurationInput}
+                    onChange={(event) => setTweenDurationInput(event.currentTarget.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="fla-subtree-stage-button"
+                  data-testid="fla-shape-tween-create"
+                  disabled={!canCreateTween}
+                  onClick={handleCreateShapeTween}
+                >
+                  创建形状补间
+                </button>
+              </>
+            ) : (
+              <span className="fla-subtree-note">
+                当前形状节点缺少稳定的跨帧身份，暂不支持形状补间。
+              </span>
+            )}
+          </div>
+        ) : null}
         {!shapeEditInfo?.hasUnrenderableResidue && vertexEditActive && activeVertex ? (
           <div className="fla-shape-vertex-fields" key={`${activeVertex.contourIndex}:${activeVertex.commandIndex}:${activeVertex.pointKind}:${activeVertex.x}:${activeVertex.y}`}>
             <label>

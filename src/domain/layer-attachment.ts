@@ -1,9 +1,14 @@
-import { invertAffineMatrix, type AffineMatrix2D } from '../shared/affine-matrix';
+import { invertAffineMatrix, multiplyAffineMatrices, type AffineMatrix2D } from '../shared/affine-matrix';
 import {
   captureCharacterPartAnimationBasis,
   composeAnimatedCharacterPartTransform,
   resolveLayeredCharacterPartTransforms,
 } from './character-part-animation';
+import {
+  characterBonePartDeltas,
+  characterBonePoseMap,
+  characterBoneProtectedPartIds,
+} from './character-bone-pose';
 import { evaluateFlaGraphicVisual, type EvaluatedFlaGraphicNode } from './evaluate-fla-graphic';
 import type { EvaluatedLayer } from './evaluate-shot-at-time';
 import {
@@ -26,6 +31,8 @@ interface GraphicIdentityContainer {
   readonly ownerKind: 'frame' | 'symbol';
   readonly ownerSymbolDefId: string | null;
   readonly containerRootNodes: readonly FlaGraphicStructureNode[];
+  /** Frame scope for author identity aliases; Symbol scopes ignore it. */
+  readonly frameOrdinal: number;
 }
 
 interface EvaluatedGraphicCandidate {
@@ -48,6 +55,7 @@ function* collectEvaluatedGraphicIdentities(
       container.ownerKind,
       container.ownerSymbolDefId,
       container.containerRootNodes,
+      container.frameOrdinal,
     );
     if (stableId) {
       yield { node, identityPath: [...ancestorIdentityPath, stableId] };
@@ -72,6 +80,7 @@ function* collectEvaluatedGraphicIdentities(
             ownerKind: 'symbol',
             ownerSymbolDefId: nestedDefId,
             containerRootNodes: nestedDef.children,
+            frameOrdinal: container.frameOrdinal,
           },
           [...ancestorIdentityPath, stableId],
         );
@@ -101,6 +110,7 @@ function collectFrameStructureIdentityCounts(
       container.ownerKind,
       container.ownerSymbolDefId,
       container.containerRootNodes,
+      container.frameOrdinal,
     );
     if (stableId) {
       const key = JSON.stringify([...ancestorIdentityPath, stableId]);
@@ -120,6 +130,7 @@ function collectFrameStructureIdentityCounts(
             ownerKind: 'symbol',
             ownerSymbolDefId: nestedDefId,
             containerRootNodes: nestedDef.children,
+            frameOrdinal: container.frameOrdinal,
           },
           [...ancestorIdentityPath, stableId],
           counts,
@@ -133,6 +144,7 @@ function collectFrameStructureIdentityCounts(
 
 function resolveLegacyNodePathInFrame(
   structure: FlaGraphicStructure,
+  frameOrdinal: number,
   frameNodes: readonly FlaGraphicStructureNode[],
   nodePath: readonly string[],
 ): { readonly found: boolean; readonly identityPath: readonly string[] | null } {
@@ -153,6 +165,7 @@ function resolveLegacyNodePathInFrame(
       ownerKind,
       ownerSymbolDefId,
       containerRootNodes,
+      frameOrdinal,
     );
     if (i === nodePath.length - 1) {
       if (!stableId) return { found: true, identityPath: null };
@@ -161,7 +174,12 @@ function resolveLegacyNodePathInFrame(
       collectFrameStructureIdentityCounts(
         frameNodes,
         structure,
-        { ownerKind: 'frame', ownerSymbolDefId: null, containerRootNodes: frameNodes },
+        {
+          ownerKind: 'frame',
+          ownerSymbolDefId: null,
+          containerRootNodes: frameNodes,
+          frameOrdinal,
+        },
         [],
         counts,
       );
@@ -204,7 +222,12 @@ export function resolveLegacyGraphicAttachmentIdentityPath(
   let provenKey: string | null = null;
   for (const frame of structure.frames) {
     const frameNodes = frame.layers.flatMap((layer) => layer.nodes);
-    const result = resolveLegacyNodePathInFrame(structure, frameNodes, nodePath);
+    const result = resolveLegacyNodePathInFrame(
+      structure,
+      frame.ordinal,
+      frameNodes,
+      nodePath,
+    );
     if (!result.found) continue;
     if (!result.identityPath) return null;
     const key = JSON.stringify(result.identityPath);
@@ -237,9 +260,24 @@ export function resolveLayerAttachmentTargets(
     const layered = evaluated.layeredCharacterAction
       ? resolveLayeredCharacterPartTransforms(clip, character, values, evaluated.layeredCharacterAction)
       : undefined;
+    // Attachment targets read the final Part matrix, including any Bone delta.
+    const boneDeltas = (character.bones?.length ?? 0) > 0
+      ? characterBonePartDeltas({
+          character,
+          values,
+          layerId: layer.id,
+          fixedCharacterCenter: clip.fixedCharacterCenter,
+          protectedPartIds: characterBoneProtectedPartIds(character),
+          ...(evaluated.characterBonePose
+            ? { poses: characterBonePoseMap(evaluated.characterBonePose) }
+            : {}),
+        })
+      : undefined;
     return clip.targetBases.flatMap((basis) => {
       const partId = basis.target.partId;
-      const pose = layered?.get(partId) ?? composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, values);
+      const posed = layered?.get(partId) ?? composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, values);
+      const delta = boneDeltas?.get(partId);
+      const pose = delta ? multiplyAffineMatrices(delta, posed) : posed;
       const head = character.headMotionBinding?.partIds.includes(partId) ? evaluated.headGroupTransform : undefined;
       const transform = head ? {
         ...pose,
@@ -271,6 +309,7 @@ export function resolveLayerAttachmentTargets(
     ownerKind: 'frame',
     ownerSymbolDefId: null,
     containerRootNodes: frameRootNodes,
+    frameOrdinal: evaluated.animationFrame.frameOrdinal,
   };
   const candidates = graphic.layers.flatMap(({ nodes }) => [
     ...collectEvaluatedGraphicIdentities(nodes, definition.structure!, rootContainer, []),

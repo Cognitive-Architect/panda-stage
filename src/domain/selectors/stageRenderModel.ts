@@ -2,6 +2,10 @@ import {
   buildStageLayerRenderInstruction,
   type StageLayerRenderInstruction,
 } from '../../shared/stage/layer-render-contract';
+import {
+  applyResolvedCoverageMasks,
+  resolveShotCoverageMasks,
+} from '../coverage-mask';
 import type {
   ImageAsset,
   Layer,
@@ -45,6 +49,7 @@ export function buildEditorStageRenderModel(
   const evaluatedById = new Map(
     evaluatedShot?.layers.map((layer) => [layer.id, layer]) ?? [],
   );
+  const coverageMaskResolution = resolveShotCoverageMasks(shot);
   const layers = [...shot.layers]
     .sort((left, right) => left.zIndex - right.zIndex)
     .map((layer): EditorStageRenderLayer => {
@@ -63,7 +68,12 @@ export function buildEditorStageRenderModel(
         visible: layer.visible,
         zIndex: layer.zIndex,
       };
-      const evaluated = evaluatedSource;
+      // The Canvas may render the authored base pose without the formal
+      // evaluator; coverage mask relations still must be available there.
+      const evaluated = applyResolvedCoverageMasks(
+        [evaluatedSource],
+        coverageMaskResolution,
+      )[0]!;
       const visual = visualOverrides?.has(layer.id)
         ? visualOverrides.get(layer.id) ?? emptyVisual(project, layer, evaluated)
         : resolveLayerVisualParts(

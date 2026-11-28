@@ -8,6 +8,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  LayerService,
+  ProjectSchema,
+  evaluateShotAtTime,
   projectDurationMs,
   ShotService,
   type Project,
@@ -203,5 +206,75 @@ describe('Day 20 five-shot persistence', () => {
     expect((await bootstrap.open(root)).project.shots).toEqual(
       reordered.shots,
     );
+  });
+
+  it('opens a project whose stored pin-warp tail pose exceeds a shortened duration (#1471 R4)', async () => {
+    const root = await projectRoot();
+    const projectService = new ProjectService({
+      createId: (() => {
+        let counter = 0;
+        return () =>
+          `d2060000-0000-4000-8000-${String(++counter).padStart(12, '0')}`;
+      })(),
+      now: () => new Date('2026-07-25T12:46:00.000Z'),
+    });
+    const created = await projectService.create(root, { name: 'R4 pin warp' });
+    const imageAssetId = 'd2070000-0000-4000-8000-000000000001';
+    const withAsset = ProjectSchema.parse({
+      ...created.project,
+      assets: [{
+        id: imageAssetId,
+        kind: 'image',
+        name: 'R4 位图',
+        relativePath: 'assets/r4-pin-warp-probe.png',
+        mimeType: 'image/png',
+        width: 400,
+        height: 300,
+        usage: 'uncategorized',
+        keywords: [],
+      }],
+    });
+    let project = shotService().create(withAsset, {
+      name: 'R4 镜头',
+      durationMs: 3_000,
+    });
+    const shotId = project.shots[0]!.id;
+    let layerCounter = 0;
+    const layerService = new LayerService({
+      createId: () =>
+        `d2080000-0000-4000-8000-${String(++layerCounter).padStart(12, '0')}`,
+      now: () => new Date('2026-07-25T12:46:00.000Z'),
+    });
+    const createdLayer = layerService.createFromAsset(project, shotId, {
+      version: 2,
+      assetId: imageAssetId,
+      type: 'asset-image',
+      position: { x: 960, y: 540 },
+    });
+    const layerId = createdLayer.layer.id;
+    project = layerService.bindPinWarp(createdLayer.project, shotId, layerId, 0);
+    project = layerService.setPinWarpPin(
+      project, shotId, layerId, 2_000, 1, { x: 0, y: 60 },
+    );
+    // Persist exactly the pre-fix shape: a 1000ms Shot whose stored pose group
+    // still extends to 2000ms. Reading must stay tolerant.
+    const stale = ProjectSchema.parse({
+      ...project,
+      shots: project.shots.map((shot) =>
+        shot.id === shotId ? { ...shot, durationMs: 1_000 } : shot),
+    });
+    await projectService.save(root, stale, 1);
+
+    const reopened = await projectService.open(root);
+    const reopenedShot = reopened.project.shots.find((shot) => shot.id === shotId)!;
+    expect(reopenedShot.durationMs).toBe(1_000);
+    const reopenedLayer = reopenedShot.layers.find((layer) => layer.id === layerId)!;
+    expect(reopenedLayer.pinWarp!.poses.map((pose) => pose.timeMs)).toEqual([0, 2_000]);
+    // No global read-time hard gate: the frame still evaluates with a valid
+    // local warp instead of blocking the whole project load.
+    const evaluated = evaluateShotAtTime(reopenedShot, 0, reopened.project).layers.find(
+      (layer) => layer.id === layerId,
+    )!;
+    expect(evaluated.pinWarp?.status).toBe('valid');
   });
 });

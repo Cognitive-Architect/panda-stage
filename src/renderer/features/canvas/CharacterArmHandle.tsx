@@ -17,9 +17,14 @@ interface Drag {
   cleanup: () => void;
 }
 
-export function CharacterArmHandle({ snapshot, address }: { snapshot: EditorProjectSnapshot; address: CharacterArmIkAddress }): React.JSX.Element | null {
+export function CharacterArmHandle({ snapshot, address, chainId, tipLabel = '手腕' }: {
+  snapshot: EditorProjectSnapshot;
+  address: CharacterArmIkAddress;
+  chainId: string;
+  tipLabel?: string;
+}): React.JSX.Element | null {
   const projectInstanceId = editorProjectStore.getProjectInstanceId();
-  const { active } = useCharacterArmTool({ ...address, projectInstanceId });
+  const { active } = useCharacterArmTool({ ...address, projectInstanceId, chainId });
   const dispatch = useContext(AnimationCurveDraftDispatch);
   const request = useRef<Drag | undefined>(undefined);
   const [dragging, setDragging] = useState(false);
@@ -29,11 +34,11 @@ export function CharacterArmHandle({ snapshot, address }: { snapshot: EditorProj
   const formalTip = useMemo(() => {
     if (!active) return undefined;
     try {
-      return characterArmTipOnStage(snapshot.project, { layerId, shotId, timeMs });
+      return characterArmTipOnStage(snapshot.project, { layerId, shotId, timeMs }, chainId);
     } catch {
       return undefined;
     }
-  }, [active, layerId, shotId, timeMs, snapshot.project]);
+  }, [active, chainId, layerId, shotId, timeMs, snapshot.project]);
 
   const clear = useCallback(() => {
     const drag = request.current;
@@ -44,7 +49,7 @@ export function CharacterArmHandle({ snapshot, address }: { snapshot: EditorProj
     dispatch?.(null);
   }, [dispatch]);
 
-  useEffect(() => () => clear(), [active, clear, layerId, projectInstanceId, shotId, snapshot.revision, timeMs]);
+  useEffect(() => () => clear(), [active, chainId, clear, layerId, projectInstanceId, shotId, snapshot.revision, timeMs]);
 
   function cancel(): void {
     clear();
@@ -113,12 +118,12 @@ export function CharacterArmHandle({ snapshot, address }: { snapshot: EditorProj
       const point = drag.pendingPoint;
       if (request.current !== drag || !point) return;
       try {
-        const plan = planCharacterArmIk(snapshot.project, address, { x: point.x + drag.delta.x, y: point.y + drag.delta.y }, drag.seed);
+        const plan = planCharacterArmIk(snapshot.project, address, { x: point.x + drag.delta.x, y: point.y + drag.delta.y }, drag.seed, chainId);
         drag.seed = plan.jointAnglesDeg;
         setTipPreview(plan.tip);
         dispatch?.({ project: plan.project, projectInstanceId, revision: snapshot.revision, shotId, layerId, timeMs });
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : '无法预览手臂姿势。');
+        setError(cause instanceof Error ? cause.message : '无法预览骨链姿势。');
         cancel();
       }
     });
@@ -132,11 +137,11 @@ export function CharacterArmHandle({ snapshot, address }: { snapshot: EditorProj
       const point = commit ? canvasStagePointer(stage, event) : undefined;
       if (point && Math.hypot(point.x - drag.origin.x, point.y - drag.origin.y) >= 1 &&
         editorProjectStore.getSnapshot() === snapshot && editorProjectStore.getProjectInstanceId() === projectInstanceId) {
-        const result = planCharacterArmIk(snapshot.project, address, { x: point.x + drag.delta.x, y: point.y + drag.delta.y }, drag.seed);
-        if (result.project !== snapshot.project) editorProjectStore.updateProject(result.project, '手臂摆姿势');
+        const result = planCharacterArmIk(snapshot.project, address, { x: point.x + drag.delta.x, y: point.y + drag.delta.y }, drag.seed, chainId);
+        if (result.project !== snapshot.project) editorProjectStore.updateProject(result.project, '骨链摆姿势');
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '无法保存手臂姿势。');
+      setError(cause instanceof Error ? cause.message : '无法保存骨链姿势。');
     } finally {
       cancel();
     }
@@ -145,7 +150,7 @@ export function CharacterArmHandle({ snapshot, address }: { snapshot: EditorProj
   if (!formalTip || !dispatch) return null;
   const tip = request.current ? tipPreview ?? formalTip : formalTip;
   return <div className="character-arm-handle" style={{ left: tip.x, top: tip.y }} data-canvas-interactive-chrome="true">
-    <button type="button" aria-label="拖动手腕" title="拖动手腕" data-testid="character-arm-wrist" data-dragging={dragging}
+    <button type="button" aria-label={`拖动${tipLabel}`} title={`拖动${tipLabel}`} data-testid="character-arm-wrist" data-dragging={dragging}
       onPointerDown={start} onLostPointerCapture={event => {
         if (request.current?.pointerId === event.pointerId) cancel();
       }} />

@@ -1,8 +1,13 @@
 import { useState } from 'react';
 import {
   collectFlaGraphicTimelineDurationMs,
+  isNativeFlaGraphicDefinition,
+  listFlaGraphicIdentityAliasGroups,
+  listNativeGraphicExposureFrames,
   resolveFlaGraphicTimelineTarget,
   type FlaGraphicDefinition,
+  type FlaGraphicIdentityAliasGroup,
+  type FlaGraphicStructureNode,
   type FlaGraphicTransformEasing,
   type Project,
 } from '../../../domain';
@@ -32,6 +37,20 @@ const EASING_OPTIONS: readonly {
   { value: 'hold', label: '保持' },
 ];
 
+function identityAliasGroupLabel(
+  group: FlaGraphicIdentityAliasGroup,
+  index: number,
+): string {
+  const first = group.assignments[0];
+  const frameMatch = first
+    ? /^frame:(\d+)$/u.exec(first.containerKey)
+    : null;
+  const scope = frameMatch
+    ? `第 ${Number(frameMatch[1]) + 1} 帧`
+    : '共享元件';
+  return `关联身份 ${index + 1}（${scope}，${group.assignments.length} 个节点）`;
+}
+
 /**
  * Compact internal timeline controls rendered inside the existing TimelineDock
  * while Shared Definition Edit is active. Reuses `timelineUiStore` for seek
@@ -42,6 +61,11 @@ export function FlaGraphicInternalTimelineBar({
   project,
 }: FlaGraphicInternalTimelineBarProps): React.JSX.Element | null {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [associationOpen, setAssociationOpen] = useState(false);
+  const [associationGroupId, setAssociationGroupId] = useState('');
+  const [exposureFrameOrdinal, setExposureFrameOrdinal] = useState(0);
+  const [exposureFrameCount, setExposureFrameCount] = useState('1');
+  const [exposureLayerIndex, setExposureLayerIndex] = useState(0);
   const frameStepMs = integerFrameSpanMs(TIMELINE_FPS);
   const [targetTimeInput, setTargetTimeInput] = useState<string>(() =>
     String(snapToFrame(context.internalTimeMs + frameStepMs, TIMELINE_FPS)),
@@ -66,14 +90,178 @@ export function FlaGraphicInternalTimelineBar({
           context.selectedNodePath,
         )
       : null;
+  const identityAliasGroups = listFlaGraphicIdentityAliasGroups(structure);
+  const nativeDefinition = isNativeFlaGraphicDefinition(animation) ? animation : null;
+  const nativeFrames = nativeDefinition
+    ? listNativeGraphicExposureFrames(nativeDefinition)
+    : [];
+  const activeExposureIndex = nativeFrames.length > 0
+    ? Math.min(exposureFrameOrdinal, nativeFrames.length - 1)
+    : 0;
+  const activeExposure = nativeFrames[activeExposureIndex] ?? null;
+  const activeAuthoredFrame =
+    nativeDefinition && activeExposure
+      ? nativeDefinition.structure!.frames.find(
+          (frame) => frame.ordinal === activeExposure.authoredOrdinal,
+        ) ?? null
+      : null;
+  const exposureLayers = activeAuthoredFrame?.layers ?? [];
+  const activeLayerIndex = exposureLayers.length > 0
+    ? Math.min(exposureLayerIndex, exposureLayers.length - 1)
+    : 0;
+  const selectedStructureNode: FlaGraphicStructureNode | null =
+    target?.targetNode ?? null;
+  const canUngroupSelected = Boolean(
+    nativeDefinition &&
+      selectedStructureNode?.type === 'group' &&
+      context.selectedNodePath?.length === 1,
+  );
+
+  const runExposureOperation = (operation: () => void): void => {
+    try {
+      setStatusMessage(null);
+      operation();
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : '曝光编辑失败。');
+    }
+  };
+
+  const resolveExposureCount = (): number | null => {
+    const parsed = Number(exposureFrameCount);
+    if (!Number.isSafeInteger(parsed) || parsed < 1) {
+      setStatusMessage('曝光帧数必须为正整数。');
+      return null;
+    }
+    return parsed;
+  };
+
+  const handleInsertBlankKeyframe = (): void => {
+    if (!nativeDefinition) return;
+    runExposureOperation(() => {
+      const ordinal = layerStore.addNativeGraphicBlankKeyframe(
+        nativeDefinition.id,
+        activeExposureIndex,
+      );
+      setExposureFrameOrdinal(ordinal);
+    });
+  };
+
+  const handleCopyFrame = (): void => {
+    if (!nativeDefinition) return;
+    runExposureOperation(() => {
+      const ordinal = layerStore.copyNativeGraphicFrame(
+        nativeDefinition.id,
+        activeExposureIndex,
+      );
+      setExposureFrameOrdinal(ordinal);
+    });
+  };
+
+  const handleExtendExposure = (): void => {
+    if (!nativeDefinition) return;
+    const count = resolveExposureCount();
+    if (count === null) return;
+    runExposureOperation(() => {
+      layerStore.extendNativeGraphicExposure(nativeDefinition.id, count);
+    });
+  };
+
+  const handleShortenExposure = (): void => {
+    if (!nativeDefinition) return;
+    const count = resolveExposureCount();
+    if (count === null) return;
+    runExposureOperation(() => {
+      layerStore.shortenNativeGraphicExposure(nativeDefinition.id, count);
+    });
+  };
+
+  const handleAddLayer = (): void => {
+    if (!nativeDefinition) return;
+    runExposureOperation(() => {
+      layerStore.addNativeGraphicLayer(nativeDefinition.id, activeExposureIndex);
+    });
+  };
+
+  const handleRemoveLayer = (): void => {
+    if (!nativeDefinition || exposureLayers.length === 0) return;
+    runExposureOperation(() => {
+      layerStore.removeNativeGraphicLayer(
+        nativeDefinition.id,
+        activeExposureIndex,
+        activeLayerIndex,
+      );
+    });
+  };
+
+  const handleMoveLayer = (direction: 1 | -1): void => {
+    if (!nativeDefinition || exposureLayers.length === 0) return;
+    runExposureOperation(() => {
+      layerStore.moveNativeGraphicLayer(
+        nativeDefinition.id,
+        activeExposureIndex,
+        activeLayerIndex,
+        direction,
+      );
+    });
+  };
+
+  const handleUngroupNode = (): void => {
+    if (!nativeDefinition || !context.selectedNodePath) return;
+    runExposureOperation(() => {
+      layerStore.ungroupNativeGraphicNode(
+        nativeDefinition.id,
+        activeExposureIndex,
+        context.selectedNodePath!,
+      );
+    });
+  };
+
+  const handleAssociateIdentity = (): void => {
+    if (!context.selectedNodePath) return;
+    try {
+      setStatusMessage(null);
+      layerStore.setFlaGraphicNodeIdentityAlias(
+        context.layerId,
+        context.frameOrdinal,
+        context.selectedNodePath,
+        associationGroupId || undefined,
+      );
+      setAssociationOpen(false);
+      setAssociationGroupId('');
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : '建立节点关联失败。',
+      );
+    }
+  };
+
+  const handleClearIdentityAssociation = (): void => {
+    if (!context.selectedNodePath) return;
+    try {
+      setStatusMessage(null);
+      layerStore.clearFlaGraphicNodeIdentityAlias(
+        context.layerId,
+        context.frameOrdinal,
+        context.selectedNodePath,
+      );
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : '解除节点关联失败。',
+      );
+    }
+  };
 
   const activeTimeline = target?.timeline ?? structure.timeline;
   const overviewTimes = [
-    ...new Set(
-      (activeTimeline?.tracks ?? []).flatMap((track) =>
+    ...new Set([
+      ...(activeTimeline?.tracks ?? []).flatMap((track) =>
         track.keyframes.map((kf) => kf.timeMs),
       ),
-    ),
+      ...(structure.shapeTweenTracks ?? []).flatMap((track) => [
+        track.startTimeMs,
+        track.endTimeMs,
+      ]),
+    ]),
   ].sort((left, right) => left - right);
 
   const track =
@@ -370,16 +558,234 @@ export function FlaGraphicInternalTimelineBar({
                 </span>
               ) : null}
             </>
+          ) : target?.authoringCapability === 'readonly-identity' ? (
+            <>
+              <span data-testid="fla-internal-readonly-node">
+                当前节点无稳定身份（只读）
+              </span>
+              <button
+                data-testid="fla-internal-associate-identity-open"
+                data-ui-button
+                data-ui-variant="secondary"
+                onClick={() => setAssociationOpen(true)}
+                type="button"
+              >
+                建立节点关联
+              </button>
+              {associationOpen ? (
+                <span
+                  className="fla-internal-identity-association"
+                  data-testid="fla-internal-identity-association"
+                >
+                  <select
+                    aria-label="关联身份"
+                    data-testid="fla-internal-identity-group"
+                    onChange={(event) =>
+                      setAssociationGroupId(event.target.value)
+                    }
+                    value={associationGroupId}
+                  >
+                    <option value="">新建关联身份</option>
+                    {identityAliasGroups.map((group, index) => (
+                      <option key={group.aliasId} value={group.aliasId}>
+                        {identityAliasGroupLabel(group, index)}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    data-testid="fla-internal-associate-identity-confirm"
+                    data-ui-button
+                    data-ui-variant="primary"
+                    onClick={handleAssociateIdentity}
+                    type="button"
+                  >
+                    建立关联
+                  </button>
+                  <button
+                    data-testid="fla-internal-associate-identity-cancel"
+                    data-ui-button
+                    data-ui-variant="secondary"
+                    onClick={() => {
+                      setAssociationOpen(false);
+                      setAssociationGroupId('');
+                    }}
+                    type="button"
+                  >
+                    取消
+                  </button>
+                </span>
+              ) : null}
+            </>
           ) : (
             <span data-testid="fla-internal-readonly-node">
               {target?.authoringCapability === 'readonly-trs-unsafe'
-                ? '当前节点含倾斜变换（只读）'
-                : '当前节点不可建轨（只读）'}
+                ? '当前节点变换含退化或无法无损分解的分量（只读）'
+                : target?.authoringCapability === 'readonly-affine-unsafe'
+                  ? '相邻关键帧缩放方向相反，补间会经过退化帧（只读）'
+                  : '当前节点不可建轨（只读）'}
             </span>
           )
         ) : (
           <span data-testid="fla-internal-select-hint">选择内部子节点以编辑关键帧</span>
         )}
+        {target?.identitySource === 'alias' ? (
+          <span
+            className="fla-internal-identity-association"
+            data-testid="fla-internal-identity-association-status"
+          >
+            已建立节点关联
+            <button
+              data-testid="fla-internal-clear-identity-association"
+              data-ui-button
+              data-ui-variant="secondary"
+              onClick={handleClearIdentityAssociation}
+              type="button"
+            >
+              解除关联
+            </button>
+          </span>
+        ) : null}
+        {nativeDefinition ? (
+          <span
+            className="fla-internal-exposure-controls"
+            data-testid="fla-internal-exposure-controls"
+          >
+            <select
+              aria-label="曝光帧"
+              data-testid="fla-internal-exposure-frame"
+              onChange={(event) => {
+                setExposureFrameOrdinal(Number(event.target.value));
+                setExposureLayerIndex(0);
+              }}
+              value={activeExposureIndex}
+            >
+              {nativeFrames.map((frame, index) => (
+                <option key={frame.ordinal} value={index}>
+                  {`帧 ${index + 1}${frame.held ? '（保持）' : frame.blank ? '（空白）' : ''}`}
+                </option>
+              ))}
+            </select>
+            <button
+              data-testid="fla-internal-insert-blank-frame"
+              data-ui-button
+              data-ui-variant="secondary"
+              onClick={handleInsertBlankKeyframe}
+              type="button"
+            >
+              插入空白关键帧
+            </button>
+            <button
+              data-testid="fla-internal-copy-frame"
+              data-ui-button
+              data-ui-variant="secondary"
+              onClick={handleCopyFrame}
+              type="button"
+            >
+              复制帧
+            </button>
+            <input
+              aria-label="曝光帧数"
+              data-testid="fla-internal-exposure-count"
+              min={1}
+              onChange={(event) => setExposureFrameCount(event.target.value)}
+              step={1}
+              style={{ width: '56px' }}
+              type="number"
+              value={exposureFrameCount}
+            />
+            <button
+              data-testid="fla-internal-extend-exposure"
+              data-ui-button
+              data-ui-variant="secondary"
+              onClick={handleExtendExposure}
+              type="button"
+            >
+              延长曝光
+            </button>
+            <button
+              data-testid="fla-internal-shorten-exposure"
+              data-ui-button
+              data-ui-variant="secondary"
+              onClick={handleShortenExposure}
+              type="button"
+            >
+              缩短曝光
+            </button>
+            {exposureLayers.length > 0 ? (
+              <>
+                <select
+                  aria-label="曝光帧图层"
+                  data-testid="fla-internal-exposure-layer"
+                  onChange={(event) => setExposureLayerIndex(Number(event.target.value))}
+                  value={activeLayerIndex}
+                >
+                  {exposureLayers.map((layer, index) => (
+                    <option key={`${layer.name}-${index}`} value={index}>
+                      {layer.name || `图层 ${index + 1}`}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  data-testid="fla-internal-add-layer"
+                  data-ui-button
+                  data-ui-variant="secondary"
+                  onClick={handleAddLayer}
+                  type="button"
+                >
+                  新增层
+                </button>
+                <button
+                  data-testid="fla-internal-remove-layer"
+                  data-ui-button
+                  data-ui-variant="secondary"
+                  onClick={handleRemoveLayer}
+                  type="button"
+                >
+                  删除层
+                </button>
+                <button
+                  data-testid="fla-internal-move-layer-backward"
+                  data-ui-button
+                  data-ui-variant="secondary"
+                  onClick={() => handleMoveLayer(-1)}
+                  type="button"
+                >
+                  层后移
+                </button>
+                <button
+                  data-testid="fla-internal-move-layer-forward"
+                  data-ui-button
+                  data-ui-variant="secondary"
+                  onClick={() => handleMoveLayer(1)}
+                  type="button"
+                >
+                  层前移
+                </button>
+                {canUngroupSelected ? (
+                  <button
+                    data-testid="fla-internal-ungroup"
+                    data-ui-button
+                    data-ui-variant="secondary"
+                    onClick={handleUngroupNode}
+                    type="button"
+                  >
+                    解组
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <button
+                data-testid="fla-internal-add-layer"
+                data-ui-button
+                data-ui-variant="secondary"
+                onClick={handleAddLayer}
+                type="button"
+              >
+                新增层
+              </button>
+            )}
+          </span>
+        ) : null}
         {statusMessage ? (
           <output data-testid="fla-internal-timeline-status">{statusMessage}</output>
         ) : null}

@@ -1,9 +1,11 @@
 import {
+  applyResolvedCoverageMasks,
   evaluateLayerMotionAtTime,
   buildEditorStageRenderModel,
   evaluateShotAtTime,
   projectShotDialogueVisual,
   resolveLayerImageAsset,
+  resolveShotCoverageMasks,
   type EditorStageRenderModel,
   type EvaluatedLayer,
   type EvaluatedShot,
@@ -79,6 +81,9 @@ function buildBaseEditorShot(project: Project, shot: Shot): EvaluatedShot {
           : undefined;
       return {
         id: layer.id,
+        // The 0:00 editor base view overrides the editable transform fields
+        // only; the formal evaluation still owns the pin-warp mesh (#1460).
+        ...(evaluatedLayer?.pinWarp ? { pinWarp: evaluatedLayer.pinWarp } : {}),
         ...(layer.source.kind === 'control' ? { control: true } : {}),
         ...(evaluatedLayer?.effectiveDepth !== undefined ? { effectiveDepth: evaluatedLayer.effectiveDepth } : {}),
         ...(evaluatedLayer?.effectiveCameraSpace ? { effectiveCameraSpace: evaluatedLayer.effectiveCameraSpace } : {}),
@@ -130,7 +135,7 @@ function buildBaseEditorShot(project: Project, shot: Shot): EvaluatedShot {
     shotId: shot.id,
     timeMs: 0,
     backgroundLayerId: shot.backgroundLayerId,
-    layers,
+    layers: applyResolvedCoverageMasks(layers, resolveShotCoverageMasks(shot)),
   };
 }
 

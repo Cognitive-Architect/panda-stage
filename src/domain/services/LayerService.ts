@@ -35,15 +35,19 @@ import {
   STATIC_ARRAY_MIN_COUNT,
   type CubicBezier2D,
   type Point,
+  type ShapeMorphFailureCode,
   type StaticArrayOrientationMode,
 } from '../geometry';
 import { evaluateAnimationEase } from '../evaluate-animation-core';
 import {
+  FLA_GRAPHIC_IDENTITY_ALIAS_ID_PATTERN,
   isFlaGraphicDefinition,
   isFlaGraphicEditableSubtreeShapeNode,
   isFlaGraphicNodeTransformable,
   ProjectSchema,
   type AnimationPlayback,
+  type FlaGraphicDefinition,
+  type FlaGraphicStructure,
   type Layer,
   type Project,
   type Shot,
@@ -51,6 +55,28 @@ import {
 } from '../models';
 import { invertAffineMatrix, multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine-matrix';
 import { NameSchema } from '../models/common';
+import { LayerCoverageMaskTargetsSchema } from '../models/layerCoverageMask';
+import {
+  PIN_WARP_DEFAULT_MESH,
+  addPinWarpPoseAtTime,
+  createPinWarp,
+  pinWarpRectForImage,
+  removePinWarpPoseAtTime,
+  reseedPinWarpPins,
+  resetPinWarpPoseToRest,
+  resolvePinWarpAuthoringTimeMs,
+  setPinWarpMeshDensity as applyPinWarpMeshDensity,
+  setPinWarpPinAtTime,
+  validatePinWarpForShot,
+  type PinWarpRect,
+} from '../pin-warp';
+import {
+  PinWarpAuthoringSchema,
+  type PinWarp,
+  type PinWarpMeshDensity,
+  type PinWarpPoint,
+} from '../models/pinWarp';
+import { assertCoverageMaskChange, resolveShotCoverageMasks } from '../coverage-mask';
 import { hasLayerVisualEffects, LayerVisualEffectsSchema, type LayerVisualEffects } from '../models/layerVisualEffects';
 import { AnimationSourceRangeSchema, type AnimationSourceRange } from '../models/animationSourceRange';
 import { ReusableAnimationSegmentSchema, type ReusableAnimationSegment } from '../models/reusableAnimationSegment';
@@ -79,11 +105,16 @@ import {
 } from '../models/flaGraphicInstanceOverrides';
 import {
   addFlaGraphicTimelineKeyframe as addTimelineKeyframePure,
+  clearFlaGraphicNodeIdentityAlias as clearNodeIdentityAliasPure,
   deleteFlaGraphicTimelineKeyframe as deleteTimelineKeyframePure,
   duplicateFlaGraphicTimelineKeyframe as duplicateTimelineKeyframePure,
   evaluateFlaGraphicTrackAtTime,
+  isAffineMatrixTimelineRepresentable,
+  isFlaGraphicTransformTrackInterpolationSafe,
+  listFlaGraphicIdentityAliasAssignments,
   moveFlaGraphicTimelineKeyframe as moveTimelineKeyframePure,
   resolveFlaGraphicTimelineTarget,
+  setFlaGraphicNodeIdentityAlias as setNodeIdentityAliasPure,
   setFlaGraphicTimelineKeyframeEasing as setTimelineKeyframeEasingPure,
   updateFlaGraphicTimelineKeyframeTransform as updateTimelineKeyframeTransformPure,
   withFlaGraphicContainerTimeline,
@@ -91,6 +122,27 @@ import {
   type FlaGraphicTimelineTargetInfo,
   type FlaGraphicTransformEasing,
 } from '../models/flaGraphicTimeline';
+import {
+  FLA_SHAPE_TWEEN_MAX_HINTS,
+  findFlaShapeTweenTrackById,
+  findFlaShapeTweenTrackForTarget,
+  flaShapeTweenTargetKey,
+  prepareFlaShapeTweenTrack,
+  resolveFlaShapeTweenPoseEdit,
+  sameFlaShapeTweenStyle,
+  stableFlaShapeTweenHintId,
+  toFlaShapeTweenHintLocation,
+  withFlaShapeTweenHintLocations,
+  withFlaShapeTweenHints,
+  withFlaShapeTweenTrack,
+  withoutFlaShapeTweenTrack,
+  type FlaShapeTweenEasing,
+  type FlaShapeTweenHint,
+  type FlaShapeTweenHintLocation,
+  type FlaShapeTweenTarget,
+  type FlaShapeTweenTrack,
+} from '../models/flaShapeTween';
+import { resolveCharacterActionForLayer } from '../character-part-animation';
 import type { AssetDropPayload } from '../assetDropPayload';
 import { resolveBackgroundSourceDimensions } from '../selectors/canvasLayers';
 import {
@@ -223,6 +275,10 @@ export type LayerServiceErrorCode =
   | 'LAYER_LOCKED'
   | 'ID_GENERATION_FAILED'
   | 'FLA_GRAPHIC_REQUIRED'
+  | 'COVERAGE_MASK_CONTROL_LAYER'
+  | 'COVERAGE_MASK_LAYER_CONFLICT'
+  | 'PIN_WARP_LAYER_INVALID'
+  | 'PIN_WARP_INVALID'
   | 'SHAPE_SVG_REQUIRED'
   | 'SHAPE_NO_EDITABLE_REGIONS'
   | 'SHAPE_NODE_REQUIRED'
@@ -231,11 +287,51 @@ export type LayerServiceErrorCode =
   | 'SHAPE_REGION_NOT_FOUND'
   | 'SHAPE_REGION_REQUIRED'
   | 'SHAPE_FILL_NOT_SOLID'
+  | 'SHAPE_TWEEN_DEFINITION_ONLY'
+  | 'SHAPE_TWEEN_GEOMETRY_UNSUPPORTED'
+  | 'SHAPE_TWEEN_REGION_REQUIRED'
+  | 'SHAPE_TWEEN_DUPLICATE'
+  | 'SHAPE_TWEEN_NOT_FOUND'
+  | 'SHAPE_TWEEN_TARGET_UNSUPPORTED'
+  | 'SHAPE_TWEEN_MID_RANGE_READONLY'
+  | 'SHAPE_TWEEN_INVALID_TIME'
+  | 'SHAPE_TWEEN_HINT_LIMIT'
   | 'INVALID_GRID_ARRAY'
   | 'INVALID_RADIAL_ARRAY'
   | 'INVALID_PATH_ARRAY'
   | 'INVALID_AFTERIMAGE'
-  | 'INVALID_RADIAL_BURST';
+  | 'INVALID_RADIAL_BURST'
+  | 'NODE_IDENTITY_TARGET_NOT_FOUND'
+  | 'NODE_IDENTITY_OPAQUE'
+  | 'NODE_IDENTITY_PROVEN'
+  | 'INVALID_NODE_IDENTITY_ALIAS'
+  | 'NODE_IDENTITY_ALIAS_NOT_FOUND'
+  | 'NODE_IDENTITY_ALIAS_CONFLICT'
+  | 'NODE_IDENTITY_ALIAS_TRACKED'
+  | 'NODE_IDENTITY_ALIAS_SHAPE_TWEEN'
+  | 'NODE_IDENTITY_ALIAS_ATTACHED'
+  | 'NODE_IDENTITY_ALIAS_GENERATION_FAILED'
+  | 'NATIVE_GRAPHIC_SOURCE_REQUIRED'
+  | 'NATIVE_GRAPHIC_FRAME_REQUIRED'
+  | 'NATIVE_GRAPHIC_SELECTION_EMPTY'
+  | 'NATIVE_GRAPHIC_SELECTION_INVALID'
+  | 'NATIVE_GRAPHIC_SELECTION_OVERLAP'
+  | 'NATIVE_GRAPHIC_MEDIA_UNRESOLVED'
+  | 'NATIVE_GRAPHIC_DEFINITION_NOT_FOUND'
+  | 'NATIVE_GRAPHIC_NOT_NATIVE'
+  | 'NATIVE_GRAPHIC_IN_USE'
+  | 'NATIVE_GRAPHIC_NODE_NOT_FOUND'
+  | 'NATIVE_GRAPHIC_LAST_NODE'
+  | 'NATIVE_GRAPHIC_SOURCE_NODE_NOT_EDITABLE'
+  | 'NATIVE_GRAPHIC_NAME_CONFLICT'
+  | 'NATIVE_GRAPHIC_FRAME_ORDINAL_INVALID'
+  | 'NATIVE_GRAPHIC_FRAME_LIMIT'
+  | 'NATIVE_GRAPHIC_EXPOSURE_COUNT_INVALID'
+  | 'NATIVE_GRAPHIC_EXPOSURE_NOT_HELD'
+  | 'NATIVE_GRAPHIC_LAYER_NOT_FOUND'
+  | 'NATIVE_GRAPHIC_LAST_LAYER'
+  | 'NATIVE_GRAPHIC_GROUP_UNSUPPORTED'
+  | 'NATIVE_GRAPHIC_UNGROUP_UNSUPPORTED';
 
 export class LayerServiceError extends Error {
   constructor(
@@ -625,6 +721,9 @@ export class LayerService {
       );
     }
     for (const frame of animation.frames) {
+      // Native FLA Graphic Definitions render from their authored structure and
+      // intentionally carry no baked frame media asset.
+      if (!frame.assetId) continue;
       const frameAsset = project.assets.find(
         (candidate) => candidate.id === frame.assetId,
       );
@@ -1153,6 +1252,267 @@ export class LayerService {
     };
   }
 
+  /**
+   * Assigns an author-stable identity to an otherwise ambiguous FLA Graphic
+   * node. Only nodes without a source-proven identity can be associated; the
+   * node path is unchanged, so existing tracks and instance overrides for other
+   * nodes stay valid. Passing `aliasId` joins an existing author association
+   * (the explicit cross-frame mapping path).
+   */
+  setFlaGraphicNodeIdentityAlias(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    aliasId?: string,
+  ): Project {
+    const { animationIndex, definition } = this.resolveEditableFlaGraphicContext(
+      project,
+      shotId,
+      layerId,
+    );
+    const structure = definition.structure!;
+    const target = resolveFlaGraphicTimelineTarget(
+      structure,
+      frameOrdinal,
+      nodePath,
+    );
+    if (!target) {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_TARGET_NOT_FOUND',
+        '找不到要关联的元件节点。',
+      );
+    }
+    if (target.authoringCapability === 'readonly-opaque') {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_OPAQUE',
+        '当前对象只读，无法建立节点关联。',
+      );
+    }
+    if (target.identitySource !== null && target.identitySource !== 'alias') {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_PROVEN',
+        '当前节点已有源稳定身份，无需建立关联。',
+      );
+    }
+    const assignments = listFlaGraphicIdentityAliasAssignments(structure);
+    const currentAliasId = target.identityAliasId;
+    const nextAliasId =
+      aliasId === undefined
+        ? this.nextFlaGraphicNodeIdentityAliasId(assignments)
+        : aliasId;
+    if (!FLA_GRAPHIC_IDENTITY_ALIAS_ID_PATTERN.test(nextAliasId)) {
+      throw new LayerServiceError(
+        'INVALID_NODE_IDENTITY_ALIAS',
+        '关联身份格式无效。',
+      );
+    }
+    if (currentAliasId === nextAliasId) return project;
+    if (
+      aliasId !== undefined &&
+      !assignments.some((assignment) => assignment.aliasId === nextAliasId)
+    ) {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_ALIAS_NOT_FOUND',
+        '所选关联身份不存在，请刷新后重试。',
+      );
+    }
+    if (
+      assignments.some(
+        (assignment) =>
+          assignment.containerKey === target.identityContainerKey &&
+          assignment.nodeId !== target.targetNode.id &&
+          assignment.aliasId === nextAliasId,
+      )
+    ) {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_ALIAS_CONFLICT',
+        '同一帧中的不同节点不能共用同一关联身份。',
+      );
+    }
+    if (currentAliasId) {
+      this.assertFlaGraphicIdentityAliasDetachable(
+        project,
+        definition,
+        target,
+        currentAliasId,
+        '调整',
+      );
+    }
+    const nextStructure = setNodeIdentityAliasPure(
+      structure,
+      frameOrdinal,
+      nodePath,
+      nextAliasId,
+    );
+    if (nextStructure === structure) return project;
+    return this.commitFlaGraphicStructureChange(
+      project,
+      animationIndex,
+      definition,
+      nextStructure,
+    );
+  }
+
+  /**
+   * Removes an author-stable identity. Rejected while the identity still owns
+   * keyframes or an attachment target, so the operation can never silently
+   * orphan authored data.
+   */
+  clearFlaGraphicNodeIdentityAlias(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+  ): Project {
+    const { animationIndex, definition } = this.resolveEditableFlaGraphicContext(
+      project,
+      shotId,
+      layerId,
+    );
+    const structure = definition.structure!;
+    const target = resolveFlaGraphicTimelineTarget(
+      structure,
+      frameOrdinal,
+      nodePath,
+    );
+    if (!target) {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_TARGET_NOT_FOUND',
+        '找不到要解除关联的元件节点。',
+      );
+    }
+    const currentAliasId = target.identityAliasId;
+    if (!currentAliasId) return project;
+    this.assertFlaGraphicIdentityAliasDetachable(
+      project,
+      definition,
+      target,
+      currentAliasId,
+      '解除',
+    );
+    const nextStructure = clearNodeIdentityAliasPure(
+      structure,
+      frameOrdinal,
+      nodePath,
+    );
+    if (nextStructure === structure) return project;
+    return this.commitFlaGraphicStructureChange(
+      project,
+      animationIndex,
+      definition,
+      nextStructure,
+    );
+  }
+
+  /**
+   * Rejects an alias change that would leave an authored consumer pointing at an
+   * identity the node no longer resolves to. Consumers are judged against the
+   * real Definition, timeline container and instance ownership, so an unrelated
+   * Definition reusing the same alias id can never block the operation.
+   */
+  private assertFlaGraphicIdentityAliasDetachable(
+    project: Project,
+    definition: FlaGraphicDefinition,
+    target: FlaGraphicTimelineTargetInfo,
+    aliasId: string,
+    action: string,
+  ): void {
+    const trackId = `alias:${aliasId}`;
+    // Keyframe tracks live in the owning timeline container.
+    if (target.timeline?.tracks.some((track) => track.trackId === trackId)) {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_ALIAS_TRACKED',
+        `当前关联身份上已有关键帧轨道，请先删除该轨道的关键帧后再${action}关联。`,
+      );
+    }
+    // Shape Tween tracks resolve their target through the same stable identity,
+    // but they are scoped by timeline owner (frame vs nested Symbol definition).
+    const structure = definition.structure!;
+    const ownerShapeTween = (structure.shapeTweenTracks ?? []).some(
+      (track) =>
+        track.target.nodeTrackId === trackId &&
+        track.target.ownerKind === target.ownerKind &&
+        (track.target.ownerSymbolDefId ?? null) === (target.ownerSymbolDefId ?? null),
+    );
+    if (ownerShapeTween) {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_ALIAS_SHAPE_TWEEN',
+        `当前关联身份上仍有形状补间，请先删除该形状补间后再${action}关联。`,
+      );
+    }
+    // Static and dynamic (parentKeys) Graphic attachments resolve their target
+    // through the owner Layer's own Definition instance.
+    const attachmentReferencesAlias = (
+      attachment: LayerParentKey['parentAttachment'] | Layer['parentAttachment'],
+    ): boolean =>
+      attachment?.target.kind === 'graphic-node' &&
+      attachment.target.identityPath?.includes(trackId) === true;
+    const ownerUsesDefinition = (shot: Shot, ownerLayerId: string | undefined): boolean => {
+      if (!ownerLayerId) return false;
+      const owner = shot.layers.find((layer) => layer.id === ownerLayerId);
+      return owner?.source.kind === 'animation' && owner.source.animationId === definition.id;
+    };
+    for (const shot of project.shots) {
+      for (const layer of shot.layers) {
+        if (
+          attachmentReferencesAlias(layer.parentAttachment) &&
+          ownerUsesDefinition(shot, layer.parentLayerId)
+        ) {
+          throw new LayerServiceError(
+            'NODE_IDENTITY_ALIAS_ATTACHED',
+            `当前关联身份仍被图层挂接引用，请先修改挂接目标后再${action}关联。`,
+          );
+        }
+        for (const key of layer.parentKeys ?? []) {
+          if (
+            attachmentReferencesAlias(key.parentAttachment) &&
+            ownerUsesDefinition(shot, key.parentLayerId ?? undefined)
+          ) {
+            throw new LayerServiceError(
+              'NODE_IDENTITY_ALIAS_ATTACHED',
+              `当前关联身份仍被图层挂接引用，请先修改挂接目标后再${action}关联。`,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  private nextFlaGraphicNodeIdentityAliasId(
+    assignments: ReturnType<typeof listFlaGraphicIdentityAliasAssignments>,
+  ): string {
+    const usedAliasIds = new Set(
+      assignments.map((assignment) => assignment.aliasId),
+    );
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const candidate = `identity-${this.createId()}`;
+      if (
+        FLA_GRAPHIC_IDENTITY_ALIAS_ID_PATTERN.test(candidate) &&
+        !usedAliasIds.has(candidate)
+      ) {
+        return candidate;
+      }
+    }
+    throw new LayerServiceError(
+      'NODE_IDENTITY_ALIAS_GENERATION_FAILED',
+      '无法生成节点关联身份，请重试。',
+    );
+  }
+
+  private commitFlaGraphicStructureChange(
+    project: Project,
+    animationIndex: number,
+    definition: FlaGraphicDefinition,
+    nextStructure: FlaGraphicStructure,
+  ): Project {
+    const nextAnimations = [...project.animations];
+    nextAnimations[animationIndex] = { ...definition, structure: nextStructure };
+    return ProjectSchema.parse({ ...project, animations: nextAnimations });
+  }
+
   private resolveEditableFlaGraphicContext(
     project: Project,
     shotId: string,
@@ -1423,6 +1783,9 @@ export class LayerService {
       readonly svgText?: string;
       readonly mutator: (region: FlaEditableShapeRegion) => FlaEditableShapeRegion | null;
       readonly failReason?: { readonly code: LayerServiceErrorCode; readonly message: string };
+      /** Mirror an editable endpoint region edit into its author Shape Tween pose(s). */
+      readonly tweenPoseScope?: 'current-endpoint' | 'both';
+      readonly internalTimeMs?: number;
     },
   ): Project {
     const context = this.resolveEditableFlaGraphicContext(
@@ -1535,7 +1898,17 @@ export class LayerService {
     }
     const nextRegions = [...nodeOverride.regions];
     nextRegions[regionIndex] = updated;
-    return this.commitShapeOverrides(
+    const nextTweenTrack = this.resolveShapeTweenPoseUpdate({
+      definition: context.definition,
+      frameOrdinal: input.frameOrdinal,
+      nodePath: input.nodePath,
+      regionRef: currentRegion.regionRef,
+      mutator: input.mutator,
+      ...(input.tweenPoseScope ? { tweenPoseScope: input.tweenPoseScope } : {}),
+      ...(input.internalTimeMs !== undefined ? { internalTimeMs: input.internalTimeMs } : {}),
+      ...(input.failReason ? { failReason: input.failReason } : {}),
+    });
+    const committed = this.commitShapeOverrides(
       project,
       context,
       input.mode,
@@ -1546,6 +1919,583 @@ export class LayerService {
         regions: nextRegions,
       },
     );
+    if (!nextTweenTrack) return committed;
+    return this.commitFlaGraphicShapeTweenTrack(
+      committed,
+      context.animationIndex,
+      nextTweenTrack,
+    );
+  }
+
+  /**
+   * Mirrors an endpoint region edit into the region's author Shape Tween so the
+   * two authored poses stay directly editable at the tween's start / end time.
+   * Mid-range geometry edits are rejected; fill/style edits update both poses.
+   */
+  private resolveShapeTweenPoseUpdate(input: {
+    readonly definition: FlaGraphicDefinition;
+    readonly frameOrdinal: number;
+    readonly nodePath: readonly string[];
+    readonly regionRef: string;
+    readonly mutator: (region: FlaEditableShapeRegion) => FlaEditableShapeRegion | null;
+    readonly tweenPoseScope?: 'current-endpoint' | 'both';
+    readonly internalTimeMs?: number;
+    readonly failReason?: { readonly code: LayerServiceErrorCode; readonly message: string };
+  }): FlaShapeTweenTrack | null {
+    if (!input.tweenPoseScope || !input.definition.structure) return null;
+    const track = this.resolveShapeTweenForShapeNode(
+      input.definition.structure,
+      input.frameOrdinal,
+      input.nodePath,
+      input.regionRef,
+    );
+    if (!track) return null;
+    const noChange = (): FlaShapeTweenTrack | null => {
+      if (input.failReason) {
+        throw new LayerServiceError(input.failReason.code, input.failReason.message);
+      }
+      return null;
+    };
+    if (input.tweenPoseScope === 'both') {
+      const from = input.mutator(track.from);
+      const to = input.mutator(track.to);
+      if (!from || !to) return noChange();
+      return { ...track, from, to };
+    }
+    const internalTimeMs =
+      input.internalTimeMs ??
+      Math.round(
+        (input.frameOrdinal * 1_000) /
+          Math.max(1, input.definition.source.sourceFps || 24),
+      );
+    const pose = resolveFlaShapeTweenPoseEdit(track, internalTimeMs);
+    if (pose === 'interpolated') {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_MID_RANGE_READONLY',
+        '形状补间区间内不能直接编辑端点姿态，请拖到补间起点或终点后再编辑。',
+      );
+    }
+    const updatedPose = input.mutator(track[pose]);
+    if (!updatedPose) return noChange();
+    return { ...track, [pose]: updatedPose };
+  }
+
+  private resolveShapeTweenForShapeNode(
+    structure: NonNullable<FlaGraphicDefinition['structure']>,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    regionRef: string,
+  ): FlaShapeTweenTrack | null {
+    const target = resolveFlaGraphicTimelineTarget(structure, frameOrdinal, nodePath);
+    if (!target?.trackId) return null;
+    return findFlaShapeTweenTrackForTarget(structure.shapeTweenTracks, {
+      nodeTrackId: target.trackId,
+      ownerKind: target.ownerKind,
+      ...(target.ownerSymbolDefId
+        ? { ownerSymbolDefId: target.ownerSymbolDefId }
+        : {}),
+      regionRef,
+      sourceFrameOrdinal: frameOrdinal,
+      sourceNodePath: [...nodePath],
+    });
+  }
+
+  private commitFlaGraphicShapeTweenTrack(
+    project: Project,
+    animationIndex: number,
+    nextTrack: FlaShapeTweenTrack,
+  ): Project {
+    const definition = project.animations[animationIndex];
+    if (!definition || !isFlaGraphicDefinition(definition) || !definition.structure) {
+      return project;
+    }
+    const nextStructure = withFlaShapeTweenTrack(definition.structure, nextTrack);
+    if (nextStructure === definition.structure) return project;
+    const nextAnimations = [...project.animations];
+    nextAnimations[animationIndex] = {
+      ...definition,
+      structure: nextStructure,
+    };
+    return { ...project, animations: nextAnimations };
+  }
+
+  /**
+   * Validates authored geometry (and optional author hints) before persisting a
+   * tween edit. Multi-contour / hole pairing is enabled; only the documented
+   * unsupported topology remains a typed rejection.
+   */
+  private assertFlaShapeTweenGeometrySupported(
+    region: FlaEditableShapeRegion,
+    other?: FlaEditableShapeRegion,
+    hints?: readonly FlaShapeTweenHint[],
+  ): void {
+    if (region.fill.kind === 'preserved') {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_GEOMETRY_UNSUPPORTED',
+        '当前区域包含位图或受保护填充，暂不支持形状补间。',
+      );
+    }
+    const prepared = prepareFlaShapeTweenTrack({
+      tweenId: 'shape-tween-validation',
+      target: {
+        nodeTrackId: 'validation',
+        ownerKind: 'frame',
+        regionRef: region.regionRef,
+        sourceFrameOrdinal: 0,
+        sourceNodePath: ['validation'],
+      },
+      startTimeMs: 0,
+      endTimeMs: 1,
+      easing: 'linear',
+      from: region,
+      to: other ?? region,
+      ...(hints && hints.length > 0 ? { hints: [...hints] } : {}),
+    });
+    if (prepared.ok) return;
+    throw new LayerServiceError(
+      'SHAPE_TWEEN_GEOMETRY_UNSUPPORTED',
+      this.faShapeTweenGeometryFailureMessage(prepared.code),
+    );
+  }
+
+  private faShapeTweenGeometryFailureMessage(code: ShapeMorphFailureCode): string {
+    switch (code) {
+      case 'open-contour':
+        return '形状补间要求两个姿态都是闭合轮廓。';
+      case 'unsupported-topology':
+        return '暂不支持该多轮廓/孔洞拓扑：仅支持一个外轮廓加直接孔洞，或互不相交的外轮廓组合。';
+      case 'degenerate-contour':
+        return '当前轮廓的面积为 0，无法创建形状补间。';
+      case 'too-many-segments':
+        return '当前轮廓过于复杂，暂不支持形状补间。';
+      case 'empty-pose':
+        return '当前区域没有可用的闭合轮廓。';
+      case 'invalid-hint':
+        return '提示点位置无效，请重新选择提示点所在的轮廓顶点或位置。';
+      case 'ambiguous-hints':
+        return '提示点存在重复或歧义，请调整提示点位置。';
+      case 'crossing-hints':
+        return '提示点顺序交叉，无法建立一致的对应关系，请重新放置提示点。';
+      default:
+        return '当前轮廓无法进行形状补间。';
+    }
+  }
+
+  /** Validates a candidate hint set against the track's two authored poses. */
+  private assertFlaShapeTweenHintsSupported(
+    track: FlaShapeTweenTrack,
+    hints: readonly FlaShapeTweenHint[],
+  ): void {
+    const prepared = prepareFlaShapeTweenTrack({ ...track, hints: [...hints] });
+    if (prepared.ok) return;
+    throw new LayerServiceError(
+      'SHAPE_TWEEN_GEOMETRY_UNSUPPORTED',
+      this.faShapeTweenGeometryFailureMessage(prepared.code),
+    );
+  }
+
+  private stableFlaShapeTweenId(target: FlaShapeTweenTarget): string {
+    const text = flaShapeTweenTargetKey(target);
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < text.length; index += 1) {
+      hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193);
+    }
+    return `shape-tween-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+  }
+
+  private sanitizeFlaShapeTweenTime(
+    value: number,
+    label: string,
+  ): number {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_INVALID_TIME',
+        `${label}必须为非负整数毫秒。`,
+      );
+    }
+    return value;
+  }
+
+  createFlaGraphicShapeTween(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly frameOrdinal: number;
+      readonly nodePath: readonly string[];
+      readonly regionRef?: string;
+      readonly mode: 'instance' | 'definition';
+      readonly svgText?: string;
+      readonly startTimeMs: number;
+      readonly durationMs: number;
+      readonly easing?: FlaShapeTweenEasing;
+    },
+  ): Project {
+    if (input.mode !== 'definition') {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_DEFINITION_ONLY',
+        '形状补间仅支持在共享元件定义中创建，请切换到元件内部时间轴后再试。',
+      );
+    }
+    const context = this.resolveEditableFlaGraphicContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const structure = context.definition.structure!;
+    const frameKey = String(input.frameOrdinal);
+    const existingExtracted = findFlaExtractedShapeRegionByPath(
+      context.definition.flaGraphicSharedShapeOverrides?.[frameKey],
+      input.nodePath,
+    );
+    if (existingExtracted) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_TARGET_UNSUPPORTED',
+        '已拆分出的独立区域暂不支持形状补间，请直接对 Shape 内的区域创建补间。',
+      );
+    }
+    const targetInfo = resolveFlaGraphicTimelineTarget(
+      structure,
+      input.frameOrdinal,
+      input.nodePath,
+    );
+    if (!targetInfo || !isFlaGraphicEditableSubtreeShapeNode(targetInfo.targetNode)) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_TARGET_UNSUPPORTED',
+        '请选择可编辑的独立 Shape 内部区域后再创建形状补间。',
+      );
+    }
+    if (!targetInfo.trackId) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_TARGET_UNSUPPORTED',
+        '当前形状节点缺少稳定的跨帧身份，暂不支持形状补间。',
+      );
+    }
+    const ownerPathKey = flaGraphicInstanceNodePathKey(input.nodePath);
+    const nodeOverride = this.resolveOrSeedShapeNodeOverride({
+      existingOverride:
+        context.definition.flaGraphicSharedShapeOverrides?.[frameKey]?.[ownerPathKey],
+      fallbackViewBox: targetInfo.targetNode.fallbackViewBox,
+      sourceShapeRef: targetInfo.targetNode.sourceRef,
+      svgText: input.svgText,
+    });
+    this.assertShapeOverrideSafeForEdit(nodeOverride);
+    const regionRef =
+      input.regionRef ??
+      (nodeOverride.regions.length === 1
+        ? nodeOverride.regions[0]!.regionRef
+        : undefined);
+    if (!regionRef) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_REGION_REQUIRED',
+        '请先点选要补间的具体绘制区域。',
+      );
+    }
+    const region = nodeOverride.regions.find(
+      (candidate) => candidate.regionRef === regionRef,
+    );
+    if (!region) {
+      throw new LayerServiceError(
+        'SHAPE_REGION_NOT_FOUND',
+        '未找到对应的绘制区域。',
+      );
+    }
+    this.assertFlaShapeTweenGeometrySupported(region);
+    const target: FlaShapeTweenTarget = {
+      nodeTrackId: targetInfo.trackId,
+      ownerKind: targetInfo.ownerKind,
+      ...(targetInfo.ownerSymbolDefId
+        ? { ownerSymbolDefId: targetInfo.ownerSymbolDefId }
+        : {}),
+      regionRef,
+      sourceFrameOrdinal: input.frameOrdinal,
+      sourceNodePath: [...input.nodePath],
+    };
+    if (
+      findFlaShapeTweenTrackForTarget(structure.shapeTweenTracks, target)
+    ) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_DUPLICATE',
+        '当前区域已存在形状补间，请直接编辑或删除现有补间。',
+      );
+    }
+    const startTimeMs = this.sanitizeFlaShapeTweenTime(
+      input.startTimeMs,
+      '补间开始时间',
+    );
+    const durationMs = this.sanitizeFlaShapeTweenTime(
+      input.durationMs,
+      '补间时长',
+    );
+    if (durationMs <= 0) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_INVALID_TIME',
+        '补间时长必须大于 0 毫秒。',
+      );
+    }
+    const endTimeMs = startTimeMs + durationMs;
+    if (!Number.isSafeInteger(endTimeMs)) {
+      throw new LayerServiceError('SHAPE_TWEEN_INVALID_TIME', '补间结束时间超出支持范围。');
+    }
+    const from = cloneFlaEditableShapeRegion(region);
+    const to = cloneFlaEditableShapeRegion(region);
+    const track: FlaShapeTweenTrack = {
+      tweenId: this.stableFlaShapeTweenId(target),
+      target,
+      startTimeMs,
+      endTimeMs,
+      easing: input.easing ?? 'linear',
+      from,
+      to,
+    };
+    const committed = this.commitShapeOverrides(
+      project,
+      context,
+      'definition',
+      frameKey,
+      ownerPathKey,
+      nodeOverride,
+    );
+    const next = this.commitFlaGraphicShapeTweenTrack(
+      committed,
+      context.animationIndex,
+      track,
+    );
+    return ProjectSchema.parse(next);
+  }
+
+  updateFlaGraphicShapeTween(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly tweenId: string;
+      readonly pose?: 'from' | 'to';
+      readonly region?: FlaEditableShapeRegion;
+      readonly startTimeMs?: number;
+      readonly endTimeMs?: number;
+      readonly easing?: FlaShapeTweenEasing;
+    },
+  ): Project {
+    const context = this.resolveEditableFlaGraphicContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const structure = context.definition.structure!;
+    const track = findFlaShapeTweenTrackById(structure.shapeTweenTracks, input.tweenId);
+    if (!track) {
+      return project;
+    }
+    if (input.pose && !input.region) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_GEOMETRY_UNSUPPORTED',
+        '修改补间姿态需要提供新的区域几何。',
+      );
+    }
+    if (input.region && !input.pose) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_GEOMETRY_UNSUPPORTED',
+        '请指定要修改的补间姿态。',
+      );
+    }
+    if (!input.pose && !input.region && input.startTimeMs === undefined &&
+        input.endTimeMs === undefined && input.easing === undefined) {
+      return project;
+    }
+    let nextTrack: FlaShapeTweenTrack = { ...track };
+    if (input.pose && input.region) {
+      const nextRegion = cloneFlaEditableShapeRegion(input.region);
+      const otherPose = input.pose === 'from' ? track.to : track.from;
+      if (!sameFlaShapeTweenStyle(nextRegion, otherPose)) {
+        throw new LayerServiceError(
+          'SHAPE_TWEEN_GEOMETRY_UNSUPPORTED',
+          '形状补间的两个姿态必须使用相同的填充和描边样式。',
+        );
+      }
+      this.assertFlaShapeTweenGeometrySupported(
+        nextRegion,
+        input.pose === 'from' ? track.to : track.from,
+        track.hints,
+      );
+      nextTrack = { ...nextTrack, [input.pose]: nextRegion };
+    }
+    const startTimeMs =
+      input.startTimeMs !== undefined
+        ? this.sanitizeFlaShapeTweenTime(input.startTimeMs, '补间开始时间')
+        : nextTrack.startTimeMs;
+    const endTimeMs =
+      input.endTimeMs !== undefined
+        ? this.sanitizeFlaShapeTweenTime(input.endTimeMs, '补间结束时间')
+        : nextTrack.endTimeMs;
+    if (endTimeMs <= startTimeMs) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_INVALID_TIME',
+        '补间结束时间必须晚于开始时间。',
+      );
+    }
+    nextTrack = {
+      ...nextTrack,
+      startTimeMs,
+      endTimeMs,
+      ...(input.easing !== undefined ? { easing: input.easing } : {}),
+    };
+    const next = this.commitFlaGraphicShapeTweenTrack(
+      project,
+      context.animationIndex,
+      nextTrack,
+    );
+    return ProjectSchema.parse(next);
+  }
+
+  deleteFlaGraphicShapeTween(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly tweenId: string;
+    },
+  ): Project {
+    const context = this.resolveEditableFlaGraphicContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const structure = context.definition.structure!;
+    if (!findFlaShapeTweenTrackById(structure.shapeTweenTracks, input.tweenId)) {
+      return project;
+    }
+    const nextStructure = withoutFlaShapeTweenTrack(structure, input.tweenId);
+    if (nextStructure === structure) return project;
+    const nextAnimations = [...project.animations];
+    nextAnimations[context.animationIndex] = {
+      ...context.definition,
+      structure: nextStructure,
+    };
+    return ProjectSchema.parse({ ...project, animations: nextAnimations });
+  }
+
+  /**
+   * Adds one author hint pair to an existing tween (#1458). One call = one undo
+   * through the renderer store; invalid geometry/conflicting hints are rejected
+   * with a clear Chinese error and never persisted.
+   */
+  addFlaGraphicShapeTweenHint(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly tweenId: string;
+      readonly from: FlaShapeTweenHintLocation;
+      readonly to: FlaShapeTweenHintLocation;
+    },
+  ): Project {
+    const context = this.resolveEditableFlaGraphicContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const structure = context.definition.structure!;
+    const track = findFlaShapeTweenTrackById(structure.shapeTweenTracks, input.tweenId);
+    if (!track) {
+      throw new LayerServiceError('SHAPE_TWEEN_NOT_FOUND', '未找到对应的形状补间。');
+    }
+    const existing = track.hints ?? [];
+    if (existing.length >= FLA_SHAPE_TWEEN_MAX_HINTS) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_HINT_LIMIT',
+        `一个形状补间最多支持 ${FLA_SHAPE_TWEEN_MAX_HINTS} 个提示点。`,
+      );
+    }
+    const location = {
+      from: toFlaShapeTweenHintLocation(input.from),
+      to: toFlaShapeTweenHintLocation(input.to),
+    };
+    const hintId = stableFlaShapeTweenHintId(location, (candidate) =>
+      existing.some((hint) => hint.hintId === candidate),
+    );
+    const nextHints = [...existing, { hintId, ...location }];
+    this.assertFlaShapeTweenHintsSupported(track, nextHints);
+    const next = this.commitFlaGraphicShapeTweenTrack(
+      project,
+      context.animationIndex,
+      withFlaShapeTweenHints(track, nextHints),
+    );
+    return ProjectSchema.parse(next);
+  }
+
+  /** Moves one authored hint endpoint; one call = one undo. */
+  updateFlaGraphicShapeTweenHint(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly tweenId: string;
+      readonly hintId: string;
+      readonly from?: FlaShapeTweenHintLocation;
+      readonly to?: FlaShapeTweenHintLocation;
+    },
+  ): Project {
+    if (input.from === undefined && input.to === undefined) return project;
+    const context = this.resolveEditableFlaGraphicContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const structure = context.definition.structure!;
+    const track = findFlaShapeTweenTrackById(structure.shapeTweenTracks, input.tweenId);
+    if (!track) {
+      throw new LayerServiceError('SHAPE_TWEEN_NOT_FOUND', '未找到对应的形状补间。');
+    }
+    const existing = track.hints ?? [];
+    const hintIndex = existing.findIndex((hint) => hint.hintId === input.hintId);
+    if (hintIndex < 0) {
+      throw new LayerServiceError('SHAPE_TWEEN_NOT_FOUND', '未找到对应的形状提示点。');
+    }
+    const nextHints = existing.map((hint, index) =>
+      index === hintIndex
+        ? withFlaShapeTweenHintLocations(hint, {
+            ...(input.from !== undefined ? { from: input.from } : {}),
+            ...(input.to !== undefined ? { to: input.to } : {}),
+          })
+        : hint,
+    );
+    this.assertFlaShapeTweenHintsSupported(track, nextHints);
+    const next = this.commitFlaGraphicShapeTweenTrack(
+      project,
+      context.animationIndex,
+      withFlaShapeTweenHints(track, nextHints),
+    );
+    return ProjectSchema.parse(next);
+  }
+
+  /** Removes one author hint; removing the last hint restores the unhinted track shape. */
+  removeFlaGraphicShapeTweenHint(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly tweenId: string;
+      readonly hintId: string;
+    },
+  ): Project {
+    const context = this.resolveEditableFlaGraphicContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const structure = context.definition.structure!;
+    const track = findFlaShapeTweenTrackById(structure.shapeTweenTracks, input.tweenId);
+    if (!track) return project;
+    const existing = track.hints ?? [];
+    const nextHints = existing.filter((hint) => hint.hintId !== input.hintId);
+    if (nextHints.length === existing.length) return project;
+    const next = this.commitFlaGraphicShapeTweenTrack(
+      project,
+      context.animationIndex,
+      withFlaShapeTweenHints(track, nextHints),
+    );
+    return ProjectSchema.parse(next);
   }
 
   updateFlaGraphicShapeRegionFillColor(
@@ -1564,6 +2514,9 @@ export class LayerService {
   ): Project {
     return this.mutateFlaGraphicShapeRegion(project, {
       ...input,
+      ...(input.mode === 'definition'
+        ? { tweenPoseScope: 'both' as const }
+        : {}),
       mutator: (region) => setShapeRegionSolidFillColorPure(region, input.color, input.opacity),
       failReason: {
         code: 'SHAPE_FILL_NOT_SOLID',
@@ -1585,10 +2538,15 @@ export class LayerService {
       readonly x: number;
       readonly y: number;
       readonly svgText?: string;
+      /** Current internal Graphic time used to resolve the authored tween endpoint. */
+      readonly internalTimeMs?: number;
     },
   ): Project {
     return this.mutateFlaGraphicShapeRegion(project, {
       ...input,
+      ...(input.mode === 'definition'
+        ? { tweenPoseScope: 'current-endpoint' as const }
+        : {}),
       mutator: (region) => moveShapeRegionVertexPure(region, input.target, input.x, input.y),
     });
   }
@@ -1640,6 +2598,33 @@ export class LayerService {
     };
   }
 
+  /**
+   * Rejects internal transform-key authoring for a target that is locally
+   * read-only: opaque nodes, nodes without a stable identity, matrices that
+   * cannot be losslessly keyed (non-finite / near-singular / non-round-tripping),
+   * and tracks whose consecutive keys flip the determinant sign (interpolating
+   * them would pass through an almost degenerate, visually flipping frame).
+   */
+  private assertFlaGraphicTimelineAuthoringAllowed(
+    target: FlaGraphicTimelineTargetInfo,
+    action: string,
+  ): void {
+    switch (target.authoringCapability) {
+      case 'editable':
+        return;
+      case 'readonly-opaque':
+        throw new Error(`当前对象只读，无法${action}。`);
+      case 'readonly-identity':
+        throw new Error(`当前节点无稳定身份，无法${action}。`);
+      case 'readonly-trs-unsafe':
+        throw new Error(`当前节点变换无法无损分解为内部关键帧，暂不支持${action}。`);
+      case 'readonly-affine-unsafe':
+        throw new Error(
+          `相邻关键帧的缩放方向相反，补间会经过退化帧，暂不支持${action}。`,
+        );
+    }
+  }
+
   addFlaGraphicTimelineKeyframe(
     project: Project,
     shotId: string,
@@ -1656,11 +2641,7 @@ export class LayerService {
       frameOrdinal,
       nodePath,
       (target) => {
-        if (!target.trsSafe) {
-          throw new Error(
-            '当前节点包含倾斜或非标准缩放变换，内部时间轴暂不支持添加关键帧。',
-          );
-        }
+        this.assertFlaGraphicTimelineAuthoringAllowed(target, '添加关键帧');
         const existingTrack = target.timeline?.tracks.find(
           (t) => t.trackId === target.trackId,
         );
@@ -1668,13 +2649,27 @@ export class LayerService {
           (existingTrack
             ? evaluateFlaGraphicTrackAtTime(existingTrack, timeMs)
             : null) ?? target.targetNode.localTransform;
-        return addTimelineKeyframePure(
+        if (!isAffineMatrixTimelineRepresentable(initialMatrix)) {
+          throw new Error(
+            '当前节点变换无法无损分解为内部关键帧，暂不支持添加关键帧。',
+          );
+        }
+        const nextTimeline = addTimelineKeyframePure(
           target.timeline,
           target.trackId,
           timeMs,
           initialMatrix,
           easing,
         );
+        const nextTrack = nextTimeline.tracks.find(
+          (candidate) => candidate.trackId === target.trackId,
+        );
+        if (nextTrack && !isFlaGraphicTransformTrackInterpolationSafe(nextTrack)) {
+          throw new Error(
+            '新增关键帧会使相邻关键帧的缩放方向相反，暂不支持添加关键帧。',
+          );
+        }
+        return nextTimeline;
       },
     );
   }
@@ -1695,17 +2690,30 @@ export class LayerService {
       frameOrdinal,
       nodePath,
       (target) => {
-        if (!target.trsSafe) {
+        this.assertFlaGraphicTimelineAuthoringAllowed(target, '编辑关键帧');
+        if (!isAffineMatrixTimelineRepresentable(localTransform)) {
           throw new Error(
-            '当前节点包含倾斜或非标准缩放变换，内部时间轴暂不支持编辑关键帧。',
+            '该变换包含无法无损表示的分量（近奇异或非有限），暂不支持写入关键帧。',
           );
         }
-        return updateTimelineKeyframeTransformPure(
+        const nextTimeline = updateTimelineKeyframeTransformPure(
           target.timeline,
           target.trackId,
           timeMs,
           localTransform,
         );
+        const nextTrack = nextTimeline?.tracks.find(
+          (candidate) => candidate.trackId === target.trackId,
+        );
+        if (
+          nextTrack &&
+          !isFlaGraphicTransformTrackInterpolationSafe(nextTrack)
+        ) {
+          throw new Error(
+            '该变换会使相邻关键帧的缩放方向相反，补间会经过退化帧，暂不支持写入关键帧。',
+          );
+        }
+        return nextTimeline;
       },
     );
   }
@@ -1965,6 +2973,296 @@ export class LayerService {
         return name === undefined ? layer : { ...layer, name };
       }),
     });
+  }
+
+  /**
+   * Sets (or clears) an author-level coverage mask relationship (#1454).
+   * A Layer with `maskTargets` present is a mask layer and is not drawn as
+   * ordinary output content; the listed Layers are clipped by its coverage.
+   * `targetLayerIds === null` removes the mask relationship entirely.
+   */
+  setMaskTargets(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    targetLayerIds: readonly string[] | null,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    this.assertContentLayer(shot, layer);
+    this.assertEditable(shot, layer);
+    if (layer.source.kind === 'control') {
+      throw new LayerServiceError(
+        'COVERAGE_MASK_CONTROL_LAYER',
+        '控制层没有可用于遮罩的画面。',
+      );
+    }
+    if (targetLayerIds === null) {
+      if (layer.maskTargets === undefined) return project;
+      const { maskTargets: _previous, ...base } = layer;
+      void _previous;
+      return this.replaceShot(project, {
+        ...shot,
+        layers: shot.layers.map((entry) => (entry === layer ? base : entry)),
+      });
+    }
+    const claimedMaskLayerId = resolveShotCoverageMasks(shot)
+      .maskLayerIdByTarget.get(layer.id);
+    if (claimedMaskLayerId !== undefined) {
+      throw new LayerServiceError(
+        'COVERAGE_MASK_LAYER_CONFLICT',
+        `图层“${layer.name}”当前被其他遮罩覆盖，不能同时作为遮罩。请先解除原遮罩。`,
+      );
+    }
+    const parsed = LayerCoverageMaskTargetsSchema.parse([...targetLayerIds]);
+    const previous = layer.maskTargets;
+    if (
+      previous !== undefined &&
+      previous.length === parsed.length &&
+      previous.every((id, index) => id === parsed[index])
+    ) {
+      return project;
+    }
+    assertCoverageMaskChange(shot, layer.id, parsed);
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((entry) =>
+        entry === layer ? { ...entry, maskTargets: parsed } : entry,
+      ),
+    });
+  }
+
+  /**
+   * Resolves a Layer that may author a bitmap pin-warp (#1460): an unlocked,
+   * non-background ordinary image Layer. The prototype deliberately supports
+   * one bitmap asset per Layer, not characters/Graphics/video.
+   */
+  private pinWarpTarget(
+    project: Project,
+    shotId: string,
+    layerId: string,
+  ): { readonly shot: Shot; readonly layer: Layer; readonly rect: PinWarpRect } {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    this.assertEditable(shot, layer);
+    if (shot.backgroundLayerId === layer.id) {
+      throw new LayerServiceError(
+        'PIN_WARP_LAYER_INVALID',
+        '背景图层不支持控制点变形。',
+      );
+    }
+    if (layer.source.kind !== 'asset') {
+      throw new LayerServiceError(
+        'PIN_WARP_LAYER_INVALID',
+        '只有普通位图图层支持控制点变形。',
+      );
+    }
+    const source = layer.source;
+    const asset = project.assets.find((candidate) => candidate.id === source.assetId);
+    if (!asset || asset.kind !== 'image') {
+      throw new LayerServiceError(
+        'ASSET_TYPE_MISMATCH',
+        '控制点变形只支持图片素材。',
+      );
+    }
+    const rect = pinWarpRectForImage(asset.width, asset.height);
+    if (!rect) {
+      throw new LayerServiceError(
+        'PIN_WARP_LAYER_INVALID',
+        '图片素材尺寸无效，无法建立变形网格。',
+      );
+    }
+    return { shot, layer, rect };
+  }
+
+  private pinWarpAuthoringTimeMs(shot: Shot, requestedTimeMs: number): number {
+    return resolvePinWarpAuthoringTimeMs(requestedTimeMs, shot.durationMs);
+  }
+
+  /** One pin-warp authoring commit: validate, no-op when unchanged, replace Layer. */
+  private commitPinWarp(
+    project: Project,
+    shot: Shot,
+    layer: Layer,
+    nextPinWarp: PinWarp,
+  ): Project {
+    const parsed = PinWarpAuthoringSchema.safeParse(nextPinWarp);
+    if (!parsed.success) {
+      throw new LayerServiceError(
+        'PIN_WARP_INVALID',
+        parsed.error.issues[0]?.message ?? '控制点变形数据无效。',
+      );
+    }
+    const issues = validatePinWarpForShot(parsed.data, shot.durationMs);
+    if (issues.length > 0) {
+      throw new LayerServiceError(
+        'PIN_WARP_INVALID',
+        issues[0]!.message,
+      );
+    }
+    if (JSON.stringify(parsed.data) === JSON.stringify(layer.pinWarp ?? null)) {
+      return project;
+    }
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((entry) =>
+        entry.id === layer.id ? { ...entry, pinWarp: parsed.data } : entry,
+      ),
+    });
+  }
+
+  /** Enables a default pin-warp mesh with one pose at the requested frame. */
+  bindPinWarp(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    requestedTimeMs: number,
+  ): Project {
+    const { shot, layer, rect } = this.pinWarpTarget(project, shotId, layerId);
+    if (layer.pinWarp) return project;
+    return this.commitPinWarp(
+      project,
+      shot,
+      layer,
+      createPinWarp(
+        rect,
+        this.pinWarpAuthoringTimeMs(shot, requestedTimeMs),
+        PIN_WARP_DEFAULT_MESH,
+      ),
+    );
+  }
+
+  /** Removes the pin-warp authoring data; the Layer renders un-warped again. */
+  clearPinWarp(project: Project, shotId: string, layerId: string): Project {
+    const { shot, layer } = this.pinWarpTarget(project, shotId, layerId);
+    if (!layer.pinWarp) return project;
+    const { pinWarp: _previous, ...base } = layer;
+    void _previous;
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((entry) => (entry.id === layer.id ? base : entry)),
+    });
+  }
+
+  /** One pin drag: writes the pose at the requested frame (auto-keying). */
+  setPinWarpPin(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    requestedTimeMs: number,
+    pinIndex: number,
+    point: PinWarpPoint,
+  ): Project {
+    const { shot, layer } = this.pinWarpTarget(project, shotId, layerId);
+    if (!layer.pinWarp) {
+      throw new LayerServiceError('PIN_WARP_INVALID', '图层尚未启用控制点变形。');
+    }
+    const next = setPinWarpPinAtTime({
+      pinWarp: layer.pinWarp,
+      timeMs: this.pinWarpAuthoringTimeMs(shot, requestedTimeMs),
+      pinIndex,
+      point,
+    });
+    return this.commitPinWarp(project, shot, layer, next);
+  }
+
+  /** Explicitly records the currently evaluated pins as a pose key. */
+  addPinWarpPose(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    requestedTimeMs: number,
+  ): Project {
+    const { shot, layer } = this.pinWarpTarget(project, shotId, layerId);
+    if (!layer.pinWarp) {
+      throw new LayerServiceError('PIN_WARP_INVALID', '图层尚未启用控制点变形。');
+    }
+    return this.commitPinWarp(
+      project,
+      shot,
+      layer,
+      addPinWarpPoseAtTime(
+        layer.pinWarp,
+        this.pinWarpAuthoringTimeMs(shot, requestedTimeMs),
+      ),
+    );
+  }
+
+  /** Removes the exact-frame pose; the last pose is protected. */
+  removePinWarpPose(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    requestedTimeMs: number,
+  ): Project {
+    const { shot, layer } = this.pinWarpTarget(project, shotId, layerId);
+    if (!layer.pinWarp) {
+      throw new LayerServiceError('PIN_WARP_INVALID', '图层尚未启用控制点变形。');
+    }
+    return this.commitPinWarp(
+      project,
+      shot,
+      layer,
+      removePinWarpPoseAtTime(
+        layer.pinWarp,
+        this.pinWarpAuthoringTimeMs(shot, requestedTimeMs),
+      ),
+    );
+  }
+
+  /** Changes the deformation mesh density without touching pins or poses. */
+  setPinWarpMeshDensity(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    density: PinWarpMeshDensity,
+  ): Project {
+    const { shot, layer } = this.pinWarpTarget(project, shotId, layerId);
+    if (!layer.pinWarp) {
+      throw new LayerServiceError('PIN_WARP_INVALID', '图层尚未启用控制点变形。');
+    }
+    return this.commitPinWarp(
+      project,
+      shot,
+      layer,
+      applyPinWarpMeshDensity(layer.pinWarp, density),
+    );
+  }
+
+  /** Resets the exact-frame pose to the rest pin shape. */
+  resetPinWarpPose(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    requestedTimeMs: number,
+  ): Project {
+    const { shot, layer } = this.pinWarpTarget(project, shotId, layerId);
+    if (!layer.pinWarp) {
+      throw new LayerServiceError('PIN_WARP_INVALID', '图层尚未启用控制点变形。');
+    }
+    return this.commitPinWarp(
+      project,
+      shot,
+      layer,
+      resetPinWarpPoseToRest(
+        layer.pinWarp,
+        this.pinWarpAuthoringTimeMs(shot, requestedTimeMs),
+      ),
+    );
+  }
+
+  /** Reseeds the rest pin layout from the current image rect and all poses. */
+  reseedPinWarp(project: Project, shotId: string, layerId: string): Project {
+    const { shot, layer, rect } = this.pinWarpTarget(project, shotId, layerId);
+    if (!layer.pinWarp) {
+      throw new LayerServiceError('PIN_WARP_INVALID', '图层尚未启用控制点变形。');
+    }
+    return this.commitPinWarp(
+      project,
+      shot,
+      layer,
+      reseedPinWarpPins(layer.pinWarp, rect),
+    );
   }
 
   setVisualEffects(project: Project, shotId: string, layerId: string, effects?: LayerVisualEffects): Project {
@@ -2432,15 +3730,22 @@ export class LayerService {
       return atTime.get(targetLayerId);
     };
     const remaining = shot.layers.filter((candidate) => candidate.id !== layer.id).map((candidate) => {
+      // Deleting a target Layer must not persist a dangling mask relationship.
+      const nextCandidate = candidate.maskTargets?.includes(layer.id)
+        ? {
+            ...candidate,
+            maskTargets: candidate.maskTargets.filter((id) => id !== layer.id),
+          }
+        : candidate;
       const baseRefsDeleted = candidate.parentLayerId === layerId;
       const keysRefDeleted = Boolean(candidate.parentKeys?.some((key) => key.parentLayerId === layerId));
-      if (!baseRefsDeleted && !keysRefDeleted) return candidate;
-      let nextCandidate = candidate;
+      if (!baseRefsDeleted && !keysRefDeleted) return nextCandidate;
+      let updatedCandidate = nextCandidate;
       if (baseRefsDeleted) {
         const baseIsActive = !candidate.parentKeys?.length || timeMs < candidate.parentKeys[0]!.timeMs;
         const basePose = poseAt(baseIsActive ? timeMs : 0, candidate.id);
-        nextCandidate = {
-          ...nextCandidate,
+        updatedCandidate = {
+          ...updatedCandidate,
           parentLayerId: undefined,
           parentAttachment: undefined,
           parentSpaceOffset: basePose?.parentSpace,
@@ -2454,8 +3759,8 @@ export class LayerService {
           const nextTime = candidate.parentKeys![index + 1]?.timeMs ?? Infinity;
           const isCurrentSegment = timeMs >= key.timeMs && timeMs < nextTime;
           const segPose = poseAt(isCurrentSegment ? timeMs : key.timeMs, candidate.id);
-          const preservedDepth = frozenParentKeyDepth(nextCandidate, segPose, false);
-          const preservedSpace = frozenDetachedKeyCameraSpace(nextCandidate, segPose);
+          const preservedDepth = frozenParentKeyDepth(updatedCandidate, segPose, false);
+          const preservedSpace = frozenDetachedKeyCameraSpace(updatedCandidate, segPose);
           return {
             timeMs: key.timeMs,
             parentLayerId: null,
@@ -2465,9 +3770,9 @@ export class LayerService {
             ...(preservedSpace ? { cameraSpace: preservedSpace } : {}),
           };
         });
-        nextCandidate = { ...nextCandidate, parentKeys: nextKeys };
+        updatedCandidate = { ...updatedCandidate, parentKeys: nextKeys };
       }
-      return nextCandidate;
+      return updatedCandidate;
     });
     const remainingShot = { ...shot, layers: remaining };
     return this.replaceShot(project, {
@@ -2561,7 +3866,10 @@ export class LayerService {
     const nextShot = {
       ...destination,
       layers: [...destination.layers, duplicate],
-      timelineEvents: [...destination.timelineEvents, ...duplicatedEvents],
+      timelineEvents: [
+        ...destination.timelineEvents,
+        ...this.rebindDuplicatedCharacterActionEvents(project, duplicate, duplicatedEvents),
+      ],
     };
     return {
       project: this.replaceShot(project, nextShot),
@@ -4081,6 +5389,41 @@ export class LayerService {
     });
   }
 
+  /**
+   * #1449: an instance-scoped action copy is private to the Layer that owns it.
+   * A duplicated Layer is a new instance, so its cloned action segments must
+   * not inherit the source Layer's private copy: each reference is rebound to
+   * that copy's shared origin action, and an unresolvable reference is dropped
+   * instead of silently sharing the private copy.
+   */
+  private rebindDuplicatedCharacterActionEvents(
+    project: Project,
+    duplicatedLayer: Layer,
+    events: readonly TimelineEvent[],
+  ): TimelineEvent[] {
+    const source = duplicatedLayer.source;
+    if (
+      source.kind !== 'character' ||
+      !events.some((event) => event.type === 'character-action')
+    ) {
+      return [...events];
+    }
+    const character = project.characters.find(
+      ({ id }) => id === source.characterId,
+    );
+    if (!character?.actions?.length) return [...events];
+    return events.flatMap((event): TimelineEvent[] => {
+      if (event.type !== 'character-action') return [event];
+      const action = resolveCharacterActionForLayer(
+        character,
+        event.actionId,
+        duplicatedLayer.id,
+      );
+      if (!action) return [];
+      return action.id === event.actionId ? [event] : [{ ...event, actionId: action.id }];
+    });
+  }
+
   private buildDuplicatedAnimationLayer(
     layer: Layer,
     sourceEvents: readonly TimelineEvent[],
@@ -4121,6 +5464,9 @@ export class LayerService {
       rotationDeg,
       zIndex,
     };
+    // A duplicated/copied Layer is an ordinary Layer: copying the authored mask
+    // relationship would give one target several masks and change output.
+    if (duplicate.maskTargets !== undefined) delete duplicate.maskTargets;
     const motionBasis = { x: position.x, y: position.y, rotationDeg, scaleX: layer.scaleX, scaleY: layer.scaleY };
     if (duplicate.animationClip?.version === 2) {
       duplicate.animationClip = syncLayerAnimationClipBasis(duplicate.animationClip, duplicateId, motionBasis);

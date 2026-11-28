@@ -1,6 +1,6 @@
 import { ProjectSchema, type Project, type Shot } from '../models';
 import { TimelineEventSchema, type CharacterActionEvent } from '../models/timeline-event';
-import { LayeredCharacterActionSchema } from '../models/character';
+import { LayeredCharacterActionSchema, type CharacterAction } from '../models/character';
 import { characterFaceAndMouthPartIds } from '../character-part-animation';
 import { captureMotionTrackRange } from '../user-motion-presets';
 import { frameTimeMs, isValidFrameTime } from '../timeline/frame-grid';
@@ -44,10 +44,13 @@ export function saveLayeredCharacterAction(project: Project, shotId: string, lay
   }
   const protectedIds = characterFaceAndMouthPartIds(character);
   const partIds = new Set(input.partIds.filter((id) => !protectedIds.has(id) && character.parts.some(({ partId }) => partId === id)));
-  const tracks = clip.tracks.filter(({ target }) => partIds.has(target.partId)).map((track) => {
+  const tracks = clip.tracks.flatMap((track) => {
+    if (track.target.kind !== 'character-part' || !partIds.has(track.target.partId)) return [];
     const saved = captureMotionTrackRange(track, startMs, endMs, false);
-    return { property: saved.property, partId: track.target.partId,
-      keys: saved.keys.map(({ frameOffset, ...key }) => ({ ...key, timeMs: frameTimeMs(frameOffset) })) };
+    return [{
+      property: saved.property, partId: track.target.partId,
+      keys: saved.keys.map(({ frameOffset, ...key }) => ({ ...key, timeMs: frameTimeMs(frameOffset) })),
+    }];
   });
   if (!tracks.length) throw new Error('所选身体部件没有可保存的属性轨。');
   if (input.headAnchorPartId && !tracks.some(({ partId }) => partId === input.headAnchorPartId)) {
@@ -69,8 +72,16 @@ export function upsertCharacterActionEvent(
 ): Project {
   const { shot, characterId } = selectedCharacterShot(project, shotId, layerId);
   const character = project.characters.find((candidate) => candidate.id === characterId);
-  if (!character?.actions?.some((action) => action.id === values.actionId)) {
+  const action: CharacterAction | undefined = character?.actions?.find(
+    (candidate) => candidate.id === values.actionId,
+  );
+  if (!action) {
     throw new Error('该动作不属于当前角色。');
+  }
+  // #1449: an instance-scoped copy is private to its owning Character Layer.
+  // Binding it from another layer would silently share a private copy.
+  if ('kind' in action && action.instanceScope && action.instanceScope.layerId !== layerId) {
+    throw new Error('该动作副本属于其他角色图层，不能绑定到当前图层。');
   }
   if (!Number.isSafeInteger(values.startMs) || !Number.isSafeInteger(values.endMs) ||
       values.startMs < 0 || values.startMs >= values.endMs || values.endMs > shot.durationMs) {

@@ -682,7 +682,7 @@ describe('FLA Graphic Subtree Adaptive Parts lifecycle persistence (#1192 V2-C)'
         (id) => !expectedSubtreeAssets.has(id) && exportMedia.has(id),
       );
       expect(leakedExtra).toEqual([]);
-      expect(exportMedia.has(committedGraphic.frames[0]!.assetId)).toBe(false);
+      expect(exportMedia.has(committedGraphic.frames[0]!.assetId ?? '')).toBe(false);
 
       const stageModel = buildStageRenderModel(
         reopened.project,

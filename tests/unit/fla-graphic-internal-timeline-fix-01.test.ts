@@ -496,7 +496,7 @@ describe('STRUCT-04-E6-FIX-01 internal timeline fixes & regressions', () => {
     expect(editedAnim.structure!.frames[0]!.layers[0]!.nodes[0]!.localTransform.tx).toBe(55);
   });
 
-  it('gates TRS-safe vs shear/skew matrices cleanly without visual jump or Project/History mutation', () => {
+  it('gates TRS-safe/shear matrices as editable affine keys while near-singular matrices stay locally read-only without Project/History mutation', () => {
     // 1. TRS-safe complex translation + rotation + non-uniform scale
     const trsMatrix = composeAffineMatrix({
       tx: 42.5,
@@ -530,7 +530,7 @@ describe('STRUCT-04-E6-FIX-01 internal timeline fixes & regressions', () => {
     expect(addedTorso.tx).toBeCloseTo(trsMatrix.tx, 4);
     expect(addedTorso.ty).toBeCloseTo(trsMatrix.ty, 4);
 
-    // 2. Shear / skew matrix -> locally read-only for E6, Add Keyframe rejected, playback intact
+    // 2. Losslessly decomposable shear / skew matrix -> editable affine keys (#1451)
     const shearMatrix = { a: 1, b: 0, c: 0.45, d: 1, tx: 12, ty: -8 };
     expect(isAffineMatrixTrsSafe(shearMatrix)).toBe(false);
     const shearFixture = createStructuredGraphicFixture({ childMatrix: shearMatrix });
@@ -540,7 +540,26 @@ describe('STRUCT-04-E6-FIX-01 internal timeline fixes & regressions', () => {
       ['torso'],
     );
     expect(targetInfo?.trsSafe).toBe(false);
-    expect(targetInfo?.authoringCapability).toBe('readonly-trs-unsafe');
+    expect(targetInfo?.affineDecomposable).toBe(true);
+    expect(targetInfo?.authoringCapability).toBe('editable');
+    const shearDefinition = shearFixture.project.animations[0] as FlaGraphicDefinition;
+    const shearBarMarkup = renderToStaticMarkup(
+      createElement(FlaGraphicInternalTimelineBar, {
+        context: {
+          layerId: shearFixture.layerId,
+          animationId: shearDefinition.id,
+          frameOrdinal: 0,
+          selectedNodePath: ['torso'],
+          internalTimeMs: 0,
+          fps: 24,
+          timelineAuthoringActive: true,
+        },
+        project: shearFixture.project,
+      }),
+    );
+    // A losslessly decomposable shear node now exposes the timeline add-key path.
+    expect(shearBarMarkup).toContain('data-testid="fla-internal-add-key"');
+    expect(shearBarMarkup).not.toContain('data-testid="fla-internal-readonly-node"');
 
     const editor = new EditorProjectStore();
     editor.open('D:\\PandaStage-Acceptance\\e6-shear.pandastage', shearFixture.project);
@@ -549,16 +568,108 @@ describe('STRUCT-04-E6-FIX-01 internal timeline fixes & regressions', () => {
       { getCurrentShotId: () => shearFixture.shotId },
       shearFixture.service,
     );
+    localLayerStore.addFlaGraphicTimelineKeyframe(
+      shearFixture.layerId,
+      0,
+      ['torso'],
+      0,
+      'linear',
+    );
+    expect(editor.history.getSnapshot().undoCount).toBe(1);
+    const editedShear = { a: 0.8, b: 0.1, c: -0.3, d: 1.1, tx: 30, ty: 5 };
+    localLayerStore.updateFlaGraphicTimelineKeyframeTransform(
+      shearFixture.layerId,
+      0,
+      ['torso'],
+      0,
+      editedShear,
+    );
+    expect(editor.history.getSnapshot().undoCount).toBe(2);
+    const savedShearProject = editor.getSnapshot()!.project;
+    const repairedShear = ProjectSchema.parse(
+      JSON.parse(JSON.stringify(savedShearProject)),
+    );
+    const repairedShearDef = repairedShear.animations[0] as FlaGraphicDefinition;
+    const persistedShearTrack = repairedShearDef.structure!.timeline!.tracks[0]!;
+    expect(persistedShearTrack.keyframes[0]!.transform.skewXDeg).toBeDefined();
+    const repairedTransform = findEvaluatedTransform(
+      evaluateFlaGraphicVisual({
+        definition: repairedShearDef,
+        frameOrdinal: 0,
+        mode: 'definition',
+        internalTimeMs: 0,
+      }),
+      ['torso'],
+    )!;
+    for (const key of ['a', 'b', 'c', 'd', 'tx', 'ty'] as const) {
+      expect(repairedTransform[key]).toBeCloseTo(editedShear[key], 9);
+    }
+
+    // 3. Near-singular matrix -> stays locally read-only with honest capability/reason
+    const nearSingular = { a: 1, b: 1, c: 1, d: 1 + 1e-9, tx: 0, ty: 0 };
+    const singularFixture = createStructuredGraphicFixture({ childMatrix: nearSingular });
+    const singularTarget = resolveFlaGraphicTimelineTarget(
+      singularFixture.definition.structure!,
+      0,
+      ['torso'],
+    );
+    expect(singularTarget?.trsSafe).toBe(false);
+    expect(singularTarget?.affineDecomposable).toBe(false);
+    expect(singularTarget?.authoringCapability).toBe('readonly-trs-unsafe');
+    // The unsafe node stays locally read-only without affecting its siblings.
+    expect(
+      resolveFlaGraphicTimelineTarget(singularFixture.definition.structure!, 0, [
+        'arm-inst',
+      ])?.authoringCapability,
+    ).toBe('editable');
+    const singularDefinition = singularFixture.project.animations[0] as FlaGraphicDefinition;
+    const singularBarMarkup = renderToStaticMarkup(
+      createElement(FlaGraphicInternalTimelineBar, {
+        context: {
+          layerId: singularFixture.layerId,
+          animationId: singularDefinition.id,
+          frameOrdinal: 0,
+          selectedNodePath: ['torso'],
+          internalTimeMs: 0,
+          fps: 24,
+          timelineAuthoringActive: true,
+        },
+        project: singularFixture.project,
+      }),
+    );
+    expect(singularBarMarkup).toContain('data-testid="fla-internal-readonly-node"');
+    expect(singularBarMarkup).not.toContain('data-testid="fla-internal-add-key"');
+    const singularEditor = new EditorProjectStore();
+    singularEditor.open(
+      'D:\\PandaStage-Acceptance\\e6-singular.pandastage',
+      singularFixture.project,
+    );
+    const singularLayerStore = new LayerStore(
+      singularEditor,
+      { getCurrentShotId: () => singularFixture.shotId },
+      singularFixture.service,
+    );
     expect(() =>
-      localLayerStore.addFlaGraphicTimelineKeyframe(
-        shearFixture.layerId,
+      singularLayerStore.addFlaGraphicTimelineKeyframe(
+        singularFixture.layerId,
         0,
         ['torso'],
         0,
         'linear',
       ),
     ).toThrow();
-    expect(editor.history.getSnapshot().undoCount).toBe(0);
+    expect(singularEditor.history.getSnapshot().undoCount).toBe(0);
+    expect(
+      findEvaluatedTransform(
+        evaluateFlaGraphicVisual({
+          definition: singularFixture.definition,
+          frameOrdinal: 0,
+          mode: 'instance',
+          internalTimeMs: 0,
+        }),
+        ['torso'],
+      ),
+    ).toEqual(nearSingular);
 
     // Existing runtime playback still renders the exact shear matrix
     const playbackEval = evaluateFlaGraphicVisual({

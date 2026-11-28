@@ -1,6 +1,22 @@
 import {
   LayerMotionService,
   LayerService,
+  addNativeGraphicBlankKeyframe,
+  addNativeGraphicLayer,
+  addNativeGraphicNode,
+  copyNativeGraphicFrame,
+  createNativeGraphicDefinitionFromNodes,
+  deleteNativeGraphicDefinition,
+  duplicateNativeGraphicDefinition,
+  extendNativeGraphicExposure,
+  groupNativeGraphicNodes,
+  moveNativeGraphicLayer,
+  moveNativeGraphicNode,
+  removeNativeGraphicLayer,
+  removeNativeGraphicNode,
+  replaceNativeGraphicNode,
+  shortenNativeGraphicExposure,
+  ungroupNativeGraphicNode,
   type AfterimageInput,
   type BackgroundTileInput,
   type ConvergingFlightInput,
@@ -9,6 +25,8 @@ import {
   type AnimationPlaybackInput,
   type FlaEditableShapeRegion,
   type FlaGraphicTransformEasing,
+  type FlaShapeTweenEasing,
+  type FlaShapeTweenHintLocation,
   type FlaShapeVertexTarget,
   type GridArrayInput,
   type Layer,
@@ -19,6 +37,8 @@ import {
   type LayerTransformInput,
   type OrbitFlightInput,
   type PathArrayInput,
+  type PinWarpMeshDensity,
+  type PinWarpPoint,
   type Point,
   type Project,
   type RadialArrayInput,
@@ -474,6 +494,286 @@ export class LayerStore {
     return next;
   }
 
+  setFlaGraphicNodeIdentityAlias(
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    aliasId?: string,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setFlaGraphicNodeIdentityAlias(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      aliasId,
+    );
+    if (next !== project) this.editorStore.updateProject(next, '建立节点关联');
+    return next;
+  }
+
+  clearFlaGraphicNodeIdentityAlias(
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.clearFlaGraphicNodeIdentityAlias(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+    );
+    if (next !== project) this.editorStore.updateProject(next, '解除节点关联');
+    return next;
+  }
+
+  /** Creates a reusable native Graphic Definition from 2+ staged editable nodes. */
+  createNativeGraphicFromSelection(input: {
+    readonly shotId: string;
+    readonly layerId: string;
+    readonly frameOrdinal: number;
+    readonly nodePaths: readonly (readonly string[])[];
+    readonly name?: string;
+  }): { readonly animationId: string; readonly name: string } {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = createNativeGraphicDefinitionFromNodes(snapshot.project, {
+      ...input,
+      createId: () => crypto.randomUUID(),
+    });
+    this.editorStore.updateProject(result.project, '创建原生元件');
+    return { animationId: result.animationId, name: result.name };
+  }
+
+  duplicateNativeGraphicDefinition(animationId: string): { animationId: string; name: string } {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = duplicateNativeGraphicDefinition(snapshot.project, {
+      animationId,
+      createId: () => crypto.randomUUID(),
+    });
+    this.editorStore.updateProject(result.project, '独立副本');
+    return { animationId: result.animationId, name: result.name };
+  }
+
+  deleteNativeGraphicDefinition(animationId: string): readonly { assetId: string; name: string }[] {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = deleteNativeGraphicDefinition(snapshot.project, { animationId });
+    this.editorStore.updateProject(result.project, '删除原生元件');
+    return result.releasedAssets;
+  }
+
+  removeNativeGraphicNode(
+    animationId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+  ): Project {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const next = removeNativeGraphicNode(snapshot.project, {
+      animationId,
+      frameOrdinal,
+      nodePath,
+    });
+    if (next !== snapshot.project) this.editorStore.updateProject(next, '删除元件节点');
+    return next;
+  }
+
+  moveNativeGraphicNode(
+    animationId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    direction: 1 | -1,
+  ): Project {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const next = moveNativeGraphicNode(snapshot.project, {
+      animationId,
+      frameOrdinal,
+      nodePath,
+      direction,
+    });
+    if (next !== snapshot.project) this.editorStore.updateProject(next, '调整元件节点顺序');
+    return next;
+  }
+
+  addNativeGraphicNode(input: {
+    readonly animationId: string;
+    readonly frameOrdinal: number;
+    readonly source: { readonly animationId: string; readonly frameOrdinal: number; readonly nodePath: readonly string[] };
+    readonly afterNodePath?: readonly string[];
+  }): readonly string[] {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = addNativeGraphicNode(snapshot.project, {
+      ...input,
+      createId: () => crypto.randomUUID(),
+    });
+    if (result.project !== snapshot.project) {
+      this.editorStore.updateProject(result.project, '添加元件节点');
+    }
+    return result.nodePath;
+  }
+
+  replaceNativeGraphicNode(input: {
+    readonly animationId: string;
+    readonly frameOrdinal: number;
+    readonly nodePath: readonly string[];
+    readonly source: { readonly animationId: string; readonly frameOrdinal: number; readonly nodePath: readonly string[] };
+  }): Project {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const next = replaceNativeGraphicNode(snapshot.project, input);
+    if (next !== snapshot.project) this.editorStore.updateProject(next, '替换元件节点内容');
+    return next;
+  }
+
+  /** Inserts a blank native exposure keyframe; one History entry. */
+  addNativeGraphicBlankKeyframe(
+    animationId: string,
+    frameOrdinal: number,
+  ): number {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = addNativeGraphicBlankKeyframe(snapshot.project, {
+      animationId,
+      frameOrdinal,
+    });
+    if (result.project !== snapshot.project) {
+      this.editorStore.updateProject(result.project, '插入空白关键帧');
+    }
+    return result.frameOrdinal;
+  }
+
+  /** Appends a copy of the displayed native frame; one History entry. */
+  copyNativeGraphicFrame(animationId: string, sourceFrameOrdinal: number): number {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = copyNativeGraphicFrame(snapshot.project, {
+      animationId,
+      sourceFrameOrdinal,
+      createId: () => crypto.randomUUID(),
+    });
+    if (result.project !== snapshot.project) {
+      this.editorStore.updateProject(result.project, '复制元件帧');
+    }
+    return result.frameOrdinal;
+  }
+
+  /** Extends native exposure with held cells; one History entry. */
+  extendNativeGraphicExposure(animationId: string, count = 1): number {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = extendNativeGraphicExposure(snapshot.project, {
+      animationId,
+      count,
+    });
+    if (result.project !== snapshot.project) {
+      this.editorStore.updateProject(result.project, '延长曝光');
+    }
+    return result.addedFrames;
+  }
+
+  /** Removes trailing held native exposure cells; one History entry. */
+  shortenNativeGraphicExposure(animationId: string, count = 1): number {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = shortenNativeGraphicExposure(snapshot.project, {
+      animationId,
+      count,
+    });
+    if (result.project !== snapshot.project) {
+      this.editorStore.updateProject(result.project, '缩短曝光');
+    }
+    return result.removedFrames;
+  }
+
+  addNativeGraphicLayer(animationId: string, frameOrdinal: number, name?: string): Project {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const next = addNativeGraphicLayer(snapshot.project, {
+      animationId,
+      frameOrdinal,
+      ...(name === undefined ? {} : { name }),
+    });
+    if (next !== snapshot.project) this.editorStore.updateProject(next, '新增图层');
+    return next;
+  }
+
+  removeNativeGraphicLayer(
+    animationId: string,
+    frameOrdinal: number,
+    layerIndex: number,
+  ): Project {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const next = removeNativeGraphicLayer(snapshot.project, {
+      animationId,
+      frameOrdinal,
+      layerIndex,
+    });
+    if (next !== snapshot.project) this.editorStore.updateProject(next, '删除图层');
+    return next;
+  }
+
+  moveNativeGraphicLayer(
+    animationId: string,
+    frameOrdinal: number,
+    layerIndex: number,
+    direction: 1 | -1,
+  ): Project {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const next = moveNativeGraphicLayer(snapshot.project, {
+      animationId,
+      frameOrdinal,
+      layerIndex,
+      direction,
+    });
+    if (next !== snapshot.project) this.editorStore.updateProject(next, '调整图层顺序');
+    return next;
+  }
+
+  groupNativeGraphicNodes(input: {
+    readonly animationId: string;
+    readonly frameOrdinal: number;
+    readonly nodePaths: readonly (readonly string[])[];
+    readonly name?: string;
+  }): readonly string[] {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = groupNativeGraphicNodes(snapshot.project, {
+      ...input,
+      createId: () => crypto.randomUUID(),
+    });
+    if (result.project !== snapshot.project) {
+      this.editorStore.updateProject(result.project, '组合节点');
+    }
+    return result.groupPath;
+  }
+
+  ungroupNativeGraphicNode(
+    animationId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+  ): readonly (readonly string[])[] {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = ungroupNativeGraphicNode(snapshot.project, {
+      animationId,
+      frameOrdinal,
+      nodePath,
+    });
+    if (result.project !== snapshot.project) {
+      this.editorStore.updateProject(result.project, '解组节点');
+    }
+    return result.nodePaths;
+  }
+
   extractFlaGraphicShapeRegion(input: {
     readonly layerId: string;
     readonly frameOrdinal: number;
@@ -532,6 +832,7 @@ export class LayerStore {
     readonly x: number;
     readonly y: number;
     readonly svgText?: string;
+    readonly internalTimeMs?: number;
   }): Project {
     const { project, shotId } = this.context();
     const next = this.service.moveFlaGraphicShapeRegionVertex(project, {
@@ -540,6 +841,114 @@ export class LayerStore {
     });
     if (next !== project) {
       this.editorStore.updateProject(next, '编辑路径顶点');
+    }
+    return next;
+  }
+
+  createFlaGraphicShapeTween(input: {
+    readonly layerId: string;
+    readonly frameOrdinal: number;
+    readonly nodePath: readonly string[];
+    readonly regionRef?: string;
+    readonly mode: 'instance' | 'definition';
+    readonly svgText?: string;
+    readonly startTimeMs: number;
+    readonly durationMs: number;
+    readonly easing?: FlaShapeTweenEasing;
+  }): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.createFlaGraphicShapeTween(project, {
+      shotId,
+      ...input,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '创建形状补间');
+    }
+    return next;
+  }
+
+  updateFlaGraphicShapeTween(input: {
+    readonly layerId: string;
+    readonly tweenId: string;
+    readonly pose?: 'from' | 'to';
+    readonly region?: FlaEditableShapeRegion;
+    readonly startTimeMs?: number;
+    readonly endTimeMs?: number;
+    readonly easing?: FlaShapeTweenEasing;
+  }): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.updateFlaGraphicShapeTween(project, {
+      shotId,
+      ...input,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '修改形状补间');
+    }
+    return next;
+  }
+
+  deleteFlaGraphicShapeTween(input: {
+    readonly layerId: string;
+    readonly tweenId: string;
+  }): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.deleteFlaGraphicShapeTween(project, {
+      shotId,
+      ...input,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '删除形状补间');
+    }
+    return next;
+  }
+
+  addFlaGraphicShapeTweenHint(input: {
+    readonly layerId: string;
+    readonly tweenId: string;
+    readonly from: FlaShapeTweenHintLocation;
+    readonly to: FlaShapeTweenHintLocation;
+  }): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.addFlaGraphicShapeTweenHint(project, {
+      shotId,
+      ...input,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '添加形状提示点');
+    }
+    return next;
+  }
+
+  updateFlaGraphicShapeTweenHint(input: {
+    readonly layerId: string;
+    readonly tweenId: string;
+    readonly hintId: string;
+    readonly from?: FlaShapeTweenHintLocation;
+    readonly to?: FlaShapeTweenHintLocation;
+  }): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.updateFlaGraphicShapeTweenHint(project, {
+      shotId,
+      ...input,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '修改形状提示点');
+    }
+    return next;
+  }
+
+  removeFlaGraphicShapeTweenHint(input: {
+    readonly layerId: string;
+    readonly tweenId: string;
+    readonly hintId: string;
+  }): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.removeFlaGraphicShapeTweenHint(project, {
+      shotId,
+      ...input,
+    });
+    if (next !== project) {
+      this.editorStore.updateProject(next, '删除形状提示点');
     }
     return next;
   }
@@ -709,6 +1118,106 @@ export class LayerStore {
     const { project, shotId } = this.context();
     const next = this.service.setCameraAttachment(project, shotId, layerId, attached);
     if (next !== project) this.editorStore.updateProject(next, '切换相机附着');
+    return next;
+  }
+
+  /** Sets or clears an author-level coverage mask (#1454); one undo step. */
+  setMaskTargets(layerId: string, targetLayerIds: readonly string[] | null): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setMaskTargets(project, shotId, layerId, targetLayerIds);
+    if (next !== project) {
+      this.editorStore.updateProject(
+        next,
+        targetLayerIds === null ? '解除图层遮罩' : '设置图层遮罩',
+      );
+    }
+    return next;
+  }
+
+  /** Enables the bitmap pin-warp prototype on one Layer; one undo step. */
+  bindPinWarp(layerId: string, timeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.bindPinWarp(project, shotId, layerId, timeMs);
+    if (next !== project) {
+      this.editorStore.updateProject(next, '启用控制点变形');
+    }
+    return next;
+  }
+
+  /** Removes the pin-warp data; the Layer draws un-warped again. One undo step. */
+  clearPinWarp(layerId: string): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.clearPinWarp(project, shotId, layerId);
+    if (next !== project) {
+      this.editorStore.updateProject(next, '移除控制点变形');
+    }
+    return next;
+  }
+
+  /** One pin drag = one pose write / one undo entry; an unchanged drag writes nothing. */
+  setPinWarpPin(
+    layerId: string,
+    timeMs: number,
+    pinIndex: number,
+    point: PinWarpPoint,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setPinWarpPin(
+      project,
+      shotId,
+      layerId,
+      timeMs,
+      pinIndex,
+      point,
+    );
+    if (next !== project) {
+      this.editorStore.updateProject(next, '拖动控制点');
+    }
+    return next;
+  }
+
+  addPinWarpPose(layerId: string, timeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.addPinWarpPose(project, shotId, layerId, timeMs);
+    if (next !== project) {
+      this.editorStore.updateProject(next, '记录控制点姿态');
+    }
+    return next;
+  }
+
+  removePinWarpPose(layerId: string, timeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.removePinWarpPose(project, shotId, layerId, timeMs);
+    if (next !== project) {
+      this.editorStore.updateProject(next, '删除控制点姿态');
+    }
+    return next;
+  }
+
+  setPinWarpMeshDensity(layerId: string, density: PinWarpMeshDensity): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setPinWarpMeshDensity(project, shotId, layerId, density);
+    if (next !== project) {
+      this.editorStore.updateProject(next, '调整变形网格');
+    }
+    return next;
+  }
+
+  resetPinWarpPose(layerId: string, timeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.resetPinWarpPose(project, shotId, layerId, timeMs);
+    if (next !== project) {
+      this.editorStore.updateProject(next, '重置控制点姿态');
+    }
+    return next;
+  }
+
+  reseedPinWarp(layerId: string): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.reseedPinWarp(project, shotId, layerId);
+    if (next !== project) {
+      this.editorStore.updateProject(next, '重置控制点');
+    }
     return next;
   }
 

@@ -24,6 +24,13 @@ export const CharacterPartTargetRefSchema = z.object({
   partId: IdSchema,
 }).strict();
 
+/** Bone pose target of an Adaptive Parts Character instance (#1455). */
+export const CharacterBoneTargetRefSchema = z.object({
+  kind: z.literal('character-bone'),
+  layerId: IdSchema,
+  boneId: IdSchema,
+}).strict();
+
 export const CharacterNodeIdSchema = z.union([
   z.enum(['root', 'body', 'face', 'head']),
   z.templateLiteral(['part:', IdSchema]),
@@ -38,6 +45,7 @@ export const CharacterNodeTargetRefSchema = z.object({
 export const AnimationTargetRefSchema = z.discriminatedUnion('kind', [
   LayerTargetRefSchema,
   CharacterPartTargetRefSchema,
+  CharacterBoneTargetRefSchema,
   CharacterNodeTargetRefSchema,
 ]);
 
@@ -93,6 +101,23 @@ export const CharacterPartAnimationTrackSchema = z.object({
 
 export const CharacterNodeAnimationTrackSchema = z.object({
   target: CharacterNodeTargetRefSchema,
+  property: AnimationPropertySchema,
+  keys: z.array(AnimationKeySchema).min(1),
+}).strict().superRefine(validateAnimationTrack);
+
+/** Target union accepted by the current Character Clip v1: Part pose + Bone pose. */
+export const CharacterPoseTargetRefSchema = z.union([
+  CharacterPartTargetRefSchema,
+  CharacterBoneTargetRefSchema,
+]);
+
+/**
+ * Current Character Clip v1 track. Bone pose tracks reuse the five existing
+ * transform properties and carry no target basis: bones are defined on the
+ * Character, not frozen per Layer instance.
+ */
+export const CharacterPoseAnimationTrackSchema = z.object({
+  target: CharacterPoseTargetRefSchema,
   property: AnimationPropertySchema,
   keys: z.array(AnimationKeySchema).min(1),
 }).strict().superRefine(validateAnimationTrack);
@@ -159,6 +184,7 @@ export function animationTargetIdentity(target: AnimationTargetRef): string {
   switch (target.kind) {
     case 'layer': return JSON.stringify([target.kind, target.layerId]);
     case 'character-part': return JSON.stringify([target.kind, target.layerId, target.partId]);
+    case 'character-bone': return JSON.stringify([target.kind, target.layerId, target.boneId]);
     case 'character-node': return JSON.stringify([target.kind, target.layerId, target.nodeId]);
   }
 }
@@ -168,6 +194,7 @@ export function sameAnimationTarget(left: AnimationTargetRef, right: AnimationTa
   switch (left.kind) {
     case 'layer': return right.kind === 'layer';
     case 'character-part': return right.kind === 'character-part' && left.partId === right.partId;
+    case 'character-bone': return right.kind === 'character-bone' && left.boneId === right.boneId;
     case 'character-node': return right.kind === 'character-node' && left.nodeId === right.nodeId;
   }
 }
@@ -189,13 +216,14 @@ function validateUniqueClipTargetsAndTracks(
   });
   const tracks = new Set<string>();
   clip.tracks.forEach((track, index) => {
-    const target = animationTargetIdentity(track.target);
-    const identity = JSON.stringify([target, track.property]);
+    const identity = JSON.stringify([animationTargetIdentity(track.target), track.property]);
     if (tracks.has(identity)) {
       context.addIssue({ code: 'custom', path: ['tracks', index], message: 'Duplicate target + property track.' });
     }
     tracks.add(identity);
-    if (!bases.has(target)) {
+    // Bone pose tracks are defined by the Character Bone tree, so they carry no
+    // frozen Layer target basis. Every other target kind still requires one.
+    if (track.target.kind !== 'character-bone' && !bases.has(animationTargetIdentity(track.target))) {
       context.addIssue({ code: 'custom', path: ['tracks', index, 'target'], message: 'Animation track requires a matching target basis.' });
     }
   });
@@ -208,11 +236,23 @@ export const AnimationClipV0V22Schema = z.object({
   tracks: z.array(CharacterPartAnimationTrackSchema.safeExtend({ keys: z.array(AnimationKeyV32Schema).min(1) })),
 }).strict().superRefine(validateUniqueClipTargetsAndTracks);
 
+/** Frozen Character Clip v1 reader: Part pose tracks only, before Bone pose tracks. */
 export const AnimationClipV0Schema = z.object({
   version: z.literal(1),
   fixedCharacterCenter: z.object({ x: FiniteNumberSchema, y: FiniteNumberSchema }).strict(),
   targetBases: z.array(CharacterPartTargetBasisSchema),
   tracks: z.array(CharacterPartAnimationTrackSchema),
+}).strict().superRefine(validateUniqueClipTargetsAndTracks);
+
+/**
+ * Current Character Clip v1: Part pose tracks plus Bone pose tracks that reuse
+ * the same five transform properties and need no frozen target basis.
+ */
+export const CharacterPoseAnimationClipV0Schema = z.object({
+  version: z.literal(1),
+  fixedCharacterCenter: z.object({ x: FiniteNumberSchema, y: FiniteNumberSchema }).strict(),
+  targetBases: z.array(CharacterPartTargetBasisSchema),
+  tracks: z.array(CharacterPoseAnimationTrackSchema),
 }).strict().superRefine(validateUniqueClipTargetsAndTracks);
 
 export const LayerAnimationClipSchema = z.object({
@@ -247,8 +287,16 @@ export const AnimationClipV32Schema = z.discriminatedUnion('version', [
   }),
 ]);
 
-export const AnimationClipSchema = z.discriminatedUnion('version', [
+/** Frozen v41 clip union: Character Clip v1 with curve keys, before Bone pose tracks. */
+export const AnimationClipV41Schema = z.discriminatedUnion('version', [
   AnimationClipV0Schema,
+  LayerAnimationClipSchema,
+  CharacterNodeAnimationClipSchema,
+]);
+
+/** Current clip union, including Bone pose tracks on Character Clip v1. */
+export const AnimationClipSchema = z.discriminatedUnion('version', [
+  CharacterPoseAnimationClipV0Schema,
   LayerAnimationClipSchema,
   CharacterNodeAnimationClipSchema,
 ]);
@@ -259,6 +307,9 @@ export type CharacterNodeTargetBasis = z.infer<typeof CharacterNodeTargetBasisSc
 export type CharacterNodeAnimationClip = z.infer<typeof CharacterNodeAnimationClipSchema>;
 export type LayerTargetRef = z.infer<typeof LayerTargetRefSchema>;
 export type CharacterPartTargetRef = z.infer<typeof CharacterPartTargetRefSchema>;
+export type CharacterBoneTargetRef = z.infer<typeof CharacterBoneTargetRefSchema>;
+export type CharacterPoseTargetRef = z.infer<typeof CharacterPoseTargetRefSchema>;
+export type CharacterPoseAnimationTrack = z.infer<typeof CharacterPoseAnimationTrackSchema>;
 export type AnimationTargetRef = z.infer<typeof AnimationTargetRefSchema>;
 export type AnimationProperty = z.infer<typeof AnimationPropertySchema>;
 export type AnimationInterpolation = z.infer<typeof AnimationInterpolationSchema>;
@@ -271,6 +322,6 @@ export type LayerAnimationTrack = z.infer<typeof LayerAnimationTrackSchema>;
 export type TargetLocalPivot = z.infer<typeof TargetLocalPivotSchema>;
 export type CharacterPartTargetBasis = z.infer<typeof CharacterPartTargetBasisSchema>;
 export type LayerTargetBasis = z.infer<typeof LayerTargetBasisSchema>;
-export type AnimationClipV0 = z.infer<typeof AnimationClipV0Schema>;
+export type AnimationClipV0 = z.infer<typeof CharacterPoseAnimationClipV0Schema>;
 export type LayerAnimationClip = z.infer<typeof LayerAnimationClipSchema>;
 export type AnimationClip = z.infer<typeof AnimationClipSchema>;

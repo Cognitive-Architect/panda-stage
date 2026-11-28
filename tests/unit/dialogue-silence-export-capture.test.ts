@@ -452,7 +452,7 @@ function createMemoryExportPreparationService(
       ...animation,
       frames: animation.frames.map((frame) => ({
         ...frame,
-        sha256: hashByAssetId.get(frame.assetId) ?? frame.sha256,
+        sha256: hashByAssetId.get(frame.assetId ?? '') ?? frame.sha256,
       })),
     }));
     return ProjectSchema.parse({
