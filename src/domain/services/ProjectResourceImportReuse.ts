@@ -315,6 +315,10 @@ function compareFlaGraphicStructure(
   if (src.version !== tgt.version) {
     return { ok: false, code: 'SOURCE_OR_DEPENDENCY_CHANGED' };
   }
+  // Root timeline: keyframe semantics on the top-level Graphic.
+  if (!stableJsonEqual(src.timeline ?? null, tgt.timeline ?? null)) {
+    return { ok: false, code: 'SOURCE_OR_DEPENDENCY_CHANGED' };
+  }
   if (src.frames.length !== tgt.frames.length) {
     return { ok: false, code: 'SOURCE_OR_DEPENDENCY_CHANGED' };
   }
@@ -351,6 +355,16 @@ function compareFlaGraphicStructure(
     const sd = srcDefs[key]!;
     const td = tgtDefs[key]!;
     if (sd.symbolRef !== td.symbolRef) {
+      return { ok: false, code: 'SOURCE_OR_DEPENDENCY_CHANGED' };
+    }
+    // Nested Symbol playback semantics: source span, frame selection, internal timeline.
+    if (sd.sourceFrameCount !== td.sourceFrameCount) {
+      return { ok: false, code: 'SOURCE_OR_DEPENDENCY_CHANGED' };
+    }
+    if (sd.frameSelectionKey !== td.frameSelectionKey) {
+      return { ok: false, code: 'SOURCE_OR_DEPENDENCY_CHANGED' };
+    }
+    if (!stableJsonEqual(sd.timeline ?? null, td.timeline ?? null)) {
       return { ok: false, code: 'SOURCE_OR_DEPENDENCY_CHANGED' };
     }
     const res = compareStructureNodes(
