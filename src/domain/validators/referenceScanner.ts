@@ -44,7 +44,7 @@ export interface ExpressionReference {
 }
 
 export interface CharacterActionReference {
-  kind: 'timeline-character-action-event';
+  kind: 'timeline-character-action-event' | 'character-action-origin';
   path: string;
   label: string;
 }
@@ -373,6 +373,17 @@ export function scanCharacterActionReferences(
         path: `shots[${shotIndex}].timelineEvents[${eventIndex}].actionId`,
         label: `镜头“${shot.name}”中的角色动作段`,
       });
+    });
+  });
+  // #1449: instance-scoped copies keep a provenance link to their origin action.
+  const character = project.characters.find((entry) => entry.id === characterId);
+  const characterIndex = project.characters.findIndex((entry) => entry.id === characterId);
+  (character && 'actions' in character ? character.actions ?? [] : []).forEach((action, actionIndex) => {
+    if (!('originActionId' in action) || action.originActionId !== actionId) return;
+    references.push({
+      kind: 'character-action-origin',
+      path: `characters[${characterIndex}].actions[${actionIndex}].originActionId`,
+      label: `动作“${action.name}”是它的独立副本`,
     });
   });
   return references;
