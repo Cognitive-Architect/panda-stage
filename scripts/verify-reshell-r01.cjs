@@ -649,7 +649,7 @@ async function run() {
   }
   if (phase === 'fla-entry') {
     const before = await editingState();
-    await click('.resource-activity-tabs button[data-activity="characters"]');
+    await click('[data-testid="resource-activity-tabs"] button[data-activity="characters"]');
     await click('[data-testid="resource-primary-action"]');
     await click('[data-testid="character-create-fla-import"]');
     for (let i = 0; i < 65 && !chooserCalls.some(call => call.filters?.some(filter => filter.extensions.includes('fla'))); i++) await delay();
@@ -659,7 +659,7 @@ async function run() {
     return;
   }
   if (phase === 'assembly') {
-    await click('.resource-activity-tabs button[data-activity="characters"]');
+    await click('[data-testid="resource-activity-tabs"] button[data-activity="characters"]');
     await click('[data-testid="resource-primary-action"]');
     await click('[data-testid="character-create-mode-switch"] input[value="composite"]');
     const input = '[data-testid="character-create-name"]';
