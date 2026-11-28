@@ -747,6 +747,71 @@ function resolveSharedActionForImport(
   return undefined;
 }
 
+interface ImportedMotionMappingCandidate {
+  readonly mapping: CharacterMotionMapping;
+  /** True when the authored source action was the shared action itself. */
+  readonly preferShared: boolean;
+  /** Authored (source-project) ids, used only for the deterministic tie-break. */
+  readonly sourceActionId: string;
+  readonly generatedActionId: string;
+}
+
+/**
+ * #1470: after #1469 F2, every private copy aliases its shared origin, so two
+ * formally distinct mappings can remap onto the same
+ * `(sourceCharacterId, sourceActionId)` pair while the source project was
+ * valid. The target schema allows one reusable mapping per source action, so
+ * collapse the collision deterministically:
+ * 1. a mapping authored against the shared origin wins,
+ * 2. otherwise the smallest authored source action id wins (stable under any
+ *    authored/incoming order),
+ * 3. ties fall back to the smallest authored generated action id.
+ * Collapsed-away mappings only lose their mapping row; their generated actions
+ * stay independent and the private source actions are never promoted.
+ */
+function dedupeImportedMotionMappings(
+  candidates: readonly ImportedMotionMappingCandidate[],
+): CharacterMotionMapping[] | undefined {
+  if (candidates.length === 0) return undefined;
+  const winners = new Map<string, ImportedMotionMappingCandidate>();
+  let hasConflict = false;
+  for (const candidate of candidates) {
+    const key = `${candidate.mapping.sourceCharacterId}\u0000${candidate.mapping.sourceActionId}`;
+    const current = winners.get(key);
+    if (!current) {
+      winners.set(key, candidate);
+      continue;
+    }
+    hasConflict = true;
+    if (candidate.preferShared !== current.preferShared) {
+      if (candidate.preferShared) winners.set(key, candidate);
+      continue;
+    }
+    if (compareMotionMappingCandidates(candidate, current) < 0) {
+      winners.set(key, candidate);
+    }
+  }
+  if (!hasConflict) return candidates.map((candidate) => candidate.mapping);
+  // A conflict makes the surviving rows a deterministic set, independent of the
+  // authored mapping order or of the order the batch was planned in.
+  return [...winners.entries()]
+    .sort(([leftKey], [rightKey]) => (leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0))
+    .map(([, candidate]) => candidate.mapping);
+}
+
+function compareMotionMappingCandidates(
+  left: ImportedMotionMappingCandidate,
+  right: ImportedMotionMappingCandidate,
+): number {
+  if (left.sourceActionId !== right.sourceActionId) {
+    return left.sourceActionId < right.sourceActionId ? -1 : 1;
+  }
+  if (left.generatedActionId !== right.generatedActionId) {
+    return left.generatedActionId < right.generatedActionId ? -1 : 1;
+  }
+  return 0;
+}
+
 function remapCharacterActions(
   actions: readonly CharacterAction[] | undefined,
   remapAnimation: (sourceId: string) => string,
@@ -973,6 +1038,12 @@ export function buildImportedProjectCandidate(options: {
   const characterNameMap = new Map<string, string>();
   const characterPartIdMaps = new Map<string, Map<string, string>>();
   const characterActionIdMaps = new Map<string, Map<string, string>>();
+  /**
+   * Source action ids that are shared (not instance-private) per Character. A
+   * `motionMapping` that already referenced a shared origin must win the #1470
+   * dedupe over one that only referenced a private copy.
+   */
+  const characterSharedActionIds = new Map<string, Set<string>>();
   const voiceProfileIdMap = new Map<string, string>();
   const occupiedCharacterNames = new Set(
     targetProject.characters.map((character) =>
@@ -1009,6 +1080,7 @@ export function buildImportedProjectCandidate(options: {
         character.actions.map((action) => [action.id, action]),
       );
       const actionIdMap = new Map<string, string>();
+      const sharedActionIds = new Set<string>();
       // #1469 F2: allocate one target id per imported shared action and alias
       // every importable private copy to it, so `motionMappings` and any other
       // formal reference remap deterministically regardless of authored order.
@@ -1018,8 +1090,15 @@ export function buildImportedProjectCandidate(options: {
         const targetId = actionIdMap.get(sharedAction.id) ?? allocateId();
         actionIdMap.set(sharedAction.id, targetId);
         actionIdMap.set(action.id, targetId);
+        // #1470: remember which source ids are real shared actions so a
+        // collapsed alias group can prefer the mapping that was authored
+        // against the shared origin.
+        if (sharedAction.id === action.id) sharedActionIds.add(action.id);
       }
       characterActionIdMaps.set(character.id, actionIdMap);
+      if (sharedActionIds.size > 0) {
+        characterSharedActionIds.set(character.id, sharedActionIds);
+      }
     }
   }
   for (const voiceProfile of closure.voiceProfiles) {
@@ -1233,8 +1312,8 @@ export function buildImportedProjectCandidate(options: {
       // every defined targetPartId are all completely remapped in this batch.
       // When the source character is not imported, drop the dangling mapping
       // while keeping the target character's independent generatedAction usable.
-      const motionMappings: CharacterMotionMapping[] | undefined =
-        character.motionMappings?.flatMap((mapping): CharacterMotionMapping[] => {
+      const mappingCandidates: ImportedMotionMappingCandidate[] =
+        character.motionMappings?.flatMap((mapping): ImportedMotionMappingCandidate[] => {
           const mappedSourceCharacterId = characterIdMap.get(
             mapping.sourceCharacterId,
           );
@@ -1284,14 +1363,23 @@ export function buildImportedProjectCandidate(options: {
           }
           return [
             {
-              ...mapping,
-              sourceCharacterId: mappedSourceCharacterId,
-              sourceActionId: mappedSourceActionId,
-              generatedActionId: mappedGeneratedActionId,
-              rules: remappedRules,
+              mapping: {
+                ...mapping,
+                sourceCharacterId: mappedSourceCharacterId,
+                sourceActionId: mappedSourceActionId,
+                generatedActionId: mappedGeneratedActionId,
+                rules: remappedRules,
+              },
+              preferShared:
+                characterSharedActionIds
+                  .get(mapping.sourceCharacterId)
+                  ?.has(mapping.sourceActionId) ?? false,
+              sourceActionId: mapping.sourceActionId,
+              generatedActionId: mapping.generatedActionId,
             },
           ];
-        });
+        }) ?? [];
+      const motionMappings = dedupeImportedMotionMappings(mappingCandidates);
 
       return {
         ...character,

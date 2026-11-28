@@ -185,6 +185,74 @@ function addMotionMappingTarget(
   return { project: next, targetCharacterId: target.id, generatedActionId, targetPartId };
 }
 
+/**
+ * Appends one more reusable mapping (plus its independent generated action) to
+ * the motion-mapping target Character, preserving a formally valid source
+ * project whose mappings reference distinct actions (#1470).
+ */
+function appendMotionMapping(
+  project: Project,
+  input: {
+    targetCharacterId: string;
+    targetPartId: string;
+    generatedActionName: string;
+    sourceCharacterId: string;
+    sourceActionId: string;
+    sourcePartId: string;
+  },
+): { project: Project; generatedActionId: string } {
+  const generatedActionId = randomUUID();
+  return {
+    generatedActionId,
+    project: ProjectSchema.parse({
+      ...project,
+      characters: project.characters.map((character) =>
+        character.id !== input.targetCharacterId || character.mode !== 'adaptive-parts'
+          ? character
+          : {
+              ...character,
+              actions: [
+                ...(character.actions ?? []),
+                {
+                  id: generatedActionId,
+                  name: input.generatedActionName,
+                  kind: 'layered' as const,
+                  tracks: [
+                    {
+                      partId: input.targetPartId,
+                      property: 'transform.rotationDeg' as const,
+                      keys: [
+                        { timeMs: 0, value: 0, interpolationToNext: 'linear' as const },
+                        { timeMs: 1000, value: 10, interpolationToNext: 'linear' as const },
+                      ],
+                    },
+                  ],
+                },
+              ],
+              motionMappings: [
+                ...(character.motionMappings ?? []),
+                {
+                  sourceCharacterId: input.sourceCharacterId,
+                  sourceActionId: input.sourceActionId,
+                  generatedActionId,
+                  rules: [
+                    {
+                      sourcePartId: input.sourcePartId,
+                      targetPartId: input.targetPartId,
+                      mirror: false,
+                      translationScale: 1,
+                      pivotOffset: { x: 0, y: 0 },
+                      properties: ['transform.rotationDeg' as const],
+                    },
+                  ],
+                },
+              ],
+            },
+      ),
+    }),
+  };
+}
+
 function importCharacters(
   sourceProject: Project,
   sourceCharacterIds: readonly string[],
@@ -515,6 +583,126 @@ describe('instance-scoped action copy ownership (#1449)', () => {
     // stays usable on its own.
     expect(importedTarget.motionMappings).toBeUndefined();
     expect(importedTarget.actions!.map((action) => action.name)).toEqual(['映射动作']);
+    expect(() => ProjectSchema.parse(candidate.project)).not.toThrow();
+  });
+});
+
+describe('cross-project motion-mapping dedupe after private-copy ID merge (#1470)', () => {
+  const COPY2_ID = '71000000-0000-4000-8000-000000000019';
+
+  function importedBy(
+    candidate: ReturnType<typeof importCharacters>,
+    name: string,
+  ) {
+    const character = candidate.importedCharacters.find((entry) => entry.name === name);
+    if (character?.mode !== 'adaptive-parts') throw new Error(`Missing imported ${name}.`);
+    return character;
+  }
+
+  function privateCopyOf(project: Project, characterId: string) {
+    const character = project.characters.find((entry) => entry.id === characterId)!;
+    if (character.mode !== 'adaptive-parts') throw new Error('Expected adaptive-parts character.');
+    return character.actions!.find(
+      (action): action is LayeredCharacterAction => 'kind' in action && action.id === COPY_ID,
+    )!;
+  }
+
+  /** Source project whose target Character keeps a mapping per distinct source action. */
+  function sharedAndPrivateMappings(privateFirst: boolean) {
+    const rig = instanceRig();
+    const edited = editCopy(createCopyForA(rig), rig);
+    const firstActionId = privateFirst ? COPY_ID : ACTION_ID;
+    const base = addMotionMappingTarget(edited, {
+      characterId: rig.characterId,
+      armId: rig.armId,
+      actionId: firstActionId,
+    });
+    const appended = appendMotionMapping(base.project, {
+      targetCharacterId: base.targetCharacterId,
+      targetPartId: base.targetPartId,
+      generatedActionName: '映射动作 2',
+      sourceCharacterId: rig.characterId,
+      sourceActionId: privateFirst ? ACTION_ID : COPY_ID,
+      sourcePartId: rig.armId,
+    });
+    return { rig, base, appended };
+  }
+
+  it('imports a shared and a private mapping as one reusable mapping instead of failing the schema', () => {
+    const { rig, base, appended } = sharedAndPrivateMappings(false);
+    // Old HEAD: both mappings collapse onto the imported shared action id and
+    // ProjectSchema rejects the duplicate (sourceCharacterId, sourceActionId).
+    const candidate = importCharacters(appended.project, [rig.characterId, base.targetCharacterId]);
+    const importedSource = importedBy(candidate, 'Instance scope rig');
+    const importedTarget = importedBy(candidate, '映射目标');
+    const shared = importedSource.actions!.find(
+      (action): action is LayeredCharacterAction => 'kind' in action && action.name === '招手',
+    )!;
+    expect(importedTarget.motionMappings).toHaveLength(1);
+    const mapping = importedTarget.motionMappings![0]!;
+    expect(mapping.sourceActionId).toBe(shared.id);
+    // The mapping that already referenced the shared origin wins, and its
+    // generated action is still usable; the other generated action survives and
+    // stays independent, and the rules remap onto the imported identities.
+    expect(importedTarget.actions!.map((action) => action.name)).toEqual(
+      expect.arrayContaining(['映射动作', '映射动作 2']),
+    );
+    expect(importedTarget.actions).toHaveLength(2);
+    expect(new Set(importedTarget.actions!.map((action) => action.id)).size).toBe(2);
+    expect(
+      importedTarget.actions!.find((action) => action.id === mapping.generatedActionId)!.name,
+    ).toBe('映射动作');
+    expect(mapping.rules[0]!.sourcePartId).toBe(importedSource.parts[0]!.partId);
+    expect(mapping.rules[0]!.targetPartId).toBe(importedTarget.parts[0]!.partId);
+    expect(() => ProjectSchema.parse(candidate.project)).not.toThrow();
+  });
+
+  it('keeps the directly-shared mapping when the authored mapping order is swapped', () => {
+    const { rig, base, appended } = sharedAndPrivateMappings(true);
+    const candidate = importCharacters(appended.project, [rig.characterId, base.targetCharacterId]);
+    const importedTarget = importedBy(candidate, '映射目标');
+    expect(importedTarget.motionMappings).toHaveLength(1);
+    const mapping = importedTarget.motionMappings![0]!;
+    // The shared-origin mapping was authored second here, and still wins.
+    expect(
+      importedTarget.actions!.find((action) => action.id === mapping.generatedActionId)!.name,
+    ).toBe('映射动作 2');
+  });
+
+  it('keeps one deterministic mapping when only private copies collapse', () => {
+    const rig = instanceRig();
+    const withCopy = editCopy(createCopyForA(rig), rig);
+    const copy = privateCopyOf(withCopy, rig.characterId);
+    const withTwoCopies = ProjectSchema.parse({
+      ...withCopy,
+      characters: withCopy.characters.map((character) =>
+        character.id !== rig.characterId || character.mode !== 'adaptive-parts'
+          ? character
+          : { ...character, actions: [...character.actions!, { ...copy, id: COPY2_ID, name: '招手 副本 2' }] },
+      ),
+    });
+    // Authored order is deliberately "later id first" so a stable rule cannot
+    // accidentally match the traversal order.
+    const base = addMotionMappingTarget(withTwoCopies, {
+      characterId: rig.characterId,
+      armId: rig.armId,
+      actionId: COPY2_ID,
+    });
+    const appended = appendMotionMapping(base.project, {
+      targetCharacterId: base.targetCharacterId,
+      targetPartId: base.targetPartId,
+      generatedActionName: '映射动作 2',
+      sourceCharacterId: rig.characterId,
+      sourceActionId: COPY_ID,
+      sourcePartId: rig.armId,
+    });
+    const candidate = importCharacters(appended.project, [rig.characterId, base.targetCharacterId]);
+    const importedTarget = importedBy(candidate, '映射目标');
+    expect(importedTarget.motionMappings).toHaveLength(1);
+    const mapping = importedTarget.motionMappings![0]!;
+    expect(
+      importedTarget.actions!.find((action) => action.id === mapping.generatedActionId)!.name,
+    ).toBe('映射动作 2');
     expect(() => ProjectSchema.parse(candidate.project)).not.toThrow();
   });
 });
