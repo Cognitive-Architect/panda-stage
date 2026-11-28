@@ -646,7 +646,7 @@ export class TimelineEventBatchService {
     );
     const layersById = new Map(shot.layers.map((layer) => [layer.id, layer]));
     const selectedEvents: SelectedEvent[] = [];
-    const selectedSpans: SelectedMotionSpan[] = [];
+    let selectedSpans: SelectedMotionSpan[] = [];
     const skipped: BatchTimelineSkippedEntry[] = [];
 
     for (const eventId of eventIds) {
@@ -827,6 +827,13 @@ export class TimelineEventBatchService {
       }
       selectedSpans.push({ span, layer, keyTimesMs });
     }
+
+    // Identical or partially overlapping key selections on one layer must become
+    // a single retime unit; otherwise the shared key is planned twice from the
+    // same baseline and applied twice (or cannot be found after the first move).
+    const normalized = this.normalizeMotionSpans(selectedSpans, edit.action);
+    selectedSpans = normalized.spans;
+    skipped.push(...normalized.skipped);
 
     if (selectedEvents.length === 0 && selectedSpans.length === 0) {
       throw new TimelineEventBatchError(
@@ -1721,9 +1728,95 @@ export class TimelineEventBatchService {
   }
 
   /**
+   * Collapses duplicated / partially overlapping key selections per layer so a
+   * shared key is never retimed twice from the same baseline. A shift unions the
+   * selected keys; a duration unify keeps each continuous span but rejects
+   * overlapping ones instead of silently widening the selection.
+   */
+  private normalizeMotionSpans(
+    spans: readonly SelectedMotionSpan[],
+    action: BatchTimelineEdit['action'],
+  ): { spans: SelectedMotionSpan[]; skipped: BatchTimelineSkippedEntry[] } {
+    if (spans.length === 0) return { spans: [], skipped: [] };
+
+    if (action === 'shift') {
+      const byLayer = new Map<
+        string,
+        { span: BatchLayerMotionSpanRef; layer: Layer; keyTimes: Set<number> }
+      >();
+      const order: string[] = [];
+      for (const entry of spans) {
+        const existing = byLayer.get(entry.layer.id);
+        if (!existing) {
+          byLayer.set(entry.layer.id, {
+            span: entry.span,
+            layer: entry.layer,
+            keyTimes: new Set(entry.keyTimesMs),
+          });
+          order.push(entry.layer.id);
+          continue;
+        }
+        for (const timeMs of entry.keyTimesMs) existing.keyTimes.add(timeMs);
+      }
+      return {
+        spans: order.map((layerId) => {
+          const merged = byLayer.get(layerId)!;
+          const keyTimesMs = [...merged.keyTimes].sort(
+            (left, right) => left - right,
+          );
+          return {
+            span: {
+              ...merged.span,
+              startMs: keyTimesMs[0]!,
+              endMs: keyTimesMs[keyTimesMs.length - 1]!,
+              keyTimesMs,
+            },
+            layer: merged.layer,
+            keyTimesMs,
+          };
+        }),
+        skipped: [],
+      };
+    }
+
+    const accepted: SelectedMotionSpan[] = [];
+    const skipped: BatchTimelineSkippedEntry[] = [];
+    const rangesByLayer = new Map<
+      string,
+      Array<{ startMs: number; endMs: number }>
+    >();
+    for (const entry of spans) {
+      const startMs = entry.keyTimesMs[0]!;
+      const endMs = entry.keyTimesMs[entry.keyTimesMs.length - 1]!;
+      const ranges = rangesByLayer.get(entry.layer.id) ?? [];
+      if (ranges.some((range) => startMs <= range.endMs && range.startMs <= endMs)) {
+        skipped.push({
+          itemId: entry.span.id,
+          kind: 'layer-motion-span',
+          layerId: entry.layer.id,
+          layerName: entry.layer.name,
+          label: `${entry.layer.name} · 关键帧选段`,
+          reasonCode: 'INVALID_MOTION_SPAN',
+          reason: `「${entry.layer.name}」的统一时长选段与其他选段重叠，已跳过；请合并为一个连续选段。`,
+        });
+        continue;
+      }
+      ranges.push({ startMs, endMs });
+      rangesByLayer.set(entry.layer.id, ranges);
+      accepted.push(entry);
+    }
+    return { spans: accepted, skipped };
+  }
+
+  /**
    * Point events have no interval overlap semantics. Two same-layer, same-type
    * switch events landing on the same timestamp would make the effective one
    * depend on ID ordering, so report them locally instead of silently stacking.
+   *
+   * Conflicts are judged on **final** positions: an event that this same batch
+   * moves away does not block its old slot. An event that ends up skipped stays
+   * where it was, so its original slot becomes resident and the loop re-checks —
+   * one exclusion can never let a second collision slip through.
    */
   private filterPointEventConflicts(
     shot: Shot,
@@ -1739,35 +1832,39 @@ export class TimelineEventBatchService {
       return { entries: [...entries], skipped: [] };
     }
 
-    const targetCounts = new Map<string, number>();
-    for (const entry of pointEntries) {
-      const key = `${entry.layerId}:${entry.eventType}:${entry.nextStartMs}`;
-      targetCounts.set(key, (targetCounts.get(key) ?? 0) + 1);
+    const keyOf = (
+      layerId: string,
+      eventType: TimelineEvent['type'],
+      timeMs: number,
+    ): string => `${layerId}:${eventType}:${timeMs}`;
+    const batchIds = new Set(pointEntries.map((entry) => entry.eventId));
+
+    // Everything outside this point batch keeps its current position.
+    const resident = new Set<string>();
+    for (const other of shot.timelineEvents) {
+      if (batchIds.has(other.id)) continue;
+      if (!POINT_EVENT_TYPE_SET.has(other.type)) continue;
+      resident.add(keyOf(other.layerId, other.type, other.startMs));
     }
 
-    const conflictingIds = new Set<string>();
-    for (const entry of pointEntries) {
-      const key = `${entry.layerId}:${entry.eventType}:${entry.nextStartMs}`;
-      const collidesWithUnselected = shot.timelineEvents.some(
-        (other) =>
-          other.id !== entry.eventId &&
-          other.layerId === entry.layerId &&
-          other.type === entry.eventType &&
-          other.startMs === entry.nextStartMs,
-      );
-      if (collidesWithUnselected || (targetCounts.get(key) ?? 0) > 1) {
-        conflictingIds.add(entry.eventId);
+    let remaining = [...pointEntries];
+    const skipped: BatchTimelineSkippedEntry[] = [];
+    let guard = pointEntries.length + 1;
+    while (guard > 0) {
+      guard -= 1;
+      const targetCounts = new Map<string, number>();
+      for (const entry of remaining) {
+        const key = keyOf(entry.layerId, entry.eventType, entry.nextStartMs);
+        targetCounts.set(key, (targetCounts.get(key) ?? 0) + 1);
       }
-    }
+      const conflicting = remaining.filter((entry) => {
+        const key = keyOf(entry.layerId, entry.eventType, entry.nextStartMs);
+        return (targetCounts.get(key) ?? 0) > 1 || resident.has(key);
+      });
+      if (conflicting.length === 0) break;
 
-    if (conflictingIds.size === 0) {
-      return { entries: [...entries], skipped: [] };
-    }
-
-    const skipped = pointEntries
-      .filter((entry) => conflictingIds.has(entry.eventId))
-      .map(
-        (entry): BatchTimelineSkippedEntry => ({
+      for (const entry of conflicting) {
+        skipped.push({
           itemId: entry.eventId,
           kind: 'timeline-event',
           layerId: entry.layerId,
@@ -1777,11 +1874,21 @@ export class TimelineEventBatchService {
           reason: `「${entry.layerName}」在 ${formatSeconds(
             entry.nextStartMs,
           )} 秒已有同类型点事件，本次平移会重合；请调整偏移或先处理该点事件，已跳过。`,
-        }),
+        });
+        resident.add(keyOf(entry.layerId, entry.eventType, entry.startMs));
+      }
+      const conflictingIds = new Set(conflicting.map((entry) => entry.eventId));
+      remaining = remaining.filter(
+        (entry) => !conflictingIds.has(entry.eventId),
       );
+    }
 
+    if (skipped.length === 0) {
+      return { entries: [...entries], skipped: [] };
+    }
+    const skippedIds = new Set(skipped.map((entry) => entry.itemId));
     return {
-      entries: entries.filter((entry) => !conflictingIds.has(entry.eventId)),
+      entries: entries.filter((entry) => !skippedIds.has(entry.eventId)),
       skipped,
     };
   }
