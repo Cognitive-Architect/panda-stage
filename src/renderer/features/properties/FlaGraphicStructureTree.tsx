@@ -313,6 +313,9 @@ export function FlaGraphicStructureTree(): React.JSX.Element | null {
     selectedStructureNode !== null &&
     selectedStructureNode.authored === 'native' &&
     !target.layer.locked;
+  const selectedNativeGroupEditable =
+    selectedNativeNodeEditable &&
+    selectedStructureNode?.type === 'group';
 
   const handleCreateNativeGraphic = (): void => {
     if (!canCreateNativeGraphic) return;
@@ -380,6 +383,53 @@ export function FlaGraphicStructureTree(): React.JSX.Element | null {
       setNativeNotice('已把所选节点复制为新节点。');
     } catch (error) {
       setExtractError(error instanceof Error ? error.message : '复制节点失败。');
+    }
+  };
+
+  const handleNativeNodeUngroup = (): void => {
+    if (!path?.length) return;
+    setExtractError(null);
+    setNativeNotice(null);
+    try {
+      const nodePaths = layerStore.ungroupNativeGraphicNode(
+        target.animation.id,
+        target.frameOrdinal,
+        path,
+      );
+      const firstPath = nodePaths[0];
+      selectionStore.setSelectedStructuredNodeSelection(firstPath ?? null, null);
+      setNativeNotice('已解组所选节点。');
+    } catch (error) {
+      setExtractError(error instanceof Error ? error.message : '解组节点失败。');
+    }
+  };
+
+  const canGroupStagedNodes =
+    isNativeDefinition &&
+    stagedSubtrees.length >= 2 &&
+    stagedSubtrees.every(
+      (item) =>
+        item.nodePath.length === 1 &&
+        item.regionRef === undefined &&
+        item.regionVector === undefined,
+    );
+
+  const handleNativeGroupStagedNodes = (): void => {
+    if (!canGroupStagedNodes) return;
+    setExtractError(null);
+    setNativeNotice(null);
+    try {
+      const groupPath = layerStore.groupNativeGraphicNodes({
+        animationId: target.animation.id,
+        frameOrdinal: target.frameOrdinal,
+        nodePaths: stagedSubtrees.map((item) => item.nodePath),
+      });
+      setStagedSubtrees([]);
+      const groupId = groupPath[0];
+      selectionStore.setSelectedStructuredNodeSelection(groupId ? [groupId] : null, null);
+      setNativeNotice('已将所选节点组合为分组。');
+    } catch (error) {
+      setExtractError(error instanceof Error ? error.message : '组合节点失败。');
     }
   };
 
@@ -555,6 +605,16 @@ export function FlaGraphicStructureTree(): React.JSX.Element | null {
                 >
                   删除节点
                 </button>
+                {selectedNativeGroupEditable ? (
+                  <button
+                    type="button"
+                    className="fla-subtree-stage-button"
+                    data-testid="native-node-ungroup"
+                    onClick={handleNativeNodeUngroup}
+                  >
+                    解组
+                  </button>
+                ) : null}
               </>
             ) : null}
             <span className="fla-subtree-selection-name" title={selectedDisplayLabel}>
@@ -608,6 +668,15 @@ export function FlaGraphicStructureTree(): React.JSX.Element | null {
                 onClick={handleCreateNativeGraphic}
               >
                 创建原生元件
+              </button>
+              <button
+                type="button"
+                className="fla-subtree-create-button"
+                data-testid="native-group-staged"
+                disabled={!canGroupStagedNodes}
+                onClick={handleNativeGroupStagedNodes}
+              >
+                组合为分组
               </button>
               <span className="fla-subtree-create-hint">
                 {stagedSubtrees.length < 2

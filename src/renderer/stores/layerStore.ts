@@ -1,13 +1,22 @@
 import {
   LayerMotionService,
   LayerService,
+  addNativeGraphicBlankKeyframe,
+  addNativeGraphicLayer,
+  addNativeGraphicNode,
+  copyNativeGraphicFrame,
   createNativeGraphicDefinitionFromNodes,
   deleteNativeGraphicDefinition,
   duplicateNativeGraphicDefinition,
-  addNativeGraphicNode,
+  extendNativeGraphicExposure,
+  groupNativeGraphicNodes,
+  moveNativeGraphicLayer,
   moveNativeGraphicNode,
+  removeNativeGraphicLayer,
   removeNativeGraphicNode,
   replaceNativeGraphicNode,
+  shortenNativeGraphicExposure,
+  ungroupNativeGraphicNode,
   type AfterimageInput,
   type BackgroundTileInput,
   type ConvergingFlightInput,
@@ -617,6 +626,148 @@ export class LayerStore {
     const next = replaceNativeGraphicNode(snapshot.project, input);
     if (next !== snapshot.project) this.editorStore.updateProject(next, '替换元件节点内容');
     return next;
+  }
+
+  /** Inserts a blank native exposure keyframe; one History entry. */
+  addNativeGraphicBlankKeyframe(
+    animationId: string,
+    frameOrdinal: number,
+  ): number {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = addNativeGraphicBlankKeyframe(snapshot.project, {
+      animationId,
+      frameOrdinal,
+    });
+    if (result.project !== snapshot.project) {
+      this.editorStore.updateProject(result.project, '插入空白关键帧');
+    }
+    return result.frameOrdinal;
+  }
+
+  /** Appends a copy of the displayed native frame; one History entry. */
+  copyNativeGraphicFrame(animationId: string, sourceFrameOrdinal: number): number {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = copyNativeGraphicFrame(snapshot.project, {
+      animationId,
+      sourceFrameOrdinal,
+      createId: () => crypto.randomUUID(),
+    });
+    if (result.project !== snapshot.project) {
+      this.editorStore.updateProject(result.project, '复制元件帧');
+    }
+    return result.frameOrdinal;
+  }
+
+  /** Extends native exposure with held cells; one History entry. */
+  extendNativeGraphicExposure(animationId: string, count = 1): number {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = extendNativeGraphicExposure(snapshot.project, {
+      animationId,
+      count,
+    });
+    if (result.project !== snapshot.project) {
+      this.editorStore.updateProject(result.project, '延长曝光');
+    }
+    return result.addedFrames;
+  }
+
+  /** Removes trailing held native exposure cells; one History entry. */
+  shortenNativeGraphicExposure(animationId: string, count = 1): number {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = shortenNativeGraphicExposure(snapshot.project, {
+      animationId,
+      count,
+    });
+    if (result.project !== snapshot.project) {
+      this.editorStore.updateProject(result.project, '缩短曝光');
+    }
+    return result.removedFrames;
+  }
+
+  addNativeGraphicLayer(animationId: string, frameOrdinal: number, name?: string): Project {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const next = addNativeGraphicLayer(snapshot.project, {
+      animationId,
+      frameOrdinal,
+      ...(name === undefined ? {} : { name }),
+    });
+    if (next !== snapshot.project) this.editorStore.updateProject(next, '新增图层');
+    return next;
+  }
+
+  removeNativeGraphicLayer(
+    animationId: string,
+    frameOrdinal: number,
+    layerIndex: number,
+  ): Project {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const next = removeNativeGraphicLayer(snapshot.project, {
+      animationId,
+      frameOrdinal,
+      layerIndex,
+    });
+    if (next !== snapshot.project) this.editorStore.updateProject(next, '删除图层');
+    return next;
+  }
+
+  moveNativeGraphicLayer(
+    animationId: string,
+    frameOrdinal: number,
+    layerIndex: number,
+    direction: 1 | -1,
+  ): Project {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const next = moveNativeGraphicLayer(snapshot.project, {
+      animationId,
+      frameOrdinal,
+      layerIndex,
+      direction,
+    });
+    if (next !== snapshot.project) this.editorStore.updateProject(next, '调整图层顺序');
+    return next;
+  }
+
+  groupNativeGraphicNodes(input: {
+    readonly animationId: string;
+    readonly frameOrdinal: number;
+    readonly nodePaths: readonly (readonly string[])[];
+    readonly name?: string;
+  }): readonly string[] {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = groupNativeGraphicNodes(snapshot.project, {
+      ...input,
+      createId: () => crypto.randomUUID(),
+    });
+    if (result.project !== snapshot.project) {
+      this.editorStore.updateProject(result.project, '组合节点');
+    }
+    return result.groupPath;
+  }
+
+  ungroupNativeGraphicNode(
+    animationId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+  ): readonly (readonly string[])[] {
+    const snapshot = this.editorStore.getSnapshot();
+    if (!snapshot) throw new Error('请先打开项目。');
+    const result = ungroupNativeGraphicNode(snapshot.project, {
+      animationId,
+      frameOrdinal,
+      nodePath,
+    });
+    if (result.project !== snapshot.project) {
+      this.editorStore.updateProject(result.project, '解组节点');
+    }
+    return result.nodePaths;
   }
 
   extractFlaGraphicShapeRegion(input: {

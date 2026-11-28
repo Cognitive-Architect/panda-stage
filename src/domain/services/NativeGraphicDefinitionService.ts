@@ -1,4 +1,5 @@
 import type { AffineMatrix2D } from '../../shared/affine-matrix';
+import { multiplyAffineMatrices } from '../../shared/affine-matrix';
 import { evaluateFlaGraphicVisual, type EvaluatedFlaGraphicNode } from '../evaluate-fla-graphic';
 import {
   cloneFlaEditableShapeRegion,
@@ -9,6 +10,7 @@ import {
   type FlaShapeBounds,
 } from '../fla-shape-vector';
 import {
+  FLA_GRAPHIC_MAX_FRAMES,
   FlaGraphicDefinitionSchema,
   isFlaGraphicDefinition,
   isNativeFlaGraphicDefinition,
@@ -18,7 +20,10 @@ import {
 } from '../models';
 import {
   FlaGraphicStructureSchema,
+  resolveFlaGraphicStructureFrame,
   type FlaGraphicStructure,
+  type FlaGraphicStructureFrame,
+  type FlaGraphicStructureLayer,
   type FlaGraphicStructureNode,
 } from '../models/flaGraphicStructure';
 import { scanAnimationDefinitionReferences, scanAssetReferences } from '../validators/referenceScanner';
@@ -1153,4 +1158,1111 @@ export function replaceNativeGraphicNode(
     siblings,
   );
   return commitNativeStructure(project, definition.id, nextStructure, shapeOverrides);
+}
+
+/* ------------------------------------------------------------------------- *
+ * Issue #1453 — native Definition exposure and frame authoring.
+ *
+ * Exposure is expressed with the existing Definition frame contract: each
+ * played frame ordinal is one exposure cell. An authored keyframe owns its
+ * layer content; a held cell stores `holdFromOrdinal` and no layers, and the
+ * evaluator resolves it to that earlier authored frame. No parallel playhead or
+ * second animation container is introduced, and source-backed Definitions never
+ * carry hold markers (every operation below refuses them).
+ *
+ * Reference lifecycle: removing content prunes the referencing instance
+ * transform/shape/text overrides, definition shared shape overrides, and node
+ * identity aliases (a stale override can therefore never resurrect removed
+ * nodes). Internal-timeline tracks are deliberately left inert instead of being
+ * rewritten: their identity resolves through a live node, so a track for a
+ * removed node is never consulted by the evaluator and stays harmless data
+ * until the creator deletes it.
+ * ------------------------------------------------------------------------- */
+
+const IDENTITY_MATRIX: AffineMatrix2D = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
+
+export type NativeGraphicFrameGeometry = Pick<
+  FlaGraphicDefinition['frames'][number],
+  'sourceViewport' | 'offset'
+>;
+
+export interface NativeGraphicExposureFrameInfo {
+  readonly ordinal: number;
+  /** Authored keyframe supplying this cell's content. */
+  readonly authoredOrdinal: number;
+  readonly held: boolean;
+  /** Authored keyframe with no layer content (e.g. an inserted blank frame). */
+  readonly blank: boolean;
+  readonly layerCount: number;
+}
+
+/** UI projection of the authored exposure cells of a native Definition. */
+export function listNativeGraphicExposureFrames(
+  definition: FlaGraphicDefinition,
+): NativeGraphicExposureFrameInfo[] {
+  if (!definition.structure) return [];
+  return definition.structure.frames.map((frame) => {
+    const resolved = resolveFlaGraphicStructureFrame(definition.structure!, frame.ordinal);
+    const authored = resolved?.frame ?? frame;
+    return {
+      ordinal: frame.ordinal,
+      authoredOrdinal: resolved?.authoredOrdinal ?? frame.ordinal,
+      held: frame.holdFromOrdinal !== undefined,
+      blank: authored.layers.every((layer) => layer.nodes.length === 0),
+      layerCount: authored.layers.length,
+    };
+  });
+}
+
+function nativeFrameDurationMs(definition: FlaGraphicDefinition): number {
+  return 1_000 / definition.source.sourceFps;
+}
+
+/**
+ * Rebuild the Definition frame list (and its shared timing contract) from one
+ * geometry per played exposure cell. Only native Definitions use this: they
+ * never own baked frame media or source frame labels.
+ */
+function withNativeFrameGeometries(
+  definition: FlaGraphicDefinition,
+  geometries: readonly NativeGraphicFrameGeometry[],
+): FlaGraphicDefinition {
+  const frameDurationMs = nativeFrameDurationMs(definition);
+  const startFrameIndex = definition.source.startFrameIndex;
+  const frames = geometries.map((geometry, index) => ({
+    ordinal: index,
+    sourceFrameIndex: startFrameIndex + index,
+    sourceViewport: { ...geometry.sourceViewport },
+    offset: { ...geometry.offset },
+    startMs: index * frameDurationMs,
+    durationMs: frameDurationMs,
+    createdBySequenceImport: false,
+  }));
+  const next: FlaGraphicDefinition = {
+    ...definition,
+    source: {
+      ...definition.source,
+      endFrameIndex: startFrameIndex + geometries.length - 1,
+    },
+    durationMs: geometries.length * frameDurationMs,
+    frames,
+  };
+  delete next.sourceFrameLabels;
+  return next;
+}
+
+function frameGeometries(definition: FlaGraphicDefinition): NativeGraphicFrameGeometry[] {
+  return definition.frames.map((frame) => ({
+    sourceViewport: { ...frame.sourceViewport },
+    offset: { ...frame.offset },
+  }));
+}
+
+function requireNativeAuthoredFrame(
+  definition: FlaGraphicDefinition,
+  frameOrdinal: number,
+): { readonly frame: FlaGraphicStructureFrame; readonly authoredOrdinal: number } {
+  if (!definition.structure) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_SOURCE_REQUIRED',
+      '当前元件没有可编辑的结构数据。',
+    );
+  }
+  const resolved = resolveFlaGraphicStructureFrame(definition.structure, frameOrdinal);
+  if (!resolved) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_FRAME_REQUIRED',
+      '所选元件帧不存在，请重新选择后再试。',
+    );
+  }
+  return { frame: resolved.frame, authoredOrdinal: resolved.authoredOrdinal };
+}
+
+function replaceStructureFrameContent(
+  structure: FlaGraphicStructure,
+  authoredOrdinal: number,
+  nextFrame: FlaGraphicStructureFrame,
+): FlaGraphicStructure {
+  return {
+    ...structure,
+    frames: structure.frames.map((frame) =>
+      frame.ordinal === authoredOrdinal ? nextFrame : frame,
+    ),
+  };
+}
+
+function blankFrameLayers(
+  sourceLayers: readonly FlaGraphicStructureLayer[],
+): FlaGraphicStructureLayer[] {
+  const layers = sourceLayers.length > 0
+    ? sourceLayers
+    : [{ name: NATIVE_GRAPHIC_LAYER_NAME, nodes: [] }];
+  return layers.map((layer) => ({ name: layer.name, nodes: [] }));
+}
+
+function collectStructureNodeIds(nodes: readonly FlaGraphicStructureNode[]): string[] {
+  const ids: string[] = [];
+  const visit = (list: readonly FlaGraphicStructureNode[]): void => {
+    for (const node of list) {
+      ids.push(node.id);
+      if (node.type === 'group') visit(node.children);
+      else if (node.type === 'symbol' && node.children) visit(node.children);
+    }
+  };
+  visit(nodes);
+  return ids;
+}
+
+function removeAliasEntries(
+  structure: FlaGraphicStructure,
+  containerKey: string,
+  nodeIds: readonly string[],
+): FlaGraphicStructure {
+  const aliases = structure.nodeIdentityAliases;
+  const container = aliases?.[containerKey];
+  if (!aliases || !container) return structure;
+  const nextContainer = { ...container };
+  for (const nodeId of nodeIds) delete nextContainer[nodeId];
+  const nextAliases = { ...aliases };
+  if (Object.keys(nextContainer).length === 0) delete nextAliases[containerKey];
+  else nextAliases[containerKey] = nextContainer;
+  const nextStructure = { ...structure };
+  if (Object.keys(nextAliases).length === 0) delete nextStructure.nodeIdentityAliases;
+  else nextStructure.nodeIdentityAliases = nextAliases;
+  return nextStructure;
+}
+
+function removeAliasContainers(
+  structure: FlaGraphicStructure,
+  containerKeys: readonly string[],
+): FlaGraphicStructure {
+  const aliases = structure.nodeIdentityAliases;
+  if (!aliases) return structure;
+  const nextAliases = { ...aliases };
+  let changed = false;
+  for (const containerKey of containerKeys) {
+    if (containerKey in nextAliases) {
+      delete nextAliases[containerKey];
+      changed = true;
+    }
+  }
+  if (!changed) return structure;
+  const nextStructure = { ...structure };
+  if (Object.keys(nextAliases).length === 0) delete nextStructure.nodeIdentityAliases;
+  else nextStructure.nodeIdentityAliases = nextAliases;
+  return nextStructure;
+}
+
+function dropShapeOverrideFrames(
+  definition: FlaGraphicDefinition,
+  frameOrdinals: readonly number[],
+): Record<string, Record<string, FlaGraphicShapeNodeOverride>> | undefined {
+  const overrides = definition.flaGraphicSharedShapeOverrides;
+  if (!overrides) return undefined;
+  const removed = new Set(frameOrdinals.map((ordinal) => String(ordinal)));
+  const next = Object.fromEntries(
+    Object.entries(overrides).filter(([frameKey]) => !removed.has(frameKey)),
+  );
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/** Removes per-instance frame-keyed overrides for exposure cells being cleared. */
+function pruneFrameOrdinalOverridesFromLayers(
+  project: Project,
+  animationId: string,
+  frameOrdinals: readonly number[],
+): Project {
+  if (frameOrdinals.length === 0) return project;
+  const removed = new Set(frameOrdinals.map((ordinal) => String(ordinal)));
+  const pruneFrameMap = <T>(map: Record<string, T> | undefined): Record<string, T> | undefined => {
+    if (!map) return undefined;
+    const next = Object.fromEntries(
+      Object.entries(map).filter(([frameKey]) => !removed.has(frameKey)),
+    );
+    return Object.keys(next).length > 0 ? next : undefined;
+  };
+  let changed = false;
+  const shots = project.shots.map((shot) => {
+    let shotChanged = false;
+    const layers = shot.layers.map((layer) => {
+      if (layer.source.kind !== 'animation' || layer.source.animationId !== animationId) {
+        return layer;
+      }
+      const nextLayer = { ...layer };
+      let layerChanged = false;
+      const transform = pruneFrameMap(layer.flaGraphicInstanceTransformOverrides);
+      if (transform !== layer.flaGraphicInstanceTransformOverrides) {
+        layerChanged = true;
+        if (transform) nextLayer.flaGraphicInstanceTransformOverrides = transform;
+        else delete nextLayer.flaGraphicInstanceTransformOverrides;
+      }
+      const shape = pruneFrameMap(layer.flaGraphicInstanceShapeOverrides);
+      if (shape !== layer.flaGraphicInstanceShapeOverrides) {
+        layerChanged = true;
+        if (shape) nextLayer.flaGraphicInstanceShapeOverrides = shape;
+        else delete nextLayer.flaGraphicInstanceShapeOverrides;
+      }
+      const text = pruneFrameMap(layer.flaGraphicInstanceTextOverrides);
+      if (text !== layer.flaGraphicInstanceTextOverrides) {
+        layerChanged = true;
+        if (text) nextLayer.flaGraphicInstanceTextOverrides = text;
+        else delete nextLayer.flaGraphicInstanceTextOverrides;
+      }
+      if (layerChanged) shotChanged = true;
+      return layerChanged ? nextLayer : layer;
+    });
+    if (shotChanged) changed = true;
+    return shotChanged ? { ...shot, layers } : shot;
+  });
+  return changed ? { ...project, shots } : project;
+}
+
+function commitNativeDefinition(
+  project: Project,
+  animationId: string,
+  mutate: (definition: FlaGraphicDefinition) => FlaGraphicDefinition,
+): Project {
+  const { index, definition } = resolveNativeEditableDefinition(project, animationId);
+  const nextDefinition = mutate(definition);
+  if (nextDefinition === definition) return project;
+  const nextAnimations = [...project.animations];
+  nextAnimations[index] = nextDefinition;
+  return ProjectSchema.parse({ ...project, animations: nextAnimations });
+}
+
+export interface AddNativeGraphicBlankKeyframeInput {
+  readonly animationId: string;
+  /** Existing cell to blank, or `frames.length` to append a new blank frame. */
+  readonly frameOrdinal: number;
+}
+
+export interface AddNativeGraphicBlankKeyframeResult {
+  readonly project: Project;
+  readonly frameOrdinal: number;
+}
+
+/**
+ * Inserts a blank authored keyframe at an exposure cell. An existing cell is
+ * blanked in place (no ordinal shifting, other frames keep their exact timing);
+ * `frameOrdinal === frames.length` appends a new blank authored frame.
+ */
+export function addNativeGraphicBlankKeyframe(
+  project: Project,
+  input: AddNativeGraphicBlankKeyframeInput,
+): AddNativeGraphicBlankKeyframeResult {
+  const { definition } = resolveNativeEditableDefinition(project, input.animationId);
+  const frameCount = definition.frames.length;
+  if (
+    !Number.isSafeInteger(input.frameOrdinal) ||
+    input.frameOrdinal < 0 ||
+    input.frameOrdinal > frameCount
+  ) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_FRAME_ORDINAL_INVALID',
+      `空白关键帧位置超出范围（0–${frameCount}）。`,
+    );
+  }
+  const structure = definition.structure!;
+  const sourceLayers =
+    frameCount === 0
+      ? []
+      : requireNativeAuthoredFrame(
+          definition,
+          Math.min(input.frameOrdinal, frameCount - 1),
+        ).frame.layers;
+  const blankFrame: FlaGraphicStructureFrame = {
+    ordinal: input.frameOrdinal,
+    layers: blankFrameLayers(sourceLayers),
+  };
+  const prunedProject = input.frameOrdinal < frameCount
+    ? pruneFrameOrdinalOverridesFromLayers(project, definition.id, [input.frameOrdinal])
+    : project;
+  const nextStructure = input.frameOrdinal < frameCount
+    ? removeAliasContainers(
+        replaceStructureFrameContent(structure, input.frameOrdinal, blankFrame),
+        [`frame:${input.frameOrdinal}`],
+      )
+    : { ...structure, frames: [...structure.frames, blankFrame] };
+  const geometries = [...frameGeometries(definition)];
+  if (input.frameOrdinal === frameCount) {
+    geometries.push({ ...geometries[geometries.length - 1]! });
+  }
+  const nextProject = commitNativeDefinition(
+    prunedProject,
+    definition.id,
+    (current) => {
+      const nextDefinition = {
+        ...withNativeFrameGeometries(current, geometries),
+        structure: nextStructure,
+      };
+      if (input.frameOrdinal < frameCount) {
+        const overrides = dropShapeOverrideFrames(current, [input.frameOrdinal]);
+        if (overrides) nextDefinition.flaGraphicSharedShapeOverrides = overrides;
+        else delete nextDefinition.flaGraphicSharedShapeOverrides;
+      }
+      return nextDefinition;
+    },
+  );
+  return { project: nextProject, frameOrdinal: input.frameOrdinal };
+}
+
+export interface CopyNativeGraphicFrameInput {
+  readonly animationId: string;
+  /** Played exposure cell whose displayed content is copied. */
+  readonly sourceFrameOrdinal: number;
+  readonly createId?: () => string;
+}
+
+export interface CopyNativeGraphicFrameResult {
+  readonly project: Project;
+  /** Appended authored frame ordinal. */
+  readonly frameOrdinal: number;
+}
+
+interface NativeNodeCopyMove {
+  readonly fromPathKey: string;
+  readonly toPathKey: string;
+}
+
+function cloneNativeNodeForCopy(
+  node: FlaGraphicStructureNode,
+  id: string,
+  oldPath: readonly string[],
+  newPath: readonly string[],
+  createId: () => string,
+  moves: NativeNodeCopyMove[],
+): FlaGraphicStructureNode {
+  const oldPathKey = JSON.stringify(oldPath);
+  const newPathKey = JSON.stringify(newPath);
+  moves.push({ fromPathKey: oldPathKey, toPathKey: newPathKey });
+  if (node.type === 'group') {
+    return {
+      ...node,
+      id,
+      groupId: `native-group-${createId()}`.slice(0, 1_000),
+      children: node.children.map((child) => {
+        const childId = newNativeNodeId(createId);
+        return cloneNativeNodeForCopy(
+          child,
+          childId,
+          [...oldPath, child.id],
+          [...newPath, childId],
+          createId,
+          moves,
+        );
+      }),
+    };
+  }
+  if (node.type === 'symbol' && node.children) {
+    return {
+      ...node,
+      id,
+      children: node.children.map((child) => {
+        const childId = newNativeNodeId(createId);
+        return cloneNativeNodeForCopy(
+          child,
+          childId,
+          [...oldPath, child.id],
+          [...newPath, childId],
+          createId,
+          moves,
+        );
+      }),
+    };
+  }
+  return { ...node, id };
+}
+
+/**
+ * Appends a copy of the content displayed at `sourceFrameOrdinal` as a new
+ * authored keyframe. Copied nodes get fresh author ids, so they are distinct
+ * and independently editable (and, being authored-native, keep a proven
+ * `node:<id>` identity for the internal timeline).
+ */
+export function copyNativeGraphicFrame(
+  project: Project,
+  input: CopyNativeGraphicFrameInput,
+): CopyNativeGraphicFrameResult {
+  const { definition } = resolveNativeEditableDefinition(project, input.animationId);
+  if (definition.frames.length >= FLA_GRAPHIC_MAX_FRAMES) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_FRAME_LIMIT',
+      `原生元件最多支持 ${FLA_GRAPHIC_MAX_FRAMES} 帧，无法继续复制。`,
+    );
+  }
+  const source = requireNativeAuthoredFrame(definition, input.sourceFrameOrdinal);
+  const createId = input.createId ?? (() => crypto.randomUUID());
+  const moves: NativeNodeCopyMove[] = [];
+  const layers = source.frame.layers.map((layer) => ({
+    name: layer.name,
+    nodes: layer.nodes.map((node) => {
+      const nodeId = newNativeNodeId(createId);
+      return cloneNativeNodeForCopy(
+        node,
+        nodeId,
+        [node.id],
+        [nodeId],
+        createId,
+        moves,
+      );
+    }),
+  }));
+  const frameOrdinal = definition.frames.length;
+  const sourceOverrides =
+    definition.flaGraphicSharedShapeOverrides?.[String(source.authoredOrdinal)] ?? {};
+  const copiedOverrides: Record<string, FlaGraphicShapeNodeOverride> = {};
+  for (const move of moves) {
+    const override = sourceOverrides[move.fromPathKey];
+    if (override) {
+      copiedOverrides[move.toPathKey] = JSON.parse(
+        JSON.stringify(override),
+      ) as FlaGraphicShapeNodeOverride;
+    }
+  }
+  const geometries = frameGeometries(definition);
+  geometries.push({ ...geometries[geometries.length - 1]! });
+  const nextProject = commitNativeDefinition(project, definition.id, (current) => {
+    const nextStructure: FlaGraphicStructure = {
+      ...current.structure!,
+      frames: [
+        ...current.structure!.frames,
+        { ordinal: frameOrdinal, layers },
+      ],
+    };
+    const nextOverrides: Record<string, Record<string, FlaGraphicShapeNodeOverride>> = {
+      ...(current.flaGraphicSharedShapeOverrides ?? {}),
+    };
+    if (Object.keys(copiedOverrides).length > 0) {
+      nextOverrides[String(frameOrdinal)] = copiedOverrides;
+    } else {
+      delete nextOverrides[String(frameOrdinal)];
+    }
+    const nextDefinition = {
+      ...withNativeFrameGeometries(current, geometries),
+      structure: nextStructure,
+    };
+    if (Object.keys(nextOverrides).length > 0) {
+      nextDefinition.flaGraphicSharedShapeOverrides = nextOverrides;
+    } else {
+      delete nextDefinition.flaGraphicSharedShapeOverrides;
+    }
+    return nextDefinition;
+  });
+  return { project: nextProject, frameOrdinal };
+}
+
+export interface NativeGraphicExposureInput {
+  readonly animationId: string;
+  readonly count: number;
+}
+
+export interface ExtendNativeGraphicExposureResult {
+  readonly project: Project;
+  readonly addedFrames: number;
+  /** Authored keyframe held by the appended exposure frames. */
+  readonly authoredOrdinal: number;
+}
+
+/**
+ * Extends the final displayed content by appending held exposure cells. The
+ * held cells reference the authored keyframe currently displayed at the end, so
+ * every layer of that keyframe (including its authored edits) stays identical
+ * across the extended range without duplicating node content.
+ */
+export function extendNativeGraphicExposure(
+  project: Project,
+  input: NativeGraphicExposureInput,
+): ExtendNativeGraphicExposureResult {
+  const { definition } = resolveNativeEditableDefinition(project, input.animationId);
+  const count = input.count;
+  if (!Number.isSafeInteger(count) || count < 1) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_EXPOSURE_COUNT_INVALID',
+      '延长曝光的帧数必须为正整数。',
+    );
+  }
+  if (definition.frames.length + count > FLA_GRAPHIC_MAX_FRAMES) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_FRAME_LIMIT',
+      `原生元件最多支持 ${FLA_GRAPHIC_MAX_FRAMES} 帧，无法延长曝光。`,
+    );
+  }
+  const lastOrdinal = definition.frames.length - 1;
+  const { authoredOrdinal } = requireNativeAuthoredFrame(definition, lastOrdinal);
+  const structure = definition.structure!;
+  const geometries = frameGeometries(definition);
+  const appended: FlaGraphicStructureFrame[] = [];
+  for (let index = 1; index <= count; index += 1) {
+    appended.push({
+      ordinal: lastOrdinal + index,
+      layers: [],
+      holdFromOrdinal: authoredOrdinal,
+    });
+    geometries.push({ ...geometries[geometries.length - 1]! });
+  }
+  const nextProject = commitNativeDefinition(project, definition.id, (current) => ({
+    ...withNativeFrameGeometries(current, geometries),
+    structure: { ...structure, frames: [...structure.frames, ...appended] },
+  }));
+  return { project: nextProject, addedFrames: count, authoredOrdinal };
+}
+
+export interface ShortenNativeGraphicExposureResult {
+  readonly project: Project;
+  readonly removedFrames: number;
+}
+
+/**
+ * Shortens exposure by removing trailing held cells. Authored keyframes are
+ * never silently deleted: when the final cell is an authored keyframe the
+ * operation refuses with an actionable message.
+ */
+export function shortenNativeGraphicExposure(
+  project: Project,
+  input: NativeGraphicExposureInput,
+): ShortenNativeGraphicExposureResult {
+  const { definition } = resolveNativeEditableDefinition(project, input.animationId);
+  const count = input.count;
+  if (!Number.isSafeInteger(count) || count < 1) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_EXPOSURE_COUNT_INVALID',
+      '缩短曝光的帧数必须为正整数。',
+    );
+  }
+  const structure = definition.structure!;
+  let trailingHeld = 0;
+  for (let index = structure.frames.length - 1; index >= 0; index -= 1) {
+    if (structure.frames[index]!.holdFromOrdinal === undefined) break;
+    trailingHeld += 1;
+  }
+  if (trailingHeld === 0) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_EXPOSURE_NOT_HELD',
+      '元件末帧是作者关键帧，没有可缩短的曝光；请先延长曝光，或改为空白关键帧。',
+    );
+  }
+  const removedFrames = Math.min(count, trailingHeld);
+  const nextLength = structure.frames.length - removedFrames;
+  const removedOrdinals = Array.from(
+    { length: removedFrames },
+    (_unused, index) => nextLength + index,
+  );
+  const geometries = frameGeometries(definition).slice(0, nextLength);
+  const prunedProject = pruneFrameOrdinalOverridesFromLayers(
+    project,
+    definition.id,
+    removedOrdinals,
+  );
+  const nextStructure = removeAliasContainers(
+    {
+      ...structure,
+      frames: structure.frames.slice(0, nextLength),
+    },
+    removedOrdinals.map((ordinal) => `frame:${ordinal}`),
+  );
+  const overrides = dropShapeOverrideFrames(definition, removedOrdinals);
+  const nextProject = commitNativeDefinition(prunedProject, definition.id, (current) => {
+    const nextDefinition = {
+      ...withNativeFrameGeometries(current, geometries),
+      structure: nextStructure,
+    };
+    if (overrides) nextDefinition.flaGraphicSharedShapeOverrides = overrides;
+    else delete nextDefinition.flaGraphicSharedShapeOverrides;
+    return nextDefinition;
+  });
+  return { project: nextProject, removedFrames };
+}
+
+export interface NativeGraphicLayerTarget {
+  readonly animationId: string;
+  readonly frameOrdinal: number;
+}
+
+export interface AddNativeGraphicLayerInput extends NativeGraphicLayerTarget {
+  readonly name?: string;
+}
+
+/** Adds one empty layer on top of the authored frame's layer stack. */
+export function addNativeGraphicLayer(
+  project: Project,
+  input: AddNativeGraphicLayerInput,
+): Project {
+  const { definition } = resolveNativeEditableDefinition(project, input.animationId);
+  const { frame, authoredOrdinal } = requireNativeAuthoredFrame(definition, input.frameOrdinal);
+  const rawName = input.name?.trim().slice(0, 500) ?? '';
+  const name = rawName || `图层 ${frame.layers.length + 1}`;
+  const nextFrame: FlaGraphicStructureFrame = {
+    ...frame,
+    layers: [...frame.layers, { name, nodes: [] }],
+  };
+  const nextStructure = replaceStructureFrameContent(
+    definition.structure!,
+    authoredOrdinal,
+    nextFrame,
+  );
+  return commitNativeDefinition(project, definition.id, (current) => ({
+    ...current,
+    structure: nextStructure,
+  }));
+}
+
+export interface RemoveNativeGraphicLayerInput extends NativeGraphicLayerTarget {
+  readonly layerIndex: number;
+}
+
+/** Removes one authored layer and prunes the overrides/aliases of its nodes. */
+export function removeNativeGraphicLayer(
+  project: Project,
+  input: RemoveNativeGraphicLayerInput,
+): Project {
+  const { definition } = resolveNativeEditableDefinition(project, input.animationId);
+  const { frame, authoredOrdinal } = requireNativeAuthoredFrame(definition, input.frameOrdinal);
+  if (
+    !Number.isSafeInteger(input.layerIndex) ||
+    input.layerIndex < 0 ||
+    input.layerIndex >= frame.layers.length
+  ) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_LAYER_NOT_FOUND',
+      '找不到要删除的图层，请重新选择。',
+    );
+  }
+  if (frame.layers.length <= 1) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_LAST_LAYER',
+      '原生元件帧至少需要保留一个图层。',
+    );
+  }
+  const removedLayer = frame.layers[input.layerIndex]!;
+  const removedNodeIds = collectStructureNodeIds(removedLayer.nodes);
+  const removedRootPaths = removedLayer.nodes.map((node) => [node.id]);
+  let nextStructure = replaceStructureFrameContent(definition.structure!, authoredOrdinal, {
+    ...frame,
+    layers: frame.layers.filter((_layer, index) => index !== input.layerIndex),
+  });
+  if (removedNodeIds.length > 0) {
+    nextStructure = removeAliasEntries(
+      nextStructure,
+      `frame:${authoredOrdinal}`,
+      removedNodeIds,
+    );
+  }
+  let overrides = definition.flaGraphicSharedShapeOverrides as
+    | Record<string, Record<string, FlaGraphicShapeNodeOverride>>
+    | undefined;
+  for (const rootPath of removedRootPaths) {
+    if (overrides) overrides = removeShapeOverridePaths(overrides, rootPath);
+  }
+  let prunedProject = project;
+  for (const rootPath of removedRootPaths) {
+    prunedProject = pruneRemovedPathsFromLayers(prunedProject, definition.id, rootPath);
+  }
+  return commitNativeDefinition(prunedProject, definition.id, (current) => {
+    const nextDefinition = { ...current, structure: nextStructure };
+    if (overrides && Object.keys(overrides).length > 0) {
+      nextDefinition.flaGraphicSharedShapeOverrides = overrides;
+    } else {
+      delete nextDefinition.flaGraphicSharedShapeOverrides;
+    }
+    return nextDefinition;
+  });
+}
+
+export interface MoveNativeGraphicLayerInput extends NativeGraphicLayerTarget {
+  readonly layerIndex: number;
+  /** +1 moves the layer in front of its next sibling; -1 behind its previous. */
+  readonly direction: 1 | -1;
+}
+
+/** Reorders one authored layer within its frame (draw order = layer array order). */
+export function moveNativeGraphicLayer(
+  project: Project,
+  input: MoveNativeGraphicLayerInput,
+): Project {
+  const { definition } = resolveNativeEditableDefinition(project, input.animationId);
+  const { frame, authoredOrdinal } = requireNativeAuthoredFrame(definition, input.frameOrdinal);
+  if (
+    !Number.isSafeInteger(input.layerIndex) ||
+    input.layerIndex < 0 ||
+    input.layerIndex >= frame.layers.length
+  ) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_LAYER_NOT_FOUND',
+      '找不到要调整顺序的图层，请重新选择。',
+    );
+  }
+  const nextIndex = input.layerIndex + input.direction;
+  if (nextIndex < 0 || nextIndex >= frame.layers.length) return project;
+  const layers = [...frame.layers];
+  const moved = layers[input.layerIndex]!;
+  layers[input.layerIndex] = layers[nextIndex]!;
+  layers[nextIndex] = moved;
+  const nextStructure = replaceStructureFrameContent(
+    definition.structure!,
+    authoredOrdinal,
+    { ...frame, layers },
+  );
+  return commitNativeDefinition(project, definition.id, (current) => ({
+    ...current,
+    structure: nextStructure,
+  }));
+}
+
+function parsePathKey(pathKey: string): string[] | null {
+  try {
+    const parsed: unknown = JSON.parse(pathKey);
+    return Array.isArray(parsed) && parsed.every((entry): entry is string => typeof entry === 'string')
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function prependGroupToPathKey(
+  pathKey: string,
+  nodeId: string,
+  groupId: string,
+): string | null | undefined {
+  const parsed = parsePathKey(pathKey);
+  if (!parsed || parsed[0] !== nodeId) return undefined;
+  return JSON.stringify([groupId, ...parsed]);
+}
+
+/** Removes the leading group segment; a group's own override entry is dropped. */
+function removeFirstPathSegment(
+  pathKey: string,
+  nodeId: string,
+): string | null | undefined {
+  const parsed = parsePathKey(pathKey);
+  if (!parsed || parsed[0] !== nodeId) return undefined;
+  return parsed.length > 1 ? JSON.stringify(parsed.slice(1)) : null;
+}
+
+/**
+ * Path-key remap contract: `undefined` keeps the key unchanged, `null` drops the
+ * entry, a string replaces the key.
+ */
+type NodePathKeyRemap = (pathKey: string) => string | null | undefined;
+
+function remapPathKeyedRecord<T>(
+  record: Record<string, T> | undefined,
+  remap: NodePathKeyRemap,
+): { readonly next: Record<string, T> | undefined; readonly changed: boolean } {
+  if (!record) return { next: undefined, changed: false };
+  let changed = false;
+  const next: Record<string, T> = {};
+  for (const [pathKey, value] of Object.entries(record)) {
+    const mapped = remap(pathKey);
+    if (mapped === null) {
+      changed = true;
+      continue;
+    }
+    if (mapped === undefined) {
+      next[pathKey] = value;
+      continue;
+    }
+    if (mapped !== pathKey) changed = true;
+    next[mapped] = value;
+  }
+  return { next: changed ? next : record, changed };
+}
+
+/** Remaps definition shared shape overrides (all frames) with a path transform. */
+function remapDefinitionShapeOverridePaths(
+  definition: FlaGraphicDefinition,
+  remap: NodePathKeyRemap,
+): Record<string, Record<string, FlaGraphicShapeNodeOverride>> | undefined {
+  const overrides = definition.flaGraphicSharedShapeOverrides;
+  if (!overrides) return undefined;
+  let changed = false;
+  const next: Record<string, Record<string, FlaGraphicShapeNodeOverride>> = {};
+  for (const [frameKey, frameMap] of Object.entries(overrides)) {
+    const result = remapPathKeyedRecord(frameMap, remap);
+    if (result.changed) changed = true;
+    if (result.next && Object.keys(result.next).length > 0) next[frameKey] = result.next;
+    else if (result.next === undefined) next[frameKey] = frameMap;
+  }
+  return changed ? next : overrides;
+}
+
+/** Remaps every instance override map of Layers that reference the Definition. */
+function remapInstanceOverridePaths(
+  project: Project,
+  animationId: string,
+  remap: NodePathKeyRemap,
+): Project {
+  let changed = false;
+  const shots = project.shots.map((shot) => {
+    let shotChanged = false;
+    const layers = shot.layers.map((layer) => {
+      if (layer.source.kind !== 'animation' || layer.source.animationId !== animationId) {
+        return layer;
+      }
+      let layerChanged = false;
+      const nextLayer = { ...layer };
+      const remapFrameMaps = <T>(map: Record<string, Record<string, T>> | undefined):
+        | Record<string, Record<string, T>>
+        | undefined => {
+        if (!map) return undefined;
+        let mapChanged = false;
+        const nextMap: Record<string, Record<string, T>> = {};
+        for (const [frameKey, frameMap] of Object.entries(map)) {
+          const result = remapPathKeyedRecord(frameMap, remap);
+          if (result.changed) mapChanged = true;
+          if (result.next) nextMap[frameKey] = result.next;
+        }
+        return mapChanged ? nextMap : map;
+      };
+      const transform = remapFrameMaps(layer.flaGraphicInstanceTransformOverrides);
+      if (transform !== layer.flaGraphicInstanceTransformOverrides) {
+        layerChanged = true;
+        if (transform) nextLayer.flaGraphicInstanceTransformOverrides = transform;
+        else delete nextLayer.flaGraphicInstanceTransformOverrides;
+      }
+      const shape = remapFrameMaps(layer.flaGraphicInstanceShapeOverrides);
+      if (shape !== layer.flaGraphicInstanceShapeOverrides) {
+        layerChanged = true;
+        if (shape) nextLayer.flaGraphicInstanceShapeOverrides = shape;
+        else delete nextLayer.flaGraphicInstanceShapeOverrides;
+      }
+      const text = remapFrameMaps(layer.flaGraphicInstanceTextOverrides);
+      if (text !== layer.flaGraphicInstanceTextOverrides) {
+        layerChanged = true;
+        if (text) nextLayer.flaGraphicInstanceTextOverrides = text;
+        else delete nextLayer.flaGraphicInstanceTextOverrides;
+      }
+      if (layerChanged) shotChanged = true;
+      return layerChanged ? nextLayer : layer;
+    });
+    if (shotChanged) changed = true;
+    return shotChanged ? { ...shot, layers } : shot;
+  });
+  return changed ? { ...project, shots } : project;
+}
+
+export interface GroupNativeGraphicNodesInput {
+  readonly animationId: string;
+  readonly frameOrdinal: number;
+  /** Top-level node paths of one layer. */
+  readonly nodePaths: readonly (readonly string[])[];
+  readonly name?: string;
+  readonly createId?: () => string;
+}
+
+export interface GroupNativeGraphicNodesResult {
+  readonly project: Project;
+  readonly groupPath: readonly string[];
+}
+
+/**
+ * Groups selected top-level nodes of one authored layer into a native Group.
+ * Node ids, identity aliases and internal-timeline tracks are preserved, so
+ * grouping only changes draw grouping and the persisted node paths (which are
+ * remapped for shape / instance overrides).
+ */
+export function groupNativeGraphicNodes(
+  project: Project,
+  input: GroupNativeGraphicNodesInput,
+): GroupNativeGraphicNodesResult {
+  const { definition } = resolveNativeEditableDefinition(project, input.animationId);
+  const { frame, authoredOrdinal } = requireNativeAuthoredFrame(definition, input.frameOrdinal);
+  if (input.nodePaths.length === 0) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_SELECTION_EMPTY',
+      '请先选择至少一个节点。',
+    );
+  }
+  const nodeIds: string[] = [];
+  for (const nodePath of input.nodePaths) {
+    if (nodePath.length !== 1) {
+      throw new LayerServiceError(
+        'NATIVE_GRAPHIC_GROUP_UNSUPPORTED',
+        '组合仅支持同一图层的一级节点。',
+      );
+    }
+    if (nodeIds.includes(nodePath[0]!)) {
+      throw new LayerServiceError(
+        'NATIVE_GRAPHIC_SELECTION_OVERLAP',
+        '所选节点存在重复，请重新选择。',
+      );
+    }
+    nodeIds.push(nodePath[0]!);
+  }
+  const layerIndex = frame.layers.findIndex((layer) =>
+    nodeIds.every((nodeId) => layer.nodes.some((node) => node.id === nodeId)),
+  );
+  if (layerIndex < 0) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_GROUP_UNSUPPORTED',
+      '组合仅支持同一图层的一级节点。',
+    );
+  }
+  const layer = frame.layers[layerIndex]!;
+  if (nodeIds.some((nodeId) => !layer.nodes.some((node) => node.id === nodeId))) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_NODE_NOT_FOUND',
+      '找不到要组合的节点，请重新选择。',
+    );
+  }
+  const selected = new Set(nodeIds);
+  const selectedNodes = layer.nodes
+    .filter((node) => selected.has(node.id))
+    .sort((left, right) => left.drawOrder - right.drawOrder);
+  const createId = input.createId ?? (() => crypto.randomUUID());
+  const groupId = `native-group-${createId()}`.slice(0, 1_000);
+  const groupNode: FlaGraphicStructureNode = {
+    type: 'group',
+    id: groupId,
+    authored: 'native',
+    drawOrder: 0,
+    localTransform: { ...IDENTITY_MATRIX },
+    groupId: input.name?.trim().slice(0, 1_000) || '分组',
+    children: selectedNodes.map((node, index) => ({ ...node, drawOrder: index })),
+  };
+  const remaining = layer.nodes.filter((node) => !selected.has(node.id));
+  const firstIndex = layer.nodes.findIndex((node) => selected.has(node.id));
+  const insertIndex = remaining.filter(
+    (node) => layer.nodes.indexOf(node) < firstIndex,
+  ).length;
+  const nextLayerNodes = reindexDrawOrder([
+    ...remaining.slice(0, insertIndex),
+    groupNode,
+    ...remaining.slice(insertIndex),
+  ]);
+  const nextLayers = [...frame.layers];
+  nextLayers[layerIndex] = { ...layer, nodes: nextLayerNodes };
+  const nextStructure = replaceStructureFrameContent(
+    definition.structure!,
+    authoredOrdinal,
+    { ...frame, layers: nextLayers },
+  );
+  const remap = (pathKey: string): string | null | undefined => {
+    for (const nodeId of nodeIds) {
+      const mapped = prependGroupToPathKey(pathKey, nodeId, groupId);
+      if (mapped) return mapped;
+    }
+    return undefined;
+  };
+  const remappedProject = remapInstanceOverridePaths(project, definition.id, remap);
+  const remappedOverrides = remapDefinitionShapeOverridePaths(definition, remap);
+  const nextProject = commitNativeDefinition(remappedProject, definition.id, (current) => {
+    const nextDefinition = { ...current, structure: nextStructure };
+    if (remappedOverrides && Object.keys(remappedOverrides).length > 0) {
+      nextDefinition.flaGraphicSharedShapeOverrides = remappedOverrides;
+    } else {
+      delete nextDefinition.flaGraphicSharedShapeOverrides;
+    }
+    return nextDefinition;
+  });
+  return { project: nextProject, groupPath: [groupId] };
+}
+
+export interface UngroupNativeGraphicNodeInput extends NativeGraphicLayerTarget {
+  readonly nodePath: readonly string[];
+}
+
+export interface UngroupNativeGraphicNodeResult {
+  readonly project: Project;
+  /** Node paths of the children that replaced the group. */
+  readonly nodePaths: readonly (readonly string[])[];
+}
+
+/**
+ * Ungroups one top-level native Group, composing the group matrix into each
+ * child and remapping shape / instance overrides back to the flat paths.
+ */
+export function ungroupNativeGraphicNode(
+  project: Project,
+  input: UngroupNativeGraphicNodeInput,
+): UngroupNativeGraphicNodeResult {
+  const { definition } = resolveNativeEditableDefinition(project, input.animationId);
+  const { frame, authoredOrdinal } = requireNativeAuthoredFrame(definition, input.frameOrdinal);
+  if (input.nodePath.length !== 1) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_UNGROUP_UNSUPPORTED',
+      '解组仅支持图层一级的分组。',
+    );
+  }
+  const groupId = input.nodePath[0]!;
+  const layerIndex = frame.layers.findIndex((layer) =>
+    layer.nodes.some((node) => node.id === groupId),
+  );
+  if (layerIndex < 0) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_NODE_NOT_FOUND',
+      '找不到要解组的节点，请重新选择。',
+    );
+  }
+  const layer = frame.layers[layerIndex]!;
+  const groupIndex = layer.nodes.findIndex((node) => node.id === groupId);
+  const group = layer.nodes[groupIndex]!;
+  if (group.type !== 'group') {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_UNGROUP_UNSUPPORTED',
+      '所选节点不是分组，无法解组。',
+    );
+  }
+  if (group.clipPaths && group.clipPaths.length > 0) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_UNGROUP_UNSUPPORTED',
+      '带遮罩的分组暂不支持解组。',
+    );
+  }
+  const children = [...group.children]
+    .sort((left, right) => left.drawOrder - right.drawOrder)
+    .map((child) => ({
+      ...child,
+      localTransform: multiplyAffineMatrices(group.localTransform, child.localTransform),
+      ...(child.clipPaths
+        ? {
+            clipPaths: child.clipPaths.map((clipPath) => ({
+              ...clipPath,
+              shapes: clipPath.shapes.map((shape) =>
+                shape.parentLocalTransform
+                  ? {
+                      ...shape,
+                      parentLocalTransform: multiplyAffineMatrices(
+                        group.localTransform,
+                        shape.parentLocalTransform,
+                      ),
+                    }
+                  : shape,
+              ),
+            })),
+          }
+        : {}),
+    }));
+  const nextLayerNodes = reindexDrawOrder([
+    ...layer.nodes.slice(0, groupIndex),
+    ...children,
+    ...layer.nodes.slice(groupIndex + 1),
+  ]);
+  const nextLayers = [...frame.layers];
+  nextLayers[layerIndex] = { ...layer, nodes: nextLayerNodes };
+  const nextStructure = removeAliasEntries(
+    replaceStructureFrameContent(definition.structure!, authoredOrdinal, {
+      ...frame,
+      layers: nextLayers,
+    }),
+    `frame:${authoredOrdinal}`,
+    [groupId],
+  );
+  const remap = (pathKey: string): string | null | undefined =>
+    removeFirstPathSegment(pathKey, groupId);
+  const remappedProject = remapInstanceOverridePaths(project, definition.id, remap);
+  const remappedOverrides = remapDefinitionShapeOverridePaths(definition, remap);
+  const nextProject = commitNativeDefinition(remappedProject, definition.id, (current) => {
+    const nextDefinition = { ...current, structure: nextStructure };
+    if (remappedOverrides && Object.keys(remappedOverrides).length > 0) {
+      nextDefinition.flaGraphicSharedShapeOverrides = remappedOverrides;
+    } else {
+      delete nextDefinition.flaGraphicSharedShapeOverrides;
+    }
+    return nextDefinition;
+  });
+  return {
+    project: nextProject,
+    nodePaths: children.map((child) => [child.id]),
+  };
 }

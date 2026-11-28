@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import {
   collectFlaGraphicTimelineDurationMs,
+  isNativeFlaGraphicDefinition,
   listFlaGraphicIdentityAliasGroups,
+  listNativeGraphicExposureFrames,
   resolveFlaGraphicTimelineTarget,
   type FlaGraphicDefinition,
   type FlaGraphicIdentityAliasGroup,
+  type FlaGraphicStructureNode,
   type FlaGraphicTransformEasing,
   type Project,
 } from '../../../domain';
@@ -60,6 +63,9 @@ export function FlaGraphicInternalTimelineBar({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [associationOpen, setAssociationOpen] = useState(false);
   const [associationGroupId, setAssociationGroupId] = useState('');
+  const [exposureFrameOrdinal, setExposureFrameOrdinal] = useState(0);
+  const [exposureFrameCount, setExposureFrameCount] = useState('1');
+  const [exposureLayerIndex, setExposureLayerIndex] = useState(0);
   const frameStepMs = integerFrameSpanMs(TIMELINE_FPS);
   const [targetTimeInput, setTargetTimeInput] = useState<string>(() =>
     String(snapToFrame(context.internalTimeMs + frameStepMs, TIMELINE_FPS)),
@@ -85,6 +91,130 @@ export function FlaGraphicInternalTimelineBar({
         )
       : null;
   const identityAliasGroups = listFlaGraphicIdentityAliasGroups(structure);
+  const nativeDefinition = isNativeFlaGraphicDefinition(animation) ? animation : null;
+  const nativeFrames = nativeDefinition
+    ? listNativeGraphicExposureFrames(nativeDefinition)
+    : [];
+  const activeExposureIndex = nativeFrames.length > 0
+    ? Math.min(exposureFrameOrdinal, nativeFrames.length - 1)
+    : 0;
+  const activeExposure = nativeFrames[activeExposureIndex] ?? null;
+  const activeAuthoredFrame =
+    nativeDefinition && activeExposure
+      ? nativeDefinition.structure!.frames.find(
+          (frame) => frame.ordinal === activeExposure.authoredOrdinal,
+        ) ?? null
+      : null;
+  const exposureLayers = activeAuthoredFrame?.layers ?? [];
+  const activeLayerIndex = exposureLayers.length > 0
+    ? Math.min(exposureLayerIndex, exposureLayers.length - 1)
+    : 0;
+  const selectedStructureNode: FlaGraphicStructureNode | null =
+    target?.targetNode ?? null;
+  const canUngroupSelected = Boolean(
+    nativeDefinition &&
+      selectedStructureNode?.type === 'group' &&
+      context.selectedNodePath?.length === 1,
+  );
+
+  const runExposureOperation = (operation: () => void): void => {
+    try {
+      setStatusMessage(null);
+      operation();
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : '曝光编辑失败。');
+    }
+  };
+
+  const resolveExposureCount = (): number | null => {
+    const parsed = Number(exposureFrameCount);
+    if (!Number.isSafeInteger(parsed) || parsed < 1) {
+      setStatusMessage('曝光帧数必须为正整数。');
+      return null;
+    }
+    return parsed;
+  };
+
+  const handleInsertBlankKeyframe = (): void => {
+    if (!nativeDefinition) return;
+    runExposureOperation(() => {
+      const ordinal = layerStore.addNativeGraphicBlankKeyframe(
+        nativeDefinition.id,
+        activeExposureIndex,
+      );
+      setExposureFrameOrdinal(ordinal);
+    });
+  };
+
+  const handleCopyFrame = (): void => {
+    if (!nativeDefinition) return;
+    runExposureOperation(() => {
+      const ordinal = layerStore.copyNativeGraphicFrame(
+        nativeDefinition.id,
+        activeExposureIndex,
+      );
+      setExposureFrameOrdinal(ordinal);
+    });
+  };
+
+  const handleExtendExposure = (): void => {
+    if (!nativeDefinition) return;
+    const count = resolveExposureCount();
+    if (count === null) return;
+    runExposureOperation(() => {
+      layerStore.extendNativeGraphicExposure(nativeDefinition.id, count);
+    });
+  };
+
+  const handleShortenExposure = (): void => {
+    if (!nativeDefinition) return;
+    const count = resolveExposureCount();
+    if (count === null) return;
+    runExposureOperation(() => {
+      layerStore.shortenNativeGraphicExposure(nativeDefinition.id, count);
+    });
+  };
+
+  const handleAddLayer = (): void => {
+    if (!nativeDefinition) return;
+    runExposureOperation(() => {
+      layerStore.addNativeGraphicLayer(nativeDefinition.id, activeExposureIndex);
+    });
+  };
+
+  const handleRemoveLayer = (): void => {
+    if (!nativeDefinition || exposureLayers.length === 0) return;
+    runExposureOperation(() => {
+      layerStore.removeNativeGraphicLayer(
+        nativeDefinition.id,
+        activeExposureIndex,
+        activeLayerIndex,
+      );
+    });
+  };
+
+  const handleMoveLayer = (direction: 1 | -1): void => {
+    if (!nativeDefinition || exposureLayers.length === 0) return;
+    runExposureOperation(() => {
+      layerStore.moveNativeGraphicLayer(
+        nativeDefinition.id,
+        activeExposureIndex,
+        activeLayerIndex,
+        direction,
+      );
+    });
+  };
+
+  const handleUngroupNode = (): void => {
+    if (!nativeDefinition || !context.selectedNodePath) return;
+    runExposureOperation(() => {
+      layerStore.ungroupNativeGraphicNode(
+        nativeDefinition.id,
+        activeExposureIndex,
+        context.selectedNodePath!,
+      );
+    });
+  };
 
   const handleAssociateIdentity = (): void => {
     if (!context.selectedNodePath) return;
@@ -507,6 +637,147 @@ export function FlaGraphicInternalTimelineBar({
             >
               解除关联
             </button>
+          </span>
+        ) : null}
+        {nativeDefinition ? (
+          <span
+            className="fla-internal-exposure-controls"
+            data-testid="fla-internal-exposure-controls"
+          >
+            <select
+              aria-label="曝光帧"
+              data-testid="fla-internal-exposure-frame"
+              onChange={(event) => {
+                setExposureFrameOrdinal(Number(event.target.value));
+                setExposureLayerIndex(0);
+              }}
+              value={activeExposureIndex}
+            >
+              {nativeFrames.map((frame, index) => (
+                <option key={frame.ordinal} value={index}>
+                  {`帧 ${index + 1}${frame.held ? '（保持）' : frame.blank ? '（空白）' : ''}`}
+                </option>
+              ))}
+            </select>
+            <button
+              data-testid="fla-internal-insert-blank-frame"
+              data-ui-button
+              data-ui-variant="secondary"
+              onClick={handleInsertBlankKeyframe}
+              type="button"
+            >
+              插入空白关键帧
+            </button>
+            <button
+              data-testid="fla-internal-copy-frame"
+              data-ui-button
+              data-ui-variant="secondary"
+              onClick={handleCopyFrame}
+              type="button"
+            >
+              复制帧
+            </button>
+            <input
+              aria-label="曝光帧数"
+              data-testid="fla-internal-exposure-count"
+              min={1}
+              onChange={(event) => setExposureFrameCount(event.target.value)}
+              step={1}
+              style={{ width: '56px' }}
+              type="number"
+              value={exposureFrameCount}
+            />
+            <button
+              data-testid="fla-internal-extend-exposure"
+              data-ui-button
+              data-ui-variant="secondary"
+              onClick={handleExtendExposure}
+              type="button"
+            >
+              延长曝光
+            </button>
+            <button
+              data-testid="fla-internal-shorten-exposure"
+              data-ui-button
+              data-ui-variant="secondary"
+              onClick={handleShortenExposure}
+              type="button"
+            >
+              缩短曝光
+            </button>
+            {exposureLayers.length > 0 ? (
+              <>
+                <select
+                  aria-label="曝光帧图层"
+                  data-testid="fla-internal-exposure-layer"
+                  onChange={(event) => setExposureLayerIndex(Number(event.target.value))}
+                  value={activeLayerIndex}
+                >
+                  {exposureLayers.map((layer, index) => (
+                    <option key={`${layer.name}-${index}`} value={index}>
+                      {layer.name || `图层 ${index + 1}`}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  data-testid="fla-internal-add-layer"
+                  data-ui-button
+                  data-ui-variant="secondary"
+                  onClick={handleAddLayer}
+                  type="button"
+                >
+                  新增层
+                </button>
+                <button
+                  data-testid="fla-internal-remove-layer"
+                  data-ui-button
+                  data-ui-variant="secondary"
+                  onClick={handleRemoveLayer}
+                  type="button"
+                >
+                  删除层
+                </button>
+                <button
+                  data-testid="fla-internal-move-layer-backward"
+                  data-ui-button
+                  data-ui-variant="secondary"
+                  onClick={() => handleMoveLayer(-1)}
+                  type="button"
+                >
+                  层后移
+                </button>
+                <button
+                  data-testid="fla-internal-move-layer-forward"
+                  data-ui-button
+                  data-ui-variant="secondary"
+                  onClick={() => handleMoveLayer(1)}
+                  type="button"
+                >
+                  层前移
+                </button>
+                {canUngroupSelected ? (
+                  <button
+                    data-testid="fla-internal-ungroup"
+                    data-ui-button
+                    data-ui-variant="secondary"
+                    onClick={handleUngroupNode}
+                    type="button"
+                  >
+                    解组
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <button
+                data-testid="fla-internal-add-layer"
+                data-ui-button
+                data-ui-variant="secondary"
+                onClick={handleAddLayer}
+                type="button"
+              >
+                新增层
+              </button>
+            )}
           </span>
         ) : null}
         {statusMessage ? (

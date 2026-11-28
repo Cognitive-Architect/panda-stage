@@ -4,6 +4,7 @@ import {
   FLA_GRAPHIC_IDENTITY_ALIAS_ID_PATTERN,
   FLA_GRAPHIC_STRUCTURE_MAX_DEPTH,
   isFlaGraphicNodeTransformable,
+  resolveFlaGraphicStructureFrame,
   type FlaGraphicStructure,
   type FlaGraphicStructureNode,
 } from './flaGraphicStructure';
@@ -540,6 +541,12 @@ export function resolveFlaGraphicProvenNodeIdentity(
     const occurrences = countSourceAddressInNodes(containerRootNodes, trimmedAddr);
     return occurrences === 1 ? `addr:${trimmedAddr}` : null;
   }
+  if (node.authored === 'native' && ownerKind === 'frame') {
+    // Authored-native node ids are unique across the whole structure (validated),
+    // so a copied/exposure frame node keeps a proven, independently editable
+    // identity even when the native Definition has more than one frame.
+    return `node:${node.id}`;
+  }
   if (ownerKind === 'symbol' && ownerSymbolDefId) {
     return `sym:${ownerSymbolDefId}:${node.id}`;
   }
@@ -597,8 +604,9 @@ export function resolveFlaGraphicTimelineTarget(
   if (!Number.isSafeInteger(frameOrdinal) || frameOrdinal < 0 || nodePath.length === 0) {
     return null;
   }
-  const frame = structure.frames.find((candidate) => candidate.ordinal === frameOrdinal);
-  if (!frame) return null;
+  const resolvedFrame = resolveFlaGraphicStructureFrame(structure, frameOrdinal);
+  if (!resolvedFrame) return null;
+  const { frame, authoredOrdinal } = resolvedFrame;
 
   let ownerKind: 'frame' | 'symbol' = 'frame';
   let ownerSymbolDefId: string | null = null;
@@ -646,7 +654,7 @@ export function resolveFlaGraphicTimelineTarget(
         structure,
         ownerKind,
         ownerSymbolDefId,
-        frameOrdinal,
+        authoredOrdinal,
         targetNode.id,
       );
   const trackId =
@@ -658,8 +666,8 @@ export function resolveFlaGraphicTimelineTarget(
         ? 'alias'
         : null;
   const identityContainerKey =
-    flaGraphicIdentityContainerKey(ownerKind, ownerSymbolDefId, frameOrdinal) ??
-    `frame:${frameOrdinal}`;
+    flaGraphicIdentityContainerKey(ownerKind, ownerSymbolDefId, authoredOrdinal) ??
+    `frame:${authoredOrdinal}`;
   const trsSafe = isAffineMatrixTrsSafe(targetNode.localTransform);
   const authoringCapability: FlaGraphicTimelineAuthoringCapability =
     !isFlaGraphicNodeTransformable(targetNode)
@@ -736,31 +744,23 @@ export function listFlaGraphicIdentityAliasGroups(
   }));
 }
 
-function findFrameContainerRootNodes(
-  structure: FlaGraphicStructure,
-  frameOrdinal: number,
-): readonly FlaGraphicStructureNode[] | null {
-  const frame = structure.frames.find(
-    (candidate) => candidate.ordinal === frameOrdinal,
-  );
-  return frame ? frame.layers.flatMap((layer) => layer.nodes) : null;
-}
-
 /**
  * Lists the nodes at `frameOrdinal` whose cross-frame identity cannot be
  * proven and that have no author alias yet. These are the only nodes for which
- * the UI may offer explicit manual association.
+ * the UI may offer explicit manual association. A held exposure frame resolves
+ * to its authored frame, so the offered nodes are always the real content.
  */
 export function listFlaGraphicIdentityAmbiguities(
   structure: FlaGraphicStructure,
   frameOrdinal: number,
 ): FlaGraphicIdentityAmbiguity[] {
   if (!Number.isSafeInteger(frameOrdinal) || frameOrdinal < 0) return [];
-  const containerRootNodes = findFrameContainerRootNodes(structure, frameOrdinal);
+  const resolved = resolveFlaGraphicStructureFrame(structure, frameOrdinal);
+  if (!resolved) return [];
+  const frame = resolved.frame;
+  const authoredOrdinal = resolved.authoredOrdinal;
+  const containerRootNodes = frame.layers.flatMap((layer) => layer.nodes);
   if (!containerRootNodes) return [];
-  const frame = structure.frames.find(
-    (candidate) => candidate.ordinal === frameOrdinal,
-  )!;
   const result: FlaGraphicIdentityAmbiguity[] = [];
   const visit = (
     nodes: readonly FlaGraphicStructureNode[],
@@ -778,7 +778,7 @@ export function listFlaGraphicIdentityAmbiguities(
           'frame',
           null,
           containerRootNodes,
-          frameOrdinal,
+          authoredOrdinal,
         ) === null
       ) {
         result.push({

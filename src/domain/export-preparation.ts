@@ -3,6 +3,7 @@ import type { Asset } from './models/asset';
 import type { FlaGraphicDefinition } from './models/animation';
 import { resolveCharacterPartVisualSource } from './models/character';
 import {
+  resolveFlaGraphicStructureFrame,
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicStructureNode,
 } from './models/flaGraphicStructure';
@@ -487,9 +488,11 @@ function addShotAnimationMedia(
       }
     };
     for (const frame of definition.frames) {
-      const structureFrame = definition.structure?.frames.find(
-        (candidate) => candidate.ordinal === frame.ordinal,
-      );
+      // A held exposure cell renders its authored keyframe's content, so its
+      // resources must be prepared too.
+      const structureFrame = definition.structure
+        ? resolveFlaGraphicStructureFrame(definition.structure, frame.ordinal)?.frame
+        : undefined;
       if (structureFrame) {
         for (const layer of structureFrame.layers) collectNodeResources(layer.nodes);
       } else if (frame.assetId) {

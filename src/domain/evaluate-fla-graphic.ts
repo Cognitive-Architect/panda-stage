@@ -19,6 +19,7 @@ import { evaluateFlaGraphicFrame } from '../shared/fla-graphic-playback';
 import {
   applyFlaGraphicSubtreeViewBox,
   isFlaGraphicNodeTransformable,
+  resolveFlaGraphicStructureFrame,
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicDefinition,
   type FlaGraphicStructure,
@@ -210,6 +211,7 @@ export interface EvaluatedFlaGraphicLayer {
  */
 export interface EvaluatedFlaGraphicVisual {
   readonly mode: FlaGraphicEvaluationMode;
+  /** Played Definition frame ordinal (exposure cell). */
   readonly frameOrdinal: number;
   readonly frameAssetId: string;
   readonly instanceColor?: FlaInstanceColor;
@@ -217,6 +219,11 @@ export interface EvaluatedFlaGraphicVisual {
   readonly frameViewport: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   readonly canvas: { readonly width: number; readonly height: number };
   readonly anchor: { readonly x: number; readonly y: number };
+  /**
+   * Authored structure frame that supplies this cell's content. For an ordinary
+   * frame this is the frame at `frameOrdinal`; for a held exposure cell it is
+   * the earlier authored keyframe that is exposed (its `ordinal` differs).
+   */
   readonly structureFrame: FlaGraphicStructureFrame | null;
   readonly layers: readonly EvaluatedFlaGraphicLayer[] | null;
   /** Unique Project asset references needed by this frame, including fallback. */
@@ -321,7 +328,14 @@ function visualCacheFor(input: {
     return cache;
   }
 
-  const frameKey = String(frameOrdinal);
+  // Instance overrides are authored against the exposed authored keyframe, so a
+  // held exposure cell must select its cache bucket with the same ordinal the
+  // evaluator reads. Without this, two instances showing different overrides on
+  // the same held cell could reuse each other's cached visual.
+  const authoredFrameOrdinal = definition.structure
+    ? resolveFlaGraphicStructureFrame(definition.structure, frameOrdinal)?.authoredOrdinal ?? frameOrdinal
+    : frameOrdinal;
+  const frameKey = String(authoredFrameOrdinal);
   const frameTransformOverrides = instanceTransformOverrides?.[frameKey];
   const frameShapeOverrides = instanceShapeOverrides?.[frameKey];
   const hasTransformOverrides = Boolean(
@@ -482,9 +496,15 @@ export function evaluateFlaGraphicVisual(input: {
   if (cachedVisual) return cachedVisual;
   const frame = definition.frames.find((candidate) => candidate.ordinal === frameOrdinal);
   if (!frame) return null;
-  const structureFrame = definition.structure?.frames.find(
-    (candidate) => candidate.ordinal === frameOrdinal,
-  ) ?? null;
+  // Exposure editing is expressed as structure frames: a held cell resolves to
+  // the earlier authored keyframe that is exposed, so playback, seek, Stage,
+  // Preview and Export all read the same authored content. Structures without
+  // hold markers (every source-backed structure) resolve to their own ordinal.
+  const resolvedStructureFrame = definition.structure
+    ? resolveFlaGraphicStructureFrame(definition.structure, frameOrdinal)
+    : null;
+  const structureFrame = resolvedStructureFrame?.frame ?? null;
+  const authoredFrameOrdinal = resolvedStructureFrame?.authoredOrdinal ?? frameOrdinal;
   // A native Definition frame has no baked media asset; it renders from its structure.
   const frameAssetId = frame.assetId ?? '';
   const resourceAssetIds = new Set<string>(
@@ -539,7 +559,7 @@ export function evaluateFlaGraphicVisual(input: {
       .sort((left, right) => left.drawOrder - right.drawOrder)
       .flatMap((node): readonly EvaluatedFlaGraphicNode[] => {
         const path = [...parentPath, node.id];
-        const replacement = textOverrides?.[String(frameOrdinal)]?.[flaGraphicInstanceNodePathKey(path)];
+        const replacement = textOverrides?.[String(authoredFrameOrdinal)]?.[flaGraphicInstanceNodePathKey(path)];
         const editableText = node.type === 'opaque' && node.opaqueKind === 'text' ? node.editableText : undefined;
         const staticText = editableText && replacement !== undefined
           ? { ...editableText, runs: [{ ...editableText.runs[0], characters: replacement }] }
@@ -552,7 +572,7 @@ export function evaluateFlaGraphicVisual(input: {
             timelineContext.ownerKind,
             timelineContext.ownerSymbolDefId,
             timelineContext.containerRootNodes,
-            frameOrdinal,
+            authoredFrameOrdinal,
           );
           if (trackId) {
             const track = timelineContext.timeline.tracks.find(
@@ -584,7 +604,7 @@ export function evaluateFlaGraphicVisual(input: {
         const authoredOrOverrideTransform = isFlaGraphicNodeTransformable(node)
           ? getFlaGraphicInstanceTransformOverride(
               overrides,
-              frameOrdinal,
+              authoredFrameOrdinal,
               path,
             ) ?? authoredLocalTransform
           : authoredLocalTransform;
@@ -600,7 +620,7 @@ export function evaluateFlaGraphicVisual(input: {
             ? resolveEffectiveShapeNodeOverride(
                 definition,
                 mode,
-                frameOrdinal,
+                authoredFrameOrdinal,
                 path,
                 instanceShapeOverrides,
               )
@@ -714,7 +734,7 @@ export function evaluateFlaGraphicVisual(input: {
             const entryTransform =
               getFlaGraphicInstanceTransformOverride(
                 overrides,
-                frameOrdinal,
+                authoredFrameOrdinal,
                 entryPath,
               ) ?? entry.localTransform;
             const entryLocalTransform =
