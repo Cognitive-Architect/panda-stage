@@ -419,6 +419,29 @@ function applyFlaShapeTweensToShapeNodeOverride(input: {
   return augmented ?? input.nodeOverride;
 }
 
+/**
+ * True when an authored Shape Tween on some other source frame can read this
+ * instance's Shape overrides, so the cached visual depends on instance data that
+ * the currently displayed authored frame does not carry. Without this partition,
+ * two instances sharing a Definition but overriding different tween source
+ * frames would reuse each other's cached tween geometry.
+ */
+function shapeTweenReadsOtherFrameInstanceOverrides(
+  definition: FlaGraphicDefinition,
+  currentFrameKey: string,
+  instanceShapeOverrides: FlaGraphicShapeOverrides | undefined,
+): boolean {
+  const tracks = definition.structure?.shapeTweenTracks;
+  if (!tracks || tracks.length === 0 || !instanceShapeOverrides) return false;
+  for (const track of tracks) {
+    const sourceFrameKey = String(track.target.sourceFrameOrdinal);
+    if (sourceFrameKey === currentFrameKey) continue;
+    const frameOverrides = instanceShapeOverrides[sourceFrameKey];
+    if (frameOverrides && Object.keys(frameOverrides).length > 0) return true;
+  }
+  return false;
+}
+
 function visualCacheFor(input: {
   readonly definition: FlaGraphicDefinition;
   readonly frameOrdinal: number;
@@ -458,7 +481,14 @@ function visualCacheFor(input: {
   const hasShapeOverrides = Boolean(
     frameShapeOverrides && Object.keys(frameShapeOverrides).length > 0,
   );
-  if (!hasTransformOverrides && !hasShapeOverrides) {
+  // A Shape Tween authored on another frame reads that source frame's instance
+  // Shape override, so the whole instance shape-override map is the partition.
+  const tweenReadsOtherFrameOverride = shapeTweenReadsOtherFrameInstanceOverrides(
+    definition,
+    frameKey,
+    instanceShapeOverrides,
+  );
+  if (!hasTransformOverrides && !hasShapeOverrides && !tweenReadsOtherFrameOverride) {
     let cache = instanceAuthoredVisualCache.get(definition);
     if (!cache) {
       cache = new Map();
@@ -472,7 +502,7 @@ function visualCacheFor(input: {
       ? instanceTransformOverrides
       : EMPTY_TRANSFORM_OVERRIDES;
   const sKey =
-    hasShapeOverrides && instanceShapeOverrides
+    (hasShapeOverrides || tweenReadsOtherFrameOverride) && instanceShapeOverrides
       ? instanceShapeOverrides
       : EMPTY_SHAPE_OVERRIDES;
 

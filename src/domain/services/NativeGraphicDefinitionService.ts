@@ -15,6 +15,7 @@ import {
   isFlaGraphicDefinition,
   isNativeFlaGraphicDefinition,
   ProjectSchema,
+  resolveFlaGraphicStableNodeIdentity,
   type FlaGraphicDefinition,
   type Project,
 } from '../models';
@@ -1025,10 +1026,11 @@ export function addNativeGraphicNode(
   input: AddNativeGraphicNodeInput,
 ): { readonly project: Project; readonly nodePath: readonly string[] } {
   const { definition } = resolveNativeEditableDefinition(project, input.animationId);
-  requireFrame(definition, input.frameOrdinal);
+  // Exposure cells may be held; the new content is authored on the real
+  // authored keyframe that the cell exposes, never on the cell itself.
+  const { frame, authoredOrdinal } = requireNativeAuthoredFrame(definition, input.frameOrdinal);
   const leaves = editableLeavesFromSource(project, input.source);
   const structure = definition.structure!;
-  const frame = structure.frames.find((candidate) => candidate.ordinal === input.frameOrdinal)!;
   const layerIndex = 0;
   const layer = frame.layers[layerIndex];
   if (!layer) {
@@ -1040,7 +1042,7 @@ export function addNativeGraphicNode(
   const createId = input.createId ?? (() => crypto.randomUUID());
   let insertIndex = layer.nodes.length;
   if (input.afterNodePath) {
-    const location = locateNodeInFrame(structure, input.frameOrdinal, input.afterNodePath);
+    const location = locateNodeInFrame(structure, authoredOrdinal, input.afterNodePath);
     if (!location) {
       throw new LayerServiceError(
         'NATIVE_GRAPHIC_NODE_NOT_FOUND',
@@ -1070,7 +1072,7 @@ export function addNativeGraphicNode(
     if (built.shapeOverride) {
       shapeOverrides = insertShapeOverride(
         shapeOverrides,
-        0,
+        authoredOrdinal,
         [nodeId],
         built.shapeOverride,
       );
@@ -1089,7 +1091,7 @@ export function addNativeGraphicNode(
   };
   const nextStructure = replaceSiblingsInStructure(
     structure,
-    input.frameOrdinal,
+    authoredOrdinal,
     location,
     nextNodes,
   );
@@ -1108,9 +1110,9 @@ export function replaceNativeGraphicNode(
   input: ReplaceNativeGraphicNodeInput,
 ): Project {
   const { definition } = resolveNativeEditableDefinition(project, input.animationId);
-  requireFrame(definition, input.frameOrdinal);
+  const { authoredOrdinal } = requireNativeAuthoredFrame(definition, input.frameOrdinal);
   const structure = definition.structure!;
-  const location = locateNodeInFrame(structure, input.frameOrdinal, input.nodePath);
+  const location = locateNodeInFrame(structure, authoredOrdinal, input.nodePath);
   if (!location) {
     throw new LayerServiceError(
       'NATIVE_GRAPHIC_NODE_NOT_FOUND',
@@ -1146,14 +1148,22 @@ export function replaceNativeGraphicNode(
       >,
       input.nodePath,
     );
+  // The evaluator reads overrides by the complete path from the frame root,
+  // including any Group ancestors, so the new content must be keyed the same way.
+  const completePath = [...location.parentPath, targetNode.id];
   if (built.shapeOverride) {
-    shapeOverrides = insertShapeOverride(shapeOverrides, 0, [targetNode.id], built.shapeOverride);
+    shapeOverrides = insertShapeOverride(
+      shapeOverrides,
+      authoredOrdinal,
+      completePath,
+      built.shapeOverride,
+    );
   }
   const siblings = [...location.siblings];
   siblings[location.index] = built.node;
   const nextStructure = replaceSiblingsInStructure(
     structure,
-    input.frameOrdinal,
+    authoredOrdinal,
     location,
     siblings,
   );
@@ -1986,11 +1996,118 @@ function remapDefinitionShapeOverridePaths(
   return changed ? next : overrides;
 }
 
+/**
+ * Instance data needed to keep transforms identical when a Group disappears:
+ * every override below the group must absorb the group's effective matrix, and
+ * instances that only transformed the group itself need an explicit child
+ * override because the authored child matrix alone loses that transform.
+ */
+interface UngroupTransformComposition {
+  readonly frameKey: string;
+  readonly groupId: string;
+  /** The group's own instance transform override for this authored frame. */
+  readonly groupInstanceOverride: AffineMatrix2D | undefined;
+  /** The group's authored local matrix (definition level). */
+  readonly groupAuthoredTransform: AffineMatrix2D;
+  readonly childAuthoredTransforms: ReadonlyMap<string, AffineMatrix2D>;
+}
+
+function composeFiniteMatrix(
+  outer: AffineMatrix2D,
+  inner: AffineMatrix2D,
+): AffineMatrix2D | null {
+  const composed = multiplyAffineMatrices(outer, inner);
+  return [
+    composed.a,
+    composed.b,
+    composed.c,
+    composed.d,
+    composed.tx,
+    composed.ty,
+  ].every(Number.isFinite)
+    ? composed
+    : null;
+}
+
+function affineMatricesEquivalent(left: AffineMatrix2D, right: AffineMatrix2D): boolean {
+  return (['a', 'b', 'c', 'd', 'tx', 'ty'] as const).every(
+    (key) => Math.abs(left[key] - right[key]) <= 1e-9,
+  );
+}
+
+/**
+ * Remaps one instance transform-override frame map. When `composition` is
+ * present every override below the ungrouped group is composed with the
+ * group's effective matrix so the evaluated matrix never changes.
+ */
+function remapInstanceTransformFrameMaps(
+  map: Record<string, Record<string, AffineMatrix2D>> | undefined,
+  remap: NodePathKeyRemap,
+  composition: UngroupTransformComposition | undefined,
+): Record<string, Record<string, AffineMatrix2D>> | undefined {
+  if (!map) return undefined;
+  let changed = false;
+  const nextMap: Record<string, Record<string, AffineMatrix2D>> = {};
+  for (const [frameKey, frameMap] of Object.entries(map)) {
+    const isComposedFrame = composition !== undefined && frameKey === composition.frameKey;
+    const groupEffective = isComposedFrame
+      ? composition!.groupInstanceOverride ?? composition!.groupAuthoredTransform
+      : undefined;
+    let frameChanged = false;
+    const nextFrame: Record<string, AffineMatrix2D> = {};
+    for (const [pathKey, matrix] of Object.entries(frameMap)) {
+      const mapped = remap(pathKey);
+      if (mapped === null) {
+        changed = true;
+        frameChanged = true;
+        continue;
+      }
+      let nextMatrix = matrix;
+      if (isComposedFrame && groupEffective) {
+        const parsed = parsePathKey(pathKey);
+        if (parsed && parsed[0] === composition!.groupId && parsed.length > 1) {
+          nextMatrix = composeFiniteMatrix(groupEffective, matrix) ?? matrix;
+        }
+      }
+      const nextKey = mapped ?? pathKey;
+      if (nextKey !== pathKey || nextMatrix !== matrix) frameChanged = true;
+      nextFrame[nextKey] = nextMatrix;
+    }
+    // An instance that only overrode the group still has to carry those
+    // children's effective matrices; otherwise ungroup would shift them.
+    if (
+      isComposedFrame &&
+      composition!.groupInstanceOverride &&
+      !affineMatricesEquivalent(composition!.groupInstanceOverride, composition!.groupAuthoredTransform)
+    ) {
+      for (const [childId, authored] of composition!.childAuthoredTransforms) {
+        const childKey = JSON.stringify([childId]);
+        if (nextFrame[childKey] !== undefined) continue;
+        nextFrame[childKey] = composeFiniteMatrix(composition!.groupInstanceOverride, authored) ?? authored;
+        frameChanged = true;
+      }
+    }
+    if (frameChanged) changed = true;
+    if (frameChanged) {
+      // An emptied frame map is removed entirely; the override schema rejects
+      // empty maps and an empty override set carries no authored data.
+      if (Object.keys(nextFrame).length > 0) nextMap[frameKey] = nextFrame;
+    } else {
+      nextMap[frameKey] = frameMap;
+    }
+  }
+  if (!changed) return map;
+  return Object.keys(nextMap).length > 0 ? nextMap : undefined;
+}
+
 /** Remaps every instance override map of Layers that reference the Definition. */
 function remapInstanceOverridePaths(
   project: Project,
   animationId: string,
   remap: NodePathKeyRemap,
+  compositionFor?: (
+    layer: Project['shots'][number]['layers'][number],
+  ) => UngroupTransformComposition | undefined,
 ): Project {
   let changed = false;
   const shots = project.shots.map((shot) => {
@@ -1999,6 +2116,7 @@ function remapInstanceOverridePaths(
       if (layer.source.kind !== 'animation' || layer.source.animationId !== animationId) {
         return layer;
       }
+      const composition = compositionFor?.(layer);
       let layerChanged = false;
       const nextLayer = { ...layer };
       const remapFrameMaps = <T>(map: Record<string, Record<string, T>> | undefined):
@@ -2014,7 +2132,11 @@ function remapInstanceOverridePaths(
         }
         return mapChanged ? nextMap : map;
       };
-      const transform = remapFrameMaps(layer.flaGraphicInstanceTransformOverrides);
+      const transform = remapInstanceTransformFrameMaps(
+        layer.flaGraphicInstanceTransformOverrides,
+        remap,
+        composition,
+      );
       if (transform !== layer.flaGraphicInstanceTransformOverrides) {
         layerChanged = true;
         if (transform) nextLayer.flaGraphicInstanceTransformOverrides = transform;
@@ -2169,8 +2291,10 @@ export interface UngroupNativeGraphicNodeResult {
 }
 
 /**
- * Ungroups one top-level native Group, composing the group matrix into each
- * child and remapping shape / instance overrides back to the flat paths.
+ * Ungroups one top-level native Group. The group's authored matrix is composed
+ * into each child, and every instance override below the group absorbs the
+ * group's effective matrix (its instance override, else the authored matrix), so
+ * the evaluated matrix before and after ungroup is identical for every instance.
  */
 export function ungroupNativeGraphicNode(
   project: Project,
@@ -2209,6 +2333,75 @@ export function ungroupNativeGraphicNode(
       '带遮罩的分组暂不支持解组。',
     );
   }
+  const structure = definition.structure!;
+  const frameRootNodes = frame.layers.flatMap((candidate) => candidate.nodes);
+  const resolveFrameTrackId = (node: FlaGraphicStructureNode): string | null =>
+    resolveFlaGraphicStableNodeIdentity(node, structure, 'frame', null, frameRootNodes, authoredOrdinal);
+  const ownsTimelineTrack = (node: FlaGraphicStructureNode): boolean => {
+    const trackId = resolveFrameTrackId(node);
+    return Boolean(
+      trackId && structure.timeline?.tracks.some((track) => track.trackId === trackId),
+    );
+  };
+  // A track stores a TRS matrix that replaces the node's authored transform, so
+  // the group's matrix cannot be composed into it losslessly. Refuse instead of
+  // silently dropping the animation or the group transform.
+  if (ownsTimelineTrack(group)) {
+    throw new LayerServiceError(
+      'NATIVE_GRAPHIC_UNGROUP_UNSUPPORTED',
+      '该分组含关键帧动画，暂不支持解组；请先删除分组上的关键帧后再试。',
+    );
+  }
+  const frameKey = String(authoredOrdinal);
+  const sharedFrameOverrides = definition.flaGraphicSharedShapeOverrides?.[frameKey];
+  for (const child of group.children) {
+    if (ownsTimelineTrack(child)) {
+      throw new LayerServiceError(
+        'NATIVE_GRAPHIC_UNGROUP_UNSUPPORTED',
+        '分组内的子节点含关键帧动画，暂不支持解组；请先删除子节点上的关键帧后再试。',
+      );
+    }
+    if (child.clipPaths && child.clipPaths.length > 0) {
+      throw new LayerServiceError(
+        'NATIVE_GRAPHIC_UNGROUP_UNSUPPORTED',
+        '分组内的子节点带遮罩，暂不支持解组；请先移除遮罩后再试。',
+      );
+    }
+    if (child.type === 'opaque' && child.fallbackScope === 'frame-crop') {
+      throw new LayerServiceError(
+        'NATIVE_GRAPHIC_UNGROUP_UNSUPPORTED',
+        '分组内含帧裁剪降级内容，暂不支持解组。',
+      );
+    }
+    const childOverrideKey = JSON.stringify([groupId, child.id]);
+    if ((sharedFrameOverrides?.[childOverrideKey]?.extractedRegions.length ?? 0) > 0) {
+      throw new LayerServiceError(
+        'NATIVE_GRAPHIC_UNGROUP_UNSUPPORTED',
+        '分组内含已拆分的独立区域，暂不支持解组；请先合并区域后再试。',
+      );
+    }
+  }
+  for (const shot of project.shots) {
+    for (const candidate of shot.layers) {
+      if (
+        candidate.source.kind !== 'animation' ||
+        candidate.source.animationId !== definition.id
+      ) {
+        continue;
+      }
+      const instanceFrame = candidate.flaGraphicInstanceShapeOverrides?.[frameKey];
+      if (!instanceFrame) continue;
+      for (const child of group.children) {
+        const childOverrideKey = JSON.stringify([groupId, child.id]);
+        if ((instanceFrame[childOverrideKey]?.extractedRegions.length ?? 0) > 0) {
+          throw new LayerServiceError(
+            'NATIVE_GRAPHIC_UNGROUP_UNSUPPORTED',
+            '分组内含已拆分的独立区域，暂不支持解组；请先合并区域后再试。',
+          );
+        }
+      }
+    }
+  }
   const children = [...group.children]
     .sort((left, right) => left.drawOrder - right.drawOrder)
     .map((child) => ({
@@ -2241,7 +2434,7 @@ export function ungroupNativeGraphicNode(
   const nextLayers = [...frame.layers];
   nextLayers[layerIndex] = { ...layer, nodes: nextLayerNodes };
   const nextStructure = removeAliasEntries(
-    replaceStructureFrameContent(definition.structure!, authoredOrdinal, {
+    replaceStructureFrameContent(structure, authoredOrdinal, {
       ...frame,
       layers: nextLayers,
     }),
@@ -2250,7 +2443,22 @@ export function ungroupNativeGraphicNode(
   );
   const remap = (pathKey: string): string | null | undefined =>
     removeFirstPathSegment(pathKey, groupId);
-  const remappedProject = remapInstanceOverridePaths(project, definition.id, remap);
+  const childAuthoredTransforms = new Map(
+    group.children.map((child) => [child.id, child.localTransform] as const),
+  );
+  const remappedProject = remapInstanceOverridePaths(
+    project,
+    definition.id,
+    remap,
+    (candidate) => ({
+      frameKey,
+      groupId,
+      groupInstanceOverride: candidate.flaGraphicInstanceTransformOverrides
+        ?.[frameKey]?.[JSON.stringify([groupId])],
+      groupAuthoredTransform: group.localTransform,
+      childAuthoredTransforms,
+    }),
+  );
   const remappedOverrides = remapDefinitionShapeOverridePaths(definition, remap);
   const nextProject = commitNativeDefinition(remappedProject, definition.id, (current) => {
     const nextDefinition = { ...current, structure: nextStructure };

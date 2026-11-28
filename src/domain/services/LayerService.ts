@@ -286,6 +286,7 @@ export type LayerServiceErrorCode =
   | 'NODE_IDENTITY_ALIAS_NOT_FOUND'
   | 'NODE_IDENTITY_ALIAS_CONFLICT'
   | 'NODE_IDENTITY_ALIAS_TRACKED'
+  | 'NODE_IDENTITY_ALIAS_SHAPE_TWEEN'
   | 'NODE_IDENTITY_ALIAS_ATTACHED'
   | 'NODE_IDENTITY_ALIAS_GENERATION_FAILED'
   | 'NATIVE_GRAPHIC_SOURCE_REQUIRED'
@@ -1311,7 +1312,8 @@ export class LayerService {
     if (currentAliasId) {
       this.assertFlaGraphicIdentityAliasDetachable(
         project,
-        target.timeline,
+        definition,
+        target,
         currentAliasId,
         '调整',
       );
@@ -1364,7 +1366,8 @@ export class LayerService {
     if (!currentAliasId) return project;
     this.assertFlaGraphicIdentityAliasDetachable(
       project,
-      target.timeline,
+      definition,
+      target,
       currentAliasId,
       '解除',
     );
@@ -1383,33 +1386,74 @@ export class LayerService {
   }
 
   /**
-   * Rejects an alias change that would leave a track or attachment target
-   * pointing at an identity the node no longer resolves to.
+   * Rejects an alias change that would leave an authored consumer pointing at an
+   * identity the node no longer resolves to. Consumers are judged against the
+   * real Definition, timeline container and instance ownership, so an unrelated
+   * Definition reusing the same alias id can never block the operation.
    */
   private assertFlaGraphicIdentityAliasDetachable(
     project: Project,
-    timeline: FlaGraphicTimelineTargetInfo['timeline'],
+    definition: FlaGraphicDefinition,
+    target: FlaGraphicTimelineTargetInfo,
     aliasId: string,
     action: string,
   ): void {
     const trackId = `alias:${aliasId}`;
-    if (timeline?.tracks.some((track) => track.trackId === trackId)) {
+    // Keyframe tracks live in the owning timeline container.
+    if (target.timeline?.tracks.some((track) => track.trackId === trackId)) {
       throw new LayerServiceError(
         'NODE_IDENTITY_ALIAS_TRACKED',
         `当前关联身份上已有关键帧轨道，请先删除该轨道的关键帧后再${action}关联。`,
       );
     }
+    // Shape Tween tracks resolve their target through the same stable identity,
+    // but they are scoped by timeline owner (frame vs nested Symbol definition).
+    const structure = definition.structure!;
+    const ownerShapeTween = (structure.shapeTweenTracks ?? []).some(
+      (track) =>
+        track.target.nodeTrackId === trackId &&
+        track.target.ownerKind === target.ownerKind &&
+        (track.target.ownerSymbolDefId ?? null) === (target.ownerSymbolDefId ?? null),
+    );
+    if (ownerShapeTween) {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_ALIAS_SHAPE_TWEEN',
+        `当前关联身份上仍有形状补间，请先删除该形状补间后再${action}关联。`,
+      );
+    }
+    // Static and dynamic (parentKeys) Graphic attachments resolve their target
+    // through the owner Layer's own Definition instance.
+    const attachmentReferencesAlias = (
+      attachment: LayerParentKey['parentAttachment'] | Layer['parentAttachment'],
+    ): boolean =>
+      attachment?.target.kind === 'graphic-node' &&
+      attachment.target.identityPath?.includes(trackId) === true;
+    const ownerUsesDefinition = (shot: Shot, ownerLayerId: string | undefined): boolean => {
+      if (!ownerLayerId) return false;
+      const owner = shot.layers.find((layer) => layer.id === ownerLayerId);
+      return owner?.source.kind === 'animation' && owner.source.animationId === definition.id;
+    };
     for (const shot of project.shots) {
       for (const layer of shot.layers) {
-        const attachment = layer.parentAttachment?.target;
         if (
-          attachment?.kind === 'graphic-node' &&
-          attachment.identityPath?.includes(trackId)
+          attachmentReferencesAlias(layer.parentAttachment) &&
+          ownerUsesDefinition(shot, layer.parentLayerId)
         ) {
           throw new LayerServiceError(
             'NODE_IDENTITY_ALIAS_ATTACHED',
             `当前关联身份仍被图层挂接引用，请先修改挂接目标后再${action}关联。`,
           );
+        }
+        for (const key of layer.parentKeys ?? []) {
+          if (
+            attachmentReferencesAlias(key.parentAttachment) &&
+            ownerUsesDefinition(shot, key.parentLayerId ?? undefined)
+          ) {
+            throw new LayerServiceError(
+              'NODE_IDENTITY_ALIAS_ATTACHED',
+              `当前关联身份仍被图层挂接引用，请先修改挂接目标后再${action}关联。`,
+            );
+          }
         }
       }
     }
