@@ -8,7 +8,7 @@ import {
 } from 'react';
 import type Konva from 'konva';
 import { Group, Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
-import type { CameraView, EvaluatedPinWarpMesh, EvaluatedShot, Project } from '../../domain';
+import type { CameraView, EvaluatedPinWarp, EvaluatedPinWarpMesh, EvaluatedShot, Project } from '../../domain';
 import { resolveLayerCameraTransform } from '../../domain/shot-camera';
 import { StageLayerSpace } from './StageLayerSpace';
 import type { SubtitleStyle } from '../../domain';
@@ -70,7 +70,10 @@ import type { LayerEffectPreview } from './LayerEffectPreview';
 import { cacheLayerVisualEffects } from './layerVisualEffects';
 import { drawStageLayersSynchronously } from './stage-draw-completion';
 import { PinWarpImage } from './PinWarpImage';
-import { resolvePinWarpDrawPlan } from './pinWarpCanvas';
+import {
+  pinWarpMeshDrawBounds,
+  resolvePinWarpDrawPlan,
+} from './pinWarpCanvas';
 
 interface StageRendererProps {
   solidClear?: boolean;
@@ -229,6 +232,8 @@ interface StagePartImagesProps {
   resources?: readonly StageRenderResource[];
   /** Shared evaluated pin-warp mesh (#1460); null keeps the ordinary image path. */
   pinWarp?: EvaluatedPinWarpMesh | null;
+  /** Shared evaluated pin-warp result for cache invalidation (#1471 R3). */
+  evaluatedPinWarp?: EvaluatedPinWarp | null;
 }
 
 export function StagePartImages({
@@ -243,6 +248,7 @@ export function StagePartImages({
   structuredVisual,
   resources = [],
   pinWarp = null,
+  evaluatedPinWarp = null,
 }: StagePartImagesProps): React.JSX.Element {
   const visualRef = useRef<Konva.Group | null>(null);
   const cachedVisualSignatureRef = useRef<string | null>(null);
@@ -303,6 +309,7 @@ export function StagePartImages({
     orderedParts,
     images,
     layerEffects: effects ? { effects, structuredVisual, resources } : undefined,
+    pinWarp: evaluatedPinWarp,
   });
   const appliedEffects = useRef<{ signature: string; sources: (HTMLImageElement | undefined)[] } | null>(null);
   const forceCompositeCacheRebuild = shouldForceCompositeCacheRebuild();
@@ -900,6 +907,12 @@ export function StageRenderer({
                 </CoverageMaskClipGroup>
               );
             }
+            // #1471 R3: the warped Layer's composite/effects cache rect follows
+            // the actual deformed draw bounds so the deformation is never
+            // clipped; every other Layer keeps its existing rest bounds.
+            const visualBounds = pinWarp
+              ? pinWarpMeshDrawBounds(pinWarp)
+              : layer.visual.combinedLocalBounds;
             return (
               <CoverageMaskClipGroup clip={clip} key={layer.id}>
               <StageLayerSpace key={layer.id} space={layer.parentSpace} projection={projection}>
@@ -919,6 +932,7 @@ export function StageRenderer({
                   }
                   effects={layerEffectPreview?.shotId === displayModel!.shotId &&
                     layerEffectPreview.layerId === layer.id ? layerEffectPreview.effects : layer.visualEffects}
+                  evaluatedPinWarp={layer.pinWarp ?? null}
                   headGroup={layer.visual.headGroup}
                   images={imageState.images}
                   ownerLayerId={layer.id}
@@ -927,7 +941,7 @@ export function StageRenderer({
                   resources={layer.resources}
                   scheduleLayerDraw={drawMode === 'legacy-raf'}
                   structuredVisual={layer.visual.flaGraphic}
-                  visualBounds={layer.visual.combinedLocalBounds}
+                  visualBounds={visualBounds}
                 />
               </Group>
               </StageLayerSpace>
