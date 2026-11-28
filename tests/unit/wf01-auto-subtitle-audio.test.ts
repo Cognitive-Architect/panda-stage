@@ -808,4 +808,47 @@ describe('WF-01 shared audio matching & real-duration timing planner', () => {
     expect(report.rows[1]!.ready).toBe(true);
     expect(report.rows[1]!.audioAssetId).toBe(audio1.id);
   });
+
+  it('preserves portable manifest lineKey across reorder and a single-line text edit', () => {
+    const initial: DialogueDraftRowSeed[] = [
+      {
+        sourceLineNumber: 1,
+        lineKey: 'line-a',
+        text: '第一句',
+        speakerType: 'character',
+        characterId: IDS.character,
+        speakerName: '熊猫',
+      },
+      {
+        sourceLineNumber: 2,
+        lineKey: 'line-b',
+        text: '第二句',
+        speakerType: 'character',
+        characterId: IDS.character,
+        speakerName: '熊猫',
+      },
+    ];
+    const stable = reconcileDialogueDraftRows([], initial);
+    const reordered: DialogueDraftRowSeed[] = [
+      {
+        sourceLineNumber: 1,
+        lineKey: 'line-b',
+        text: '第二句',
+        speakerType: 'character',
+        characterId: IDS.character,
+        speakerName: '熊猫',
+      },
+      {
+        sourceLineNumber: 2,
+        lineKey: 'line-a',
+        text: '第一句改了一个字',
+        speakerType: 'character',
+        characterId: IDS.character,
+        speakerName: '熊猫',
+      },
+    ];
+    const next = reconcileDialogueDraftRows(stable, reordered);
+    expect(next.map((row) => row.lineKey)).toEqual(['line-b', 'line-a']);
+    expect(next[1]!.draftRowId).toBe(stable[0]!.draftRowId);
+  });
 });

@@ -1,4 +1,49 @@
 /* WF-01: Compact audio-matching & real-duration schedule controls inside DialogueBatchPaste */
+.dialogue-batch-manifest-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.dialogue-batch-manifest-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.16));
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-secondary, #c2cdc6);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dialogue-batch-manifest-action:hover:not(:disabled) {
+  color: var(--text-primary, #eef3ef);
+  border-color: var(--accent, #22c55e);
+}
+
+.dialogue-batch-manifest-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.dialogue-batch-manifest-error,
+.dialogue-batch-manifest-notice {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+
+.dialogue-batch-manifest-error {
+  color: var(--danger, #f87171);
+}
+
+.dialogue-batch-manifest-notice {
+  color: var(--text-secondary, #c2cdc6);
+}
+
 .dialogue-batch-recognition-audio {
   color: var(--accent, #22c55e);
   font-weight: 600;

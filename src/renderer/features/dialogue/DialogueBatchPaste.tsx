@@ -1,13 +1,20 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   AutoSubtitleAudioService,
+  audioAssetDisplayFileName,
   createDraftRowIdGenerator,
+  dialogueAudioManifestTextHash,
   dialogueDraftSpeakerKey,
   formatAudioDurationMs,
   matchDialogueAudioRows,
+  parseDialogueAudioManifestCsv,
   reconcileDialogueDraftRows,
+  serializeDialogueAudioManifestCsv,
+  validateDialogueAudioManifestScope,
+  DialogueAudioManifestError,
   type AudioAsset,
   type Character,
+  type DialogueAudioManifestRow,
   type DialogueAudioMatchRequest,
   type DialogueAudioScheduleRowInput,
   type DialogueDraftRowSeed,
@@ -23,7 +30,7 @@ import {
   getCharacterDefaultExpression,
   useCharacterAvatarThumbnails,
 } from '../characters/CharacterIdentity';
-import { CirclePlus, Mic, Volume2 } from 'lucide-react';
+import { CirclePlus, Download, Mic, Upload, Volume2 } from 'lucide-react';
 import {
   parseDialoguePaste,
   resolveDialoguePaste,
@@ -36,9 +43,49 @@ import { DialogueBatchAudioRow } from './DialogueBatchAudioRow';
 interface ManualAudioOverride {
   assetId: string | null;
   speakerKey: string;
+  sourceStartMs?: number;
+  sourceEndMs?: number;
 }
 
+interface PendingManifestLine {
+  readonly lineKey: string;
+  readonly dialogueId?: string;
+}
+
+interface ImportedAudioBinding {
+  readonly assetId: string | null;
+  readonly sourceStartMs: number;
+  readonly sourceEndMs: number;
+  readonly textHash?: string;
+}
+
+const MANIFEST_LINE_BREAK = '\uE000';
+
 const autoSubtitleAudioService = new AutoSubtitleAudioService();
+
+function createManifestLineKey(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `line-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
+}
+
+function safeDownloadName(value: string): string {
+  return value.replace(/[\\/:*?"<>|]/gu, '-').trim() || '配音清单';
+}
+
+function downloadCsvFile(fileName: string, content: string): void {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.style.display = 'none';
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
 
 function exceptionHeading(line: ParsedDialogueLine): string {
   if (line.status === 'malformed') return '这一行格式不对';
@@ -104,6 +151,16 @@ export function DialogueBatchPaste({
   } = useCharacterAvatarThumbnails(snapshot, characters);
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot);
   const [commitError, setCommitError] = useState<string | null>(null);
+  const [manifestError, setManifestError] = useState<string | null>(null);
+  const [manifestNotice, setManifestNotice] = useState<string | null>(null);
+  const manifestInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingManifestByLineNumberRef = useRef<Map<number, PendingManifestLine>>(
+    new Map(),
+  );
+  const importedAudioByLineKeyRef = useRef<Map<string, ImportedAudioBinding>>(
+    new Map(),
+  );
+  const lineKeyByDraftRowIdRef = useRef<Map<string, string>>(new Map());
   const [manualAudioState, setManualAudioState] = useState<{
     sessionKey: string;
     entries: Record<string, ManualAudioOverride>;
@@ -133,6 +190,9 @@ export function DialogueBatchPaste({
     nextDraftRowIdRef.current = createDraftRowIdGenerator();
     preservedLineOrdinalsRef.current = null;
     committedMaxOrdinalRef.current = 0;
+    pendingManifestByLineNumberRef.current = new Map();
+    importedAudioByLineKeyRef.current = new Map();
+    lineKeyByDraftRowIdRef.current = new Map();
   }
 
   const manualAudioByRowId = useMemo(
@@ -147,6 +207,8 @@ export function DialogueBatchPaste({
     setManualAudioState({ sessionKey, entries: {} });
     setConfirmedExtensionToMs(null);
     setCommitError(null);
+    setManifestError(null);
+    setManifestNotice(null);
   }, [sessionKey]);
 
   const parsed = useMemo(
@@ -222,13 +284,20 @@ export function DialogueBatchPaste({
       if (!isNarrator && !character) return;
       const logicalOrdinal =
         logicalOrdinalsByLineNumber.get(line.lineNumber) ?? index + 1;
+      const manifestLine = pendingManifestByLineNumberRef.current.get(
+        line.lineNumber,
+      );
       seeds.push({
         sourceLineNumber: line.lineNumber,
         logicalOrdinal,
-        text: resolved.text,
+        text: resolved.text.replaceAll(MANIFEST_LINE_BREAK, '\n'),
         speakerType: isNarrator ? 'narrator' : 'character',
         ...(character ? { characterId: character.id } : {}),
         speakerName: isNarrator ? NARRATOR_SPEAKER_NAME : character!.name,
+        ...(manifestLine?.lineKey ? { lineKey: manifestLine.lineKey } : {}),
+        ...(manifestLine?.dialogueId
+          ? { existingDialogueId: manifestLine.dialogueId }
+          : {}),
       });
     });
     const reconciled = reconcileDialogueDraftRows(
@@ -237,6 +306,11 @@ export function DialogueBatchPaste({
       nextDraftRowIdRef.current,
     );
     previousStableRowsRef.current = reconciled;
+    for (const row of reconciled) {
+      if (row.lineKey) {
+        lineKeyByDraftRowIdRef.current.set(row.draftRowId, row.lineKey);
+      }
+    }
 
     // Immediately prune confirmed audio cache for any deleted draft rows so
     // retired row IDs leave no stale bindings behind.
@@ -290,6 +364,32 @@ export function DialogueBatchPaste({
           (confirmed && confirmed.speakerKey === speakerKey
             ? confirmed.assetId
             : undefined);
+        const lineKey =
+          row.lineKey ?? lineKeyByDraftRowIdRef.current.get(row.draftRowId);
+        const imported = lineKey
+          ? importedAudioByLineKeyRef.current.get(lineKey)
+          : undefined;
+        const importedTextMatches =
+          !imported?.textHash ||
+          imported.textHash ===
+            dialogueAudioManifestTextHash(row.speakerName, row.text);
+        const manualAssetId = activeManual
+          ? activeManual.assetId
+          : imported
+            ? importedTextMatches
+              ? imported.assetId
+              : null
+            : undefined;
+        const sourceStartMs = activeManual
+          ? activeManual.sourceStartMs
+          : imported && importedTextMatches
+            ? imported.sourceStartMs
+            : undefined;
+        const sourceEndMs = activeManual
+          ? activeManual.sourceEndMs
+          : imported && importedTextMatches
+            ? imported.sourceEndMs
+            : undefined;
         return {
           draftRowId: row.draftRowId,
           ordinal: row.logicalOrdinal ?? index + 1,
@@ -304,9 +404,11 @@ export function DialogueBatchPaste({
           ...(activeConfirmedAssetId !== undefined
             ? { confirmedAudioAssetId: activeConfirmedAssetId }
             : {}),
-          ...(activeManual !== undefined
-            ? { manualAudioAssetId: activeManual.assetId }
+          ...(manualAssetId !== undefined
+            ? { manualAudioAssetId: manualAssetId }
             : {}),
+          ...(sourceStartMs !== undefined ? { sourceStartMs } : {}),
+          ...(sourceEndMs !== undefined ? { sourceEndMs } : {}),
         };
       },
     );
@@ -506,6 +608,172 @@ export function DialogueBatchPaste({
     }
   };
 
+  const handleExportManifest = (): void => {
+    if (!snapshot || !currentShotId || stableDraftRows.length === 0) return;
+    const shot = snapshot.project.shots.find(
+      (candidate) => candidate.id === currentShotId,
+    );
+    const matchByDraftRowId = new Map(
+      (matchReport?.rows ?? []).map((row) => [row.draftRowId, row]),
+    );
+    const rows: DialogueAudioManifestRow[] = stableDraftRows.map(
+      (row, index) => {
+        let lineKey =
+          row.lineKey ?? lineKeyByDraftRowIdRef.current.get(row.draftRowId);
+        if (!lineKey) {
+          lineKey = createManifestLineKey();
+          lineKeyByDraftRowIdRef.current.set(row.draftRowId, lineKey);
+        }
+        const match = matchByDraftRowId.get(row.draftRowId);
+        return {
+          version: 1,
+          projectId: snapshot.project.id,
+          shotId: currentShotId,
+          lineKey,
+          ...(row.existingDialogueId
+            ? { dialogueId: row.existingDialogueId }
+            : {}),
+          ordinal: row.logicalOrdinal ?? index + 1,
+          speaker: row.speakerName,
+          text: row.text,
+          ...(match?.fileName ? { audioFilename: match.fileName } : {}),
+          ...(match?.sourceStartMs !== null &&
+          match?.sourceStartMs !== undefined
+            ? { sourceStartMs: match.sourceStartMs }
+            : {}),
+          ...(match?.sourceEndMs !== null && match?.sourceEndMs !== undefined
+            ? { sourceEndMs: match.sourceEndMs }
+            : {}),
+          textHash: dialogueAudioManifestTextHash(row.speakerName, row.text),
+        };
+      },
+    );
+    downloadCsvFile(
+      safeDownloadName(
+        `${snapshot.project.name}-${shot?.name ?? '镜头'}-配音清单.csv`,
+      ),
+      serializeDialogueAudioManifestCsv(rows),
+    );
+    setManifestError(null);
+    setManifestNotice(`已导出 ${rows.length} 条配音清单。`);
+  };
+
+  const handleManifestFile = async (file: File): Promise<void> => {
+    if (!snapshot || !currentShotId) return;
+    setManifestError(null);
+    setManifestNotice(null);
+    try {
+      const parsed = parseDialogueAudioManifestCsv(await file.text());
+      const scopeIssues = validateDialogueAudioManifestScope(
+        parsed.rows,
+        snapshot.project.id,
+        currentShotId,
+      );
+      if (scopeIssues.length > 0) {
+        setManifestError(scopeIssues[0]!.message);
+        return;
+      }
+      if (parsed.rows.length === 0) {
+        setManifestError(
+          parsed.issues[0]?.message ?? '清单中没有可导入的对白。',
+        );
+        return;
+      }
+
+      const audioByName = new Map<string, AudioAsset>();
+      for (const asset of audioAssets) {
+        for (const name of [asset.name, audioAssetDisplayFileName(asset)]) {
+          audioByName.set(name, asset);
+          audioByName.set(name.toLocaleLowerCase(), asset);
+        }
+      }
+      const findAudio = (fileName: string): AudioAsset | undefined =>
+        audioByName.get(fileName) ??
+        audioByName.get(fileName.toLocaleLowerCase());
+
+      const rawLines: string[] = [];
+      const pending = new Map<number, PendingManifestLine>();
+      const bindings = new Map<string, ImportedAudioBinding>();
+      let missingAudio = 0;
+      let changedText = 0;
+
+      parsed.rows.forEach((row, index) => {
+        const lineNumber = index + 1;
+        rawLines.push(
+          `${row.speaker}：${row.text.replaceAll(/\r\n?|\n/gu, MANIFEST_LINE_BREAK)}`,
+        );
+        pending.set(lineNumber, {
+          lineKey: row.lineKey,
+          ...(row.dialogueId ? { dialogueId: row.dialogueId } : {}),
+        });
+
+        if (!row.audioFilename) {
+          bindings.set(row.lineKey, {
+            assetId: null,
+            sourceStartMs: 0,
+            sourceEndMs: 0,
+            ...(row.textHash ? { textHash: row.textHash } : {}),
+          });
+          return;
+        }
+        const asset = findAudio(row.audioFilename);
+        const textMatches =
+          !row.textHash ||
+          row.textHash === dialogueAudioManifestTextHash(row.speaker, row.text);
+        if (!asset) {
+          missingAudio += 1;
+          bindings.set(row.lineKey, {
+            assetId: null,
+            sourceStartMs: 0,
+            sourceEndMs: 0,
+            ...(row.textHash ? { textHash: row.textHash } : {}),
+          });
+          return;
+        }
+        if (!textMatches) {
+          changedText += 1;
+          bindings.set(row.lineKey, {
+            assetId: null,
+            sourceStartMs: 0,
+            sourceEndMs: 0,
+            ...(row.textHash ? { textHash: row.textHash } : {}),
+          });
+          return;
+        }
+        const durationMs = asset.durationMs ?? row.sourceEndMs ?? 0;
+        bindings.set(row.lineKey, {
+          assetId: asset.id,
+          sourceStartMs: row.sourceStartMs ?? 0,
+          sourceEndMs: row.sourceEndMs ?? durationMs,
+          ...(row.textHash ? { textHash: row.textHash } : {}),
+        });
+      });
+
+      pendingManifestByLineNumberRef.current = pending;
+      importedAudioByLineKeyRef.current = bindings;
+      lineKeyByDraftRowIdRef.current = new Map();
+      previousStableRowsRef.current = [];
+      confirmedAudioByRowIdRef.current = {};
+      setManualAudioState({ sessionKey, entries: {} });
+      setConfirmedExtensionToMs(null);
+      setCommitError(null);
+      draft.setBatchRaw(rawLines.join('\n'), {});
+      setManifestNotice(
+        `已导入 ${parsed.rows.length} 条配音清单${
+          missingAudio > 0 ? `，${missingAudio} 条音频未找到` : ''
+        }${changedText > 0 ? `，${changedText} 条台词已变更待确认` : ''}${
+          parsed.issues.length > 0 ? `，${parsed.issues.length} 条提示` : ''
+        }。`,
+      );
+    } catch (error) {
+      setManifestError(
+        error instanceof DialogueAudioManifestError
+          ? error.message
+          : '无法读取配音清单，请确认文件为 UTF-8 CSV。',
+      );
+    }
+  };
+
   const extensionConfirmed =
     !schedulePlan?.needsShotExtension ||
     confirmedExtensionToMs === schedulePlan.extensionToMs;
@@ -538,9 +806,54 @@ export function DialogueBatchPaste({
           value={draftState.batchRaw}
           onChange={(event) => {
             setCommitError(null);
+            setManifestError(null);
+            setManifestNotice(null);
             draft.setBatchRaw(event.target.value);
           }}
         />
+        <div className="dialogue-batch-manifest-actions">
+          <button
+            className="dialogue-batch-manifest-action"
+            data-testid="dialogue-batch-manifest-export"
+            disabled={stableDraftRows.length === 0}
+            type="button"
+            onClick={handleExportManifest}
+          >
+            <Download aria-hidden="true" size={14} focusable="false" />
+            <span>导出配音清单</span>
+          </button>
+          <button
+            className="dialogue-batch-manifest-action"
+            data-testid="dialogue-batch-manifest-import"
+            type="button"
+            onClick={() => manifestInputRef.current?.click()}
+          >
+            <Upload aria-hidden="true" size={14} focusable="false" />
+            <span>导入配音清单</span>
+          </button>
+          <input
+            accept=".csv,text/csv"
+            data-testid="dialogue-batch-manifest-file"
+            hidden
+            ref={manifestInputRef}
+            type="file"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = '';
+              if (file) void handleManifestFile(file);
+            }}
+          />
+        </div>
+        {manifestError ? (
+          <p className="dialogue-batch-manifest-error" role="alert">
+            {manifestError}
+          </p>
+        ) : null}
+        {manifestNotice ? (
+          <p className="dialogue-batch-manifest-notice" role="status">
+            {manifestNotice}
+          </p>
+        ) : null}
       </section>
 
       {hasContent ? (

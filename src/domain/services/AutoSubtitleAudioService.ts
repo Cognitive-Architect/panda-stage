@@ -53,6 +53,8 @@ export interface DialogueDraftRowSeed {
   readonly characterId?: string;
   readonly speakerName: string;
   readonly existingDialogueId?: string;
+  /** Portable manifest identity; survives reorder/edit round-trips. */
+  readonly lineKey?: string;
   readonly confirmedAudioAssetId?: string;
   readonly sourceStartMs?: number;
   readonly sourceEndMs?: number;
@@ -340,6 +342,20 @@ export function reconcileDialogueDraftRows(
     () => null,
   );
 
+  // Pass 0: portable manifest lineKey is the strongest cross-session identity;
+  // it survives reorder and single-line text edits.
+  nextSeeds.forEach((seed, nextIndex) => {
+    if (!seed.lineKey) return;
+    for (const prevIndex of available) {
+      const prev = previousRows[prevIndex]!;
+      if (prev.lineKey === seed.lineKey) {
+        matchedPrevious[nextIndex] = prev;
+        available.delete(prevIndex);
+        break;
+      }
+    }
+  });
+
   // Pass 1: exact existingDialogueId match.
   nextSeeds.forEach((seed, nextIndex) => {
     if (!seed.existingDialogueId) return;
@@ -417,6 +433,9 @@ export function reconcileDialogueDraftRows(
       draftRowId: prev.draftRowId,
       ...(seed.existingDialogueId ?? prev.existingDialogueId
         ? { existingDialogueId: seed.existingDialogueId ?? prev.existingDialogueId }
+        : {}),
+      ...(seed.lineKey ?? prev.lineKey
+        ? { lineKey: seed.lineKey ?? prev.lineKey }
         : {}),
       ...(confirmedAudioAssetId !== undefined
         ? { confirmedAudioAssetId, confirmedSpeakerKey: speakerKey }

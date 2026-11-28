@@ -7,6 +7,7 @@ export * from './CharacterNodeMotionService';
 export * from './LayerMotionService';
 export * from './AudioClipService';
 export * from './AutoSubtitleAudioService';
+export * from './DialogueAudioManifest';
 export * from './DialogueService';
 export * from './ExpressionEventService';
 export * from './GraphicFrameEventService';
