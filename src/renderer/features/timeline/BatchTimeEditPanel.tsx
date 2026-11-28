@@ -617,30 +617,35 @@ export function BatchTimeEditPanel({
       }
       if (preview.mode === 'shift') {
         if (preview.crossTypePlan) {
-          timelineBatchStore.applyCrossTypeShift({
-            dialogueIds: activeDialogueIds,
-            eventIds: effectiveEventIds,
-            layerMotionSpans: effectiveMotionSpans,
-            deltaMs: parsedDeltaMs!,
-            sharedClipPolicy,
-          });
-          if (includeLinkedPerformance) {
-            // Remap with the exact per-key moves the batch performed: a single
-            // integer delta fabricates identities on the 24fps grid.
-            const moves = (
-              preview.crossTypePlan.actionPlan?.motionSpanEntries ?? []
-            )
-              .filter((entry) => (entry.keyMoves?.length ?? 0) > 0)
-              .map((entry) => ({
-                layerId: entry.layerId,
-                keyMoves: entry.keyMoves!,
-              }));
-            dialoguePerformanceLinkStore.remapAfterMove(
+          const moves = includeLinkedPerformance
+            ? // Remap with the exact per-key moves the batch performed: a single
+              // integer delta fabricates identities on the 24fps grid.
+              (preview.crossTypePlan.actionPlan?.motionSpanEntries ?? [])
+                .filter((entry) => (entry.keyMoves?.length ?? 0) > 0)
+                .map((entry) => ({
+                  layerId: entry.layerId,
+                  keyMoves: entry.keyMoves!,
+                }))
+            : [];
+          const commitCrossType = (): void => {
+            timelineBatchStore.applyCrossTypeShift({
+              dialogueIds: activeDialogueIds,
+              eventIds: effectiveEventIds,
+              layerMotionSpans: effectiveMotionSpans,
+              deltaMs: parsedDeltaMs!,
+              sharedClipPolicy,
+            });
+          };
+          if (includeLinkedPerformance && moves.length > 0) {
+            dialoguePerformanceLinkStore.applyTrackedMove(
               project.id,
               shot.id,
               activeDialogueIds,
               moves,
+              commitCrossType,
             );
+          } else {
+            commitCrossType();
           }
         } else if (preview.dialoguePlan) {
           dialogueStore.moveMany(activeDialogueIds, parsedDeltaMs!, {

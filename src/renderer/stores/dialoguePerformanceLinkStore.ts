@@ -7,6 +7,10 @@ import {
   type Project,
   type Shot,
 } from '../../domain';
+import {
+  EditorProjectStore,
+  editorProjectStore,
+} from './EditorProjectStore';
 
 interface LinkedKeyIdentity {
   readonly properties: ReadonlySet<string>;
@@ -17,7 +21,9 @@ interface LinkedKeyIdentity {
 interface DialoguePerformanceLink {
   readonly shotId: string;
   readonly eventIds: Set<string>;
+  invalidatedEventCount: number;
   readonly motionKeysByLayer: Map<string, Map<number, LinkedKeyIdentity>>;
+  invalidatedKeyCount: number;
 }
 
 export interface ResolvedDialoguePerformanceLinks {
@@ -54,11 +60,40 @@ export interface DialoguePerformanceMove {
  */
 export class DialoguePerformanceLinkStore {
   private projectId: string | null = null;
+  private projectInstanceId: number | null = null;
   private readonly links = new Map<string, DialoguePerformanceLink>();
+  private readonly editorStore?: EditorProjectStore;
+  private readonly unsubscribeEditor?: () => void;
+  private suppressProjectSync = false;
+
+  constructor(editorStore?: EditorProjectStore) {
+    this.editorStore = editorStore;
+    if (editorStore) {
+      this.unsubscribeEditor = editorStore.subscribe(() => {
+        if (this.suppressProjectSync) return;
+        const snapshot = editorStore.getSnapshot();
+        this.observeProject(
+          snapshot?.project ?? null,
+          editorStore.getProjectInstanceId(),
+        );
+      });
+    }
+  }
+
+  dispose(): void {
+    this.unsubscribeEditor?.();
+  }
 
   private ensureProject(projectId: string): void {
-    if (this.projectId === projectId) return;
+    const currentInstanceId = this.editorStore?.getProjectInstanceId() ?? null;
+    if (
+      this.projectId === projectId &&
+      (!this.editorStore || this.projectInstanceId === currentInstanceId)
+    ) {
+      return;
+    }
     this.projectId = projectId;
+    this.projectInstanceId = currentInstanceId;
     this.links.clear();
   }
 
@@ -84,7 +119,9 @@ export class DialoguePerformanceLinkStore {
       const link: DialoguePerformanceLink = existing ?? {
         shotId: row.shotId!,
         eventIds: new Set<string>(),
+        invalidatedEventCount: 0,
         motionKeysByLayer: new Map<string, Map<number, LinkedKeyIdentity>>(),
+        invalidatedKeyCount: 0,
       };
       for (const eventId of row.eventIds) link.eventIds.add(eventId);
       if (row.layerId && row.motionKeyTimes?.length) {
@@ -112,6 +149,128 @@ export class DialoguePerformanceLinkStore {
     }
     for (const [dialogueId, link] of merged) {
       this.links.set(dialogueId, link);
+    }
+  }
+
+  /**
+   * Reconciles live session references against a committed Project edit
+   * transaction. Deleting or replacing a linked key/event retires that
+   * reference permanently so a later identical re-creation at the same time,
+   * property, and value cannot impersonate the old generated product.
+   */
+  observeProject(
+    project: Project | null,
+    projectInstanceId?: number | null,
+  ): void {
+    if (!project) {
+      this.clear();
+      return;
+    }
+    const nextInstanceId =
+      projectInstanceId !== undefined
+        ? projectInstanceId
+        : (this.editorStore?.getProjectInstanceId() ?? null);
+    if (
+      this.projectId !== null &&
+      (this.projectId !== project.id ||
+        (this.editorStore && this.projectInstanceId !== nextInstanceId))
+    ) {
+      this.clear();
+      this.projectId = project.id;
+      this.projectInstanceId = nextInstanceId;
+      return;
+    }
+    if (this.links.size === 0) {
+      this.projectId = project.id;
+      this.projectInstanceId = nextInstanceId;
+      return;
+    }
+
+    const shotsById = new Map(project.shots.map((shot) => [shot.id, shot]));
+    for (const link of this.links.values()) {
+      const shot = shotsById.get(link.shotId);
+      if (!shot) {
+        link.invalidatedEventCount += link.eventIds.size;
+        link.eventIds.clear();
+        for (const keys of link.motionKeysByLayer.values()) {
+          link.invalidatedKeyCount += keys.size;
+        }
+        link.motionKeysByLayer.clear();
+        continue;
+      }
+
+      const liveEventIds = new Set(shot.timelineEvents.map((event) => event.id));
+      for (const eventId of [...link.eventIds]) {
+        if (!liveEventIds.has(eventId)) {
+          link.eventIds.delete(eventId);
+          link.invalidatedEventCount += 1;
+        }
+      }
+
+      const layersById = new Map(shot.layers.map((layer) => [layer.id, layer]));
+      for (const [layerId, keys] of [...link.motionKeysByLayer]) {
+        const layer = layersById.get(layerId);
+        if (!layer) {
+          link.invalidatedKeyCount += keys.size;
+          link.motionKeysByLayer.delete(layerId);
+          continue;
+        }
+        const currentTimes = new Set(layerCompositeKeyTimes(layer));
+        for (const [timeMs, identity] of [...keys]) {
+          if (!currentTimes.has(timeMs)) {
+            keys.delete(timeMs);
+            link.invalidatedKeyCount += 1;
+            continue;
+          }
+          const recorded = [...identity.properties];
+          if (recorded.length === 0) continue;
+          const values = layerCompositeAuthoredValuesAtTime(layer, timeMs);
+          const removedOrChanged = recorded.some(
+            (property) =>
+              !(property in values) ||
+              values[property] !== identity.values[property],
+          );
+          if (removedOrChanged) {
+            keys.delete(timeMs);
+            link.invalidatedKeyCount += 1;
+          }
+        }
+        if (keys.size === 0) {
+          link.motionKeysByLayer.delete(layerId);
+        }
+      }
+    }
+  }
+
+  /**
+   * Executes a linked shift commit atomically with its real per-key remap so
+   * the store's edit-transaction observer sees the moved targets instead of
+   * treating moved keys as deleted.
+   */
+  applyTrackedMove(
+    projectId: string,
+    shotId: string,
+    dialogueIds: readonly string[],
+    moves: readonly DialoguePerformanceMove[],
+    commit: () => void,
+  ): void {
+    const revisionBefore = this.editorStore?.getSnapshot()?.revision;
+    this.suppressProjectSync = true;
+    try {
+      commit();
+      const revisionAfter = this.editorStore?.getSnapshot()?.revision;
+      if (!this.editorStore || revisionAfter !== revisionBefore) {
+        this.remapAfterMove(projectId, shotId, dialogueIds, moves);
+      }
+    } finally {
+      this.suppressProjectSync = false;
+      if (this.editorStore) {
+        const snapshot = this.editorStore.getSnapshot();
+        this.observeProject(
+          snapshot?.project ?? null,
+          this.editorStore.getProjectInstanceId(),
+        );
+      }
     }
   }
 
@@ -152,6 +311,7 @@ export class DialoguePerformanceLinkStore {
   clear(): void {
     this.links.clear();
     this.projectId = null;
+    this.projectInstanceId = null;
   }
 
   resolve(
@@ -169,6 +329,7 @@ export class DialoguePerformanceLinkStore {
     for (const dialogueId of dialogueIds) {
       const link = this.links.get(dialogueId);
       if (!link || link.shotId !== shot.id) continue;
+      missingCount += link.invalidatedEventCount + link.invalidatedKeyCount;
       for (const eventId of link.eventIds) {
         if (shot.timelineEvents.some((event) => event.id === eventId)) {
           eventIds.add(eventId);
@@ -245,4 +406,6 @@ export class DialoguePerformanceLinkStore {
   }
 }
 
-export const dialoguePerformanceLinkStore = new DialoguePerformanceLinkStore();
+export const dialoguePerformanceLinkStore = new DialoguePerformanceLinkStore(
+  editorProjectStore,
+);
