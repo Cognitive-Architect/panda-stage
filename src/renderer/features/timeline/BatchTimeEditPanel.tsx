@@ -883,14 +883,12 @@ export function BatchTimeEditPanel({
               </span>
             </label>
           ) : null}
-          {includeLinkedPerformance &&
-          availablePerformanceLinks.missingCount > 0 ? (
+          {availablePerformanceLinks.missingCount > 0 ? (
             <div className="batch-time-note" role="status">
               {`${availablePerformanceLinks.missingCount} 项关联表演已被修改或删除（同刻新建的其他键不算），本次不会移动。`}
             </div>
           ) : null}
-          {includeLinkedPerformance &&
-          availablePerformanceLinks.blockedCount > 0 ? (
+          {availablePerformanceLinks.blockedCount > 0 ? (
             <div className="batch-time-note" role="status">
               {`${availablePerformanceLinks.blockedCount} 个关联键在同刻新增了未关联属性，整键移动会带上无关内容，本次局部跳过。`}
             </div>
