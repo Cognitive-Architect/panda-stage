@@ -1,5 +1,6 @@
 export * from './CharacterService';
 export * from './CharacterActionEventService';
+export * from './CharacterActionCopyService';
 export * from './flaGraphicSubtreeParts';
 export * from './flaAuthorPosePlacement';
 export * from './flaAdaptiveLayoutReuse';

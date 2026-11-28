@@ -1,5 +1,7 @@
 import {
   deleteCharacterActionEvent,
+  duplicateCharacterActionForInstance,
+  revertCharacterActionForInstance,
   upsertCharacterActionEvent,
 } from '../../domain';
 import { editorProjectStore } from './EditorProjectStore';
@@ -46,6 +48,42 @@ export class CharacterActionAuthoringStore {
       return { ok: true, changed: true };
     } catch (error) {
       return { ok: false, changed: false, error: error instanceof Error ? error.message : '无法删除角色动作段。' };
+    }
+  }
+
+  /** Replace one segment's shared action with an independent, instance-scoped copy. */
+  copyForInstance(eventId: string): CharacterActionAuthoringResult {
+    const context = this.context();
+    if (!context) return { ok: false, changed: false, error: '请选择镜头中的角色图层。' };
+    try {
+      const next = duplicateCharacterActionForInstance(context.project, {
+        shotId: context.shotId,
+        layerId: context.layerId,
+        eventId,
+      });
+      if (next.project === context.project) return { ok: true, changed: false };
+      editorProjectStore.updateProject(next.project, '复制角色动作副本');
+      return { ok: true, changed: true };
+    } catch (error) {
+      return { ok: false, changed: false, error: error instanceof Error ? error.message : '无法复制角色动作副本。' };
+    }
+  }
+
+  /** Point one segment back at its original shared action. */
+  revertFromInstance(eventId: string): CharacterActionAuthoringResult {
+    const context = this.context();
+    if (!context) return { ok: false, changed: false, error: '请选择镜头中的角色图层。' };
+    try {
+      const next = revertCharacterActionForInstance(context.project, {
+        shotId: context.shotId,
+        layerId: context.layerId,
+        eventId,
+      });
+      if (next === context.project) return { ok: true, changed: false };
+      editorProjectStore.updateProject(next, '恢复共享角色动作');
+      return { ok: true, changed: true };
+    } catch (error) {
+      return { ok: false, changed: false, error: error instanceof Error ? error.message : '无法恢复共享角色动作。' };
     }
   }
 }

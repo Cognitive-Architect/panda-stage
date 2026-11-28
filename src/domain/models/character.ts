@@ -900,9 +900,23 @@ const LayeredCharacterActionV37Schema = z.object({
   }
 });
 
+/**
+ * Marks a Layered Character action as a per-definition copy bound to one
+ * Character Layer instance. Other layers keep referencing the shared action.
+ */
+export const CharacterActionInstanceScopeSchema = z
+  .object({
+    layerId: IdSchema,
+  })
+  .strict();
+
 export const LayeredCharacterActionSchema = LayeredCharacterActionV37Schema.safeExtend({
   partPivotOffsets: z.array(z.object({ partId: IdSchema, offset: ArmPointSchema }).strict()).optional(),
-}).superRefine(({ tracks, partPivotOffsets }, context) => {
+  /** Source shared action this instance copy was cloned from. */
+  originActionId: IdSchema.optional(),
+  /** Present only on an instance-editable copy; scoped to one Character Layer. */
+  instanceScope: CharacterActionInstanceScopeSchema.optional(),
+}).superRefine(({ tracks, partPivotOffsets, originActionId, instanceScope }, context) => {
   const seen = new Set<string>();
   partPivotOffsets?.forEach(({ partId }, index) => {
     if (seen.has(partId) || !tracks.some(track => track.partId === partId &&
@@ -911,6 +925,12 @@ export const LayeredCharacterActionSchema = LayeredCharacterActionV37Schema.safe
     }
     seen.add(partId);
   });
+  if (instanceScope && !originActionId) {
+    context.addIssue({ code: 'custom', path: ['instanceScope'], message: 'An instance-scoped action copy requires its origin action.' });
+  }
+  if (originActionId && !instanceScope) {
+    context.addIssue({ code: 'custom', path: ['originActionId'], message: 'An action origin is only valid on an instance-scoped copy.' });
+  }
 });
 
 const CharacterActionV37Schema = z.union([BakedCharacterActionSchema, LayeredCharacterActionV37Schema]);
@@ -1093,6 +1113,7 @@ export type CharacterActionPlacement = z.infer<typeof CharacterActionPlacementSc
 export type CharacterAction = z.infer<typeof CharacterActionSchema>;
 export type BakedCharacterAction = z.infer<typeof BakedCharacterActionSchema>;
 export type LayeredCharacterAction = z.infer<typeof LayeredCharacterActionSchema>;
+export type CharacterActionInstanceScope = z.infer<typeof CharacterActionInstanceScopeSchema>;
 export type CharacterBodyPose = z.infer<typeof CharacterBodyPoseSchema>;
 export type CharacterArmChain = z.infer<typeof CharacterArmChainSchema>;
 export type CharacterMotionMappingRule = z.infer<typeof CharacterMotionMappingRuleSchema>;
