@@ -548,6 +548,7 @@ export function evaluateFlaGraphicVisual(input: {
             timelineContext.ownerKind,
             timelineContext.ownerSymbolDefId,
             timelineContext.containerRootNodes,
+            frameOrdinal,
           );
           if (trackId) {
             const track = timelineContext.timeline.tracks.find(

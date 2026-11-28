@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import {
   collectFlaGraphicTimelineDurationMs,
+  listFlaGraphicIdentityAliasGroups,
   resolveFlaGraphicTimelineTarget,
   type FlaGraphicDefinition,
+  type FlaGraphicIdentityAliasGroup,
   type FlaGraphicTransformEasing,
   type Project,
 } from '../../../domain';
@@ -32,6 +34,20 @@ const EASING_OPTIONS: readonly {
   { value: 'hold', label: '保持' },
 ];
 
+function identityAliasGroupLabel(
+  group: FlaGraphicIdentityAliasGroup,
+  index: number,
+): string {
+  const first = group.assignments[0];
+  const frameMatch = first
+    ? /^frame:(\d+)$/u.exec(first.containerKey)
+    : null;
+  const scope = frameMatch
+    ? `第 ${Number(frameMatch[1]) + 1} 帧`
+    : '共享元件';
+  return `关联身份 ${index + 1}（${scope}，${group.assignments.length} 个节点）`;
+}
+
 /**
  * Compact internal timeline controls rendered inside the existing TimelineDock
  * while Shared Definition Edit is active. Reuses `timelineUiStore` for seek
@@ -42,6 +58,8 @@ export function FlaGraphicInternalTimelineBar({
   project,
 }: FlaGraphicInternalTimelineBarProps): React.JSX.Element | null {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [associationOpen, setAssociationOpen] = useState(false);
+  const [associationGroupId, setAssociationGroupId] = useState('');
   const frameStepMs = integerFrameSpanMs(TIMELINE_FPS);
   const [targetTimeInput, setTargetTimeInput] = useState<string>(() =>
     String(snapToFrame(context.internalTimeMs + frameStepMs, TIMELINE_FPS)),
@@ -66,6 +84,42 @@ export function FlaGraphicInternalTimelineBar({
           context.selectedNodePath,
         )
       : null;
+  const identityAliasGroups = listFlaGraphicIdentityAliasGroups(structure);
+
+  const handleAssociateIdentity = (): void => {
+    if (!context.selectedNodePath) return;
+    try {
+      setStatusMessage(null);
+      layerStore.setFlaGraphicNodeIdentityAlias(
+        context.layerId,
+        context.frameOrdinal,
+        context.selectedNodePath,
+        associationGroupId || undefined,
+      );
+      setAssociationOpen(false);
+      setAssociationGroupId('');
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : '建立节点关联失败。',
+      );
+    }
+  };
+
+  const handleClearIdentityAssociation = (): void => {
+    if (!context.selectedNodePath) return;
+    try {
+      setStatusMessage(null);
+      layerStore.clearFlaGraphicNodeIdentityAlias(
+        context.layerId,
+        context.frameOrdinal,
+        context.selectedNodePath,
+      );
+    } catch (error) {
+      setStatusMessage(
+        error instanceof Error ? error.message : '解除节点关联失败。',
+      );
+    }
+  };
 
   const activeTimeline = target?.timeline ?? structure.timeline;
   const overviewTimes = [
@@ -370,6 +424,64 @@ export function FlaGraphicInternalTimelineBar({
                 </span>
               ) : null}
             </>
+          ) : target?.authoringCapability === 'readonly-identity' ? (
+            <>
+              <span data-testid="fla-internal-readonly-node">
+                当前节点无稳定身份（只读）
+              </span>
+              <button
+                data-testid="fla-internal-associate-identity-open"
+                data-ui-button
+                data-ui-variant="secondary"
+                onClick={() => setAssociationOpen(true)}
+                type="button"
+              >
+                建立节点关联
+              </button>
+              {associationOpen ? (
+                <span
+                  className="fla-internal-identity-association"
+                  data-testid="fla-internal-identity-association"
+                >
+                  <select
+                    aria-label="关联身份"
+                    data-testid="fla-internal-identity-group"
+                    onChange={(event) =>
+                      setAssociationGroupId(event.target.value)
+                    }
+                    value={associationGroupId}
+                  >
+                    <option value="">新建关联身份</option>
+                    {identityAliasGroups.map((group, index) => (
+                      <option key={group.aliasId} value={group.aliasId}>
+                        {identityAliasGroupLabel(group, index)}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    data-testid="fla-internal-associate-identity-confirm"
+                    data-ui-button
+                    data-ui-variant="primary"
+                    onClick={handleAssociateIdentity}
+                    type="button"
+                  >
+                    建立关联
+                  </button>
+                  <button
+                    data-testid="fla-internal-associate-identity-cancel"
+                    data-ui-button
+                    data-ui-variant="secondary"
+                    onClick={() => {
+                      setAssociationOpen(false);
+                      setAssociationGroupId('');
+                    }}
+                    type="button"
+                  >
+                    取消
+                  </button>
+                </span>
+              ) : null}
+            </>
           ) : (
             <span data-testid="fla-internal-readonly-node">
               {target?.authoringCapability === 'readonly-trs-unsafe'
@@ -380,6 +492,23 @@ export function FlaGraphicInternalTimelineBar({
         ) : (
           <span data-testid="fla-internal-select-hint">选择内部子节点以编辑关键帧</span>
         )}
+        {target?.identitySource === 'alias' ? (
+          <span
+            className="fla-internal-identity-association"
+            data-testid="fla-internal-identity-association-status"
+          >
+            已建立节点关联
+            <button
+              data-testid="fla-internal-clear-identity-association"
+              data-ui-button
+              data-ui-variant="secondary"
+              onClick={handleClearIdentityAssociation}
+              type="button"
+            >
+              解除关联
+            </button>
+          </span>
+        ) : null}
         {statusMessage ? (
           <output data-testid="fla-internal-timeline-status">{statusMessage}</output>
         ) : null}

@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import type { AffineMatrix2D } from '../../shared/affine-matrix';
 import {
+  FLA_GRAPHIC_IDENTITY_ALIAS_ID_PATTERN,
+  FLA_GRAPHIC_STRUCTURE_MAX_DEPTH,
   isFlaGraphicNodeTransformable,
   type FlaGraphicStructure,
   type FlaGraphicStructureNode,
@@ -446,6 +448,12 @@ export interface FlaGraphicTimelineTargetInfo {
   readonly timeline: FlaGraphicInternalTimeline | undefined;
   readonly trsSafe: boolean;
   readonly authoringCapability: FlaGraphicTimelineAuthoringCapability;
+  /** Whether `trackId` came from the source (`addr:`/`sym:`/`node:`), an author alias, or is absent. */
+  readonly identitySource: 'addr' | 'sym' | 'node' | 'alias' | null;
+  /** Author alias id backing an `alias:` identity; null for proven identities. */
+  readonly identityAliasId: string | null;
+  /** Persisted alias scope this node's identity belongs to. */
+  readonly identityContainerKey: string;
 }
 
 function countSourceAddressInNodes(
@@ -465,11 +473,61 @@ function countSourceAddressInNodes(
 }
 
 /**
- * Resolves the stable cross-frame/cross-time track identity for a node at
- * `nodePath`. Returns `trackId: null` when the node is `opaque` or its
- * cross-frame identity cannot be proven without guessing.
+ * Stable key of the timeline container an alias belongs to. A frame container
+ * is scoped by its ordinal so aliases can be joined across source frames
+ * without ever merging two nodes that live in the same frame; a normalized
+ * Symbol definition is a distinct shared scope.
  */
-export function resolveFlaGraphicStableNodeIdentity(
+export function flaGraphicIdentityContainerKey(
+  ownerKind: 'frame' | 'symbol',
+  ownerSymbolDefId: string | null,
+  frameOrdinal?: number,
+): string | null {
+  if (ownerKind === 'symbol') {
+    return ownerSymbolDefId ? `sym:${ownerSymbolDefId}` : null;
+  }
+  if (
+    frameOrdinal === undefined ||
+    !Number.isSafeInteger(frameOrdinal) ||
+    frameOrdinal < 0
+  ) {
+    return null;
+  }
+  return `frame:${frameOrdinal}`;
+}
+
+function resolveFlaGraphicNodeIdentityAliasId(
+  structure: FlaGraphicStructure,
+  ownerKind: 'frame' | 'symbol',
+  ownerSymbolDefId: string | null,
+  frameOrdinal: number | undefined,
+  nodeId: string,
+): string | null {
+  const aliases = structure.nodeIdentityAliases;
+  if (!aliases) return null;
+  const containerKey = flaGraphicIdentityContainerKey(
+    ownerKind,
+    ownerSymbolDefId,
+    frameOrdinal,
+  );
+  if (!containerKey) return null;
+  return aliases[containerKey]?.[nodeId] ?? null;
+}
+
+function identitySourceOfProvenId(
+  provenId: string,
+): 'addr' | 'sym' | 'node' {
+  if (provenId.startsWith('addr:')) return 'addr';
+  if (provenId.startsWith('sym:')) return 'sym';
+  return 'node';
+}
+
+/**
+ * Resolves only the source-proven cross-frame identity for a node. This never
+ * consults author aliases, so callers can distinguish a real source-proven
+ * identity from an author association.
+ */
+export function resolveFlaGraphicProvenNodeIdentity(
   node: FlaGraphicStructureNode,
   structure: FlaGraphicStructure,
   ownerKind: 'frame' | 'symbol',
@@ -489,6 +547,42 @@ export function resolveFlaGraphicStableNodeIdentity(
     return `node:${node.id}`;
   }
   return null;
+}
+
+/**
+ * Resolves the stable cross-frame/cross-time track identity for a node at
+ * `nodePath`. Returns `trackId: null` when the node is `opaque` or its
+ * cross-frame identity cannot be proven without guessing.
+ *
+ * Source-proven rules (`addr:` / `sym:` / `node:`) always win. An author
+ * association (`alias:<id>`) is consulted only afterwards, so an alias can
+ * never replace a different proven identity; it only makes an otherwise
+ * ambiguous node author-stable. `frameOrdinal` scopes frame-container aliases.
+ */
+export function resolveFlaGraphicStableNodeIdentity(
+  node: FlaGraphicStructureNode,
+  structure: FlaGraphicStructure,
+  ownerKind: 'frame' | 'symbol',
+  ownerSymbolDefId: string | null,
+  containerRootNodes: readonly FlaGraphicStructureNode[],
+  frameOrdinal?: number,
+): string | null {
+  const proven = resolveFlaGraphicProvenNodeIdentity(
+    node,
+    structure,
+    ownerKind,
+    ownerSymbolDefId,
+    containerRootNodes,
+  );
+  if (proven) return proven;
+  const aliasId = resolveFlaGraphicNodeIdentityAliasId(
+    structure,
+    ownerKind,
+    ownerSymbolDefId,
+    frameOrdinal,
+    node.id,
+  );
+  return aliasId ? `alias:${aliasId}` : null;
 }
 
 /**
@@ -539,13 +633,33 @@ export function resolveFlaGraphicTimelineTarget(
   }
 
   if (!targetNode) return null;
-  const trackId = resolveFlaGraphicStableNodeIdentity(
+  const provenIdentity = resolveFlaGraphicProvenNodeIdentity(
     targetNode,
     structure,
     ownerKind,
     ownerSymbolDefId,
     containerRootNodes,
   );
+  const aliasId = provenIdentity
+    ? null
+    : resolveFlaGraphicNodeIdentityAliasId(
+        structure,
+        ownerKind,
+        ownerSymbolDefId,
+        frameOrdinal,
+        targetNode.id,
+      );
+  const trackId =
+    provenIdentity ?? (aliasId ? `alias:${aliasId}` : null);
+  const identitySource: FlaGraphicTimelineTargetInfo['identitySource'] =
+    provenIdentity
+      ? identitySourceOfProvenId(provenIdentity)
+      : aliasId
+        ? 'alias'
+        : null;
+  const identityContainerKey =
+    flaGraphicIdentityContainerKey(ownerKind, ownerSymbolDefId, frameOrdinal) ??
+    `frame:${frameOrdinal}`;
   const trsSafe = isAffineMatrixTrsSafe(targetNode.localTransform);
   const authoringCapability: FlaGraphicTimelineAuthoringCapability =
     !isFlaGraphicNodeTransformable(targetNode)
@@ -567,7 +681,200 @@ export function resolveFlaGraphicTimelineTarget(
     timeline,
     trsSafe,
     authoringCapability,
+    identitySource,
+    identityAliasId: aliasId,
+    identityContainerKey,
   };
+}
+
+export interface FlaGraphicIdentityAmbiguity {
+  readonly nodePath: readonly string[];
+  readonly nodeId: string;
+  readonly sourceAddress: string | null;
+  readonly trsSafe: boolean;
+}
+
+export interface FlaGraphicIdentityAliasAssignment {
+  readonly containerKey: string;
+  readonly nodeId: string;
+  readonly aliasId: string;
+}
+
+export interface FlaGraphicIdentityAliasGroup {
+  readonly aliasId: string;
+  readonly assignments: readonly FlaGraphicIdentityAliasAssignment[];
+}
+
+/** Flattens the persisted author identity mapping in a deterministic order. */
+export function listFlaGraphicIdentityAliasAssignments(
+  structure: FlaGraphicStructure,
+): FlaGraphicIdentityAliasAssignment[] {
+  const assignments: FlaGraphicIdentityAliasAssignment[] = [];
+  for (const [containerKey, nodes] of Object.entries(
+    structure.nodeIdentityAliases ?? {},
+  )) {
+    for (const [nodeId, aliasId] of Object.entries(nodes)) {
+      assignments.push({ containerKey, nodeId, aliasId });
+    }
+  }
+  return assignments;
+}
+
+/** Groups persisted aliases by author identity so the UI can offer association. */
+export function listFlaGraphicIdentityAliasGroups(
+  structure: FlaGraphicStructure,
+): FlaGraphicIdentityAliasGroup[] {
+  const groups = new Map<string, FlaGraphicIdentityAliasAssignment[]>();
+  for (const assignment of listFlaGraphicIdentityAliasAssignments(structure)) {
+    const bucket = groups.get(assignment.aliasId);
+    if (bucket) bucket.push(assignment);
+    else groups.set(assignment.aliasId, [assignment]);
+  }
+  return [...groups].map(([aliasId, assignments]) => ({
+    aliasId,
+    assignments,
+  }));
+}
+
+function findFrameContainerRootNodes(
+  structure: FlaGraphicStructure,
+  frameOrdinal: number,
+): readonly FlaGraphicStructureNode[] | null {
+  const frame = structure.frames.find(
+    (candidate) => candidate.ordinal === frameOrdinal,
+  );
+  return frame ? frame.layers.flatMap((layer) => layer.nodes) : null;
+}
+
+/**
+ * Lists the nodes at `frameOrdinal` whose cross-frame identity cannot be
+ * proven and that have no author alias yet. These are the only nodes for which
+ * the UI may offer explicit manual association.
+ */
+export function listFlaGraphicIdentityAmbiguities(
+  structure: FlaGraphicStructure,
+  frameOrdinal: number,
+): FlaGraphicIdentityAmbiguity[] {
+  if (!Number.isSafeInteger(frameOrdinal) || frameOrdinal < 0) return [];
+  const containerRootNodes = findFrameContainerRootNodes(structure, frameOrdinal);
+  if (!containerRootNodes) return [];
+  const frame = structure.frames.find(
+    (candidate) => candidate.ordinal === frameOrdinal,
+  )!;
+  const result: FlaGraphicIdentityAmbiguity[] = [];
+  const visit = (
+    nodes: readonly FlaGraphicStructureNode[],
+    parentPath: readonly string[],
+    depth: number,
+  ): void => {
+    if (depth > FLA_GRAPHIC_STRUCTURE_MAX_DEPTH) return;
+    for (const node of nodes) {
+      const nodePath = [...parentPath, node.id];
+      if (
+        isFlaGraphicNodeTransformable(node) &&
+        resolveFlaGraphicStableNodeIdentity(
+          node,
+          structure,
+          'frame',
+          null,
+          containerRootNodes,
+          frameOrdinal,
+        ) === null
+      ) {
+        result.push({
+          nodePath,
+          nodeId: node.id,
+          sourceAddress: node.sourceAddress?.trim() || null,
+          trsSafe: isAffineMatrixTrsSafe(node.localTransform),
+        });
+      }
+      if (node.type === 'group') {
+        visit(node.children, nodePath, depth + 1);
+      } else if (node.type === 'symbol' && !node.nestedDefinitionId) {
+        visit(node.children ?? [], nodePath, depth + 1);
+      }
+    }
+  };
+  for (const layer of frame.layers) visit(layer.nodes, [], 1);
+  return result;
+}
+
+/**
+ * Adds or replaces one author identity alias for a node. Never mutates its
+ * argument and never overrides a source-proven identity: a node with a proven
+ * `addr:`/`sym:`/`node:` identity is left untouched. Throws instead of merging
+ * when the alias is already assigned to a different node in the same container.
+ */
+export function setFlaGraphicNodeIdentityAlias(
+  structure: FlaGraphicStructure,
+  frameOrdinal: number,
+  nodePath: readonly string[],
+  aliasId: string,
+): FlaGraphicStructure {
+  if (!FLA_GRAPHIC_IDENTITY_ALIAS_ID_PATTERN.test(aliasId)) {
+    throw new Error('Graphic node identity alias ids must be bounded identifiers.');
+  }
+  const target = resolveFlaGraphicTimelineTarget(
+    structure,
+    frameOrdinal,
+    nodePath,
+  );
+  if (!target || !isFlaGraphicNodeTransformable(target.targetNode)) {
+    return structure;
+  }
+  if (target.identitySource !== null && target.identitySource !== 'alias') {
+    // A proven source identity is authoritative; author aliases cannot replace it.
+    return structure;
+  }
+  const containerKey = target.identityContainerKey;
+  const nodeId = target.targetNode.id;
+  const aliases = structure.nodeIdentityAliases ?? {};
+  const container = aliases[containerKey] ?? {};
+  if (container[nodeId] === aliasId) return structure;
+  for (const [otherNodeId, otherAliasId] of Object.entries(container)) {
+    if (otherNodeId !== nodeId && otherAliasId === aliasId) {
+      throw new Error(
+        'Graphic identity aliases must not merge two distinct nodes in one container.',
+      );
+    }
+  }
+  return {
+    ...structure,
+    nodeIdentityAliases: {
+      ...aliases,
+      [containerKey]: { ...container, [nodeId]: aliasId },
+    },
+  };
+}
+
+/**
+ * Removes one author identity alias. Does not touch any other node's alias and
+ * drops the whole mapping field once it becomes empty.
+ */
+export function clearFlaGraphicNodeIdentityAlias(
+  structure: FlaGraphicStructure,
+  frameOrdinal: number,
+  nodePath: readonly string[],
+): FlaGraphicStructure {
+  const target = resolveFlaGraphicTimelineTarget(
+    structure,
+    frameOrdinal,
+    nodePath,
+  );
+  if (!target || !structure.nodeIdentityAliases) return structure;
+  const containerKey = target.identityContainerKey;
+  const container = structure.nodeIdentityAliases[containerKey];
+  const nodeId = target.targetNode.id;
+  if (!container || container[nodeId] === undefined) return structure;
+  const nextContainer = { ...container };
+  delete nextContainer[nodeId];
+  const nextAliases = { ...structure.nodeIdentityAliases };
+  if (Object.keys(nextContainer).length === 0) delete nextAliases[containerKey];
+  else nextAliases[containerKey] = nextContainer;
+  const nextStructure = { ...structure };
+  if (Object.keys(nextAliases).length === 0) delete nextStructure.nodeIdentityAliases;
+  else nextStructure.nodeIdentityAliases = nextAliases;
+  return nextStructure;
 }
 
 export interface FlaGraphicInternalAuthoringState {

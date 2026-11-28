@@ -26,6 +26,8 @@ interface GraphicIdentityContainer {
   readonly ownerKind: 'frame' | 'symbol';
   readonly ownerSymbolDefId: string | null;
   readonly containerRootNodes: readonly FlaGraphicStructureNode[];
+  /** Frame scope for author identity aliases; Symbol scopes ignore it. */
+  readonly frameOrdinal: number;
 }
 
 interface EvaluatedGraphicCandidate {
@@ -48,6 +50,7 @@ function* collectEvaluatedGraphicIdentities(
       container.ownerKind,
       container.ownerSymbolDefId,
       container.containerRootNodes,
+      container.frameOrdinal,
     );
     if (stableId) {
       yield { node, identityPath: [...ancestorIdentityPath, stableId] };
@@ -72,6 +75,7 @@ function* collectEvaluatedGraphicIdentities(
             ownerKind: 'symbol',
             ownerSymbolDefId: nestedDefId,
             containerRootNodes: nestedDef.children,
+            frameOrdinal: container.frameOrdinal,
           },
           [...ancestorIdentityPath, stableId],
         );
@@ -101,6 +105,7 @@ function collectFrameStructureIdentityCounts(
       container.ownerKind,
       container.ownerSymbolDefId,
       container.containerRootNodes,
+      container.frameOrdinal,
     );
     if (stableId) {
       const key = JSON.stringify([...ancestorIdentityPath, stableId]);
@@ -120,6 +125,7 @@ function collectFrameStructureIdentityCounts(
             ownerKind: 'symbol',
             ownerSymbolDefId: nestedDefId,
             containerRootNodes: nestedDef.children,
+            frameOrdinal: container.frameOrdinal,
           },
           [...ancestorIdentityPath, stableId],
           counts,
@@ -133,6 +139,7 @@ function collectFrameStructureIdentityCounts(
 
 function resolveLegacyNodePathInFrame(
   structure: FlaGraphicStructure,
+  frameOrdinal: number,
   frameNodes: readonly FlaGraphicStructureNode[],
   nodePath: readonly string[],
 ): { readonly found: boolean; readonly identityPath: readonly string[] | null } {
@@ -153,6 +160,7 @@ function resolveLegacyNodePathInFrame(
       ownerKind,
       ownerSymbolDefId,
       containerRootNodes,
+      frameOrdinal,
     );
     if (i === nodePath.length - 1) {
       if (!stableId) return { found: true, identityPath: null };
@@ -161,7 +169,12 @@ function resolveLegacyNodePathInFrame(
       collectFrameStructureIdentityCounts(
         frameNodes,
         structure,
-        { ownerKind: 'frame', ownerSymbolDefId: null, containerRootNodes: frameNodes },
+        {
+          ownerKind: 'frame',
+          ownerSymbolDefId: null,
+          containerRootNodes: frameNodes,
+          frameOrdinal,
+        },
         [],
         counts,
       );
@@ -204,7 +217,12 @@ export function resolveLegacyGraphicAttachmentIdentityPath(
   let provenKey: string | null = null;
   for (const frame of structure.frames) {
     const frameNodes = frame.layers.flatMap((layer) => layer.nodes);
-    const result = resolveLegacyNodePathInFrame(structure, frameNodes, nodePath);
+    const result = resolveLegacyNodePathInFrame(
+      structure,
+      frame.ordinal,
+      frameNodes,
+      nodePath,
+    );
     if (!result.found) continue;
     if (!result.identityPath) return null;
     const key = JSON.stringify(result.identityPath);
@@ -271,6 +289,7 @@ export function resolveLayerAttachmentTargets(
     ownerKind: 'frame',
     ownerSymbolDefId: null,
     containerRootNodes: frameRootNodes,
+    frameOrdinal: evaluated.animationFrame.frameOrdinal,
   };
   const candidates = graphic.layers.flatMap(({ nodes }) => [
     ...collectEvaluatedGraphicIdentities(nodes, definition.structure!, rootContainer, []),

@@ -18,6 +18,12 @@ export const FLA_GRAPHIC_STRUCTURE_MAX_DEPTH = 64;
 export const FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES = 8 * 1024 * 1024;
 export const FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATH_BYTES_PER_PATH = 512 * 1024;
 export const FLA_GRAPHIC_STRUCTURE_MAX_MASK_PATHS_PER_SHAPE = 256;
+/** Persisted author identity-capability mapping keys are container + node scoped. */
+export const FLA_GRAPHIC_STRUCTURE_IDENTITY_CONTAINER_FRAME_PATTERN = /^frame:(?:0|[1-9]\d{0,2})$/u;
+export const FLA_GRAPHIC_STRUCTURE_IDENTITY_CONTAINER_SYMBOL_PATTERN = /^sym:[\s\S]{1,1000}$/u;
+/** Ids authored by the editor for a stable identity; never source-derived. */
+export const FLA_GRAPHIC_IDENTITY_ALIAS_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u;
+export const FLA_GRAPHIC_STRUCTURE_MAX_IDENTITY_ALIAS_ENTRIES = FLA_GRAPHIC_STRUCTURE_MAX_NODES;
 
 export const FLA_GRAPHIC_STRUCTURE_MASK_PATH_PATTERN = /^[MLQCZ0-9.,+\-\s]+$/u;
 const maskPathTextEncoder = new TextEncoder();
@@ -274,12 +280,71 @@ const FlaGraphicNestedSymbolDefinitionV1Schema = z
 
 export type FlaGraphicNestedSymbolDefinition = z.infer<typeof FlaGraphicNestedSymbolDefinitionSchema>;
 
+const FlaGraphicIdentityContainerKeySchema = z
+  .string()
+  .refine(
+    (key) =>
+      FLA_GRAPHIC_STRUCTURE_IDENTITY_CONTAINER_FRAME_PATTERN.test(key) ||
+      FLA_GRAPHIC_STRUCTURE_IDENTITY_CONTAINER_SYMBOL_PATTERN.test(key),
+    'Identity alias containers must be a frame ordinal or a shared Symbol definition.',
+  );
+
+export const FlaGraphicIdentityAliasIdSchema = z
+  .string()
+  .regex(FLA_GRAPHIC_IDENTITY_ALIAS_ID_PATTERN);
+
+/**
+ * Persisted author association for nodes whose cross-frame identity cannot be
+ * proven from the source (`addr:` / `sym:` / `node:`). Keys are scoped by the
+ * owning timeline container so a shared Symbol definition and a concrete frame
+ * never share aliases. An alias is only consulted when no proven identity
+ * exists, so it can never overwrite a source-proven identity.
+ */
+export const FlaGraphicNodeIdentityAliasesV1Schema = z
+  .record(
+    FlaGraphicIdentityContainerKeySchema,
+    z.record(SourceTextSchema, FlaGraphicIdentityAliasIdSchema),
+  )
+  .superRefine((aliases, context) => {
+    let entryCount = 0;
+    for (const [containerKey, assignments] of Object.entries(aliases)) {
+      const seenAliasIds = new Set<string>();
+      for (const [nodeId, aliasId] of Object.entries(assignments)) {
+        entryCount += 1;
+        if (seenAliasIds.has(aliasId)) {
+          context.addIssue({
+            code: 'custom',
+            path: [containerKey, nodeId],
+            message:
+              'Nodes in one Graphic identity container must not share an alias identity.',
+          });
+        }
+        seenAliasIds.add(aliasId);
+      }
+    }
+    if (entryCount > FLA_GRAPHIC_STRUCTURE_MAX_IDENTITY_ALIAS_ENTRIES) {
+      context.addIssue({
+        code: 'custom',
+        message: 'A Graphic structure cannot contain more identity aliases than nodes.',
+      });
+    }
+  });
+
+export type FlaGraphicNodeIdentityAliases = z.infer<
+  typeof FlaGraphicNodeIdentityAliasesV1Schema
+>;
+
 export const FlaGraphicStructureV1Schema = z
   .object({
     version: z.literal(1),
     symbolDefinitions: z.record(SourceTextSchema, FlaGraphicNestedSymbolDefinitionV1Schema).optional(),
     frames: z.array(FlaGraphicStructureFrameV1Schema).min(1).max(256),
     timeline: FlaGraphicInternalTimelineV1Schema.optional(),
+    /**
+     * Author-assigned stable identities for otherwise ambiguous nodes. Additive
+     * optional data: absent means every node follows the source-proven rules.
+     */
+    nodeIdentityAliases: FlaGraphicNodeIdentityAliasesV1Schema.optional(),
   })
   .strict()
   .superRefine((structure, context) => {
@@ -358,6 +423,7 @@ export const FlaGraphicStructureNodeSchema = FlaGraphicStructureNodeV1Schema;
 export const FlaGraphicStructureLayerSchema = FlaGraphicStructureLayerV1Schema;
 export const FlaGraphicStructureFrameSchema = FlaGraphicStructureFrameV1Schema;
 export const FlaGraphicNestedSymbolDefinitionSchema = FlaGraphicNestedSymbolDefinitionV1Schema;
+export const FlaGraphicNodeIdentityAliasesSchema = FlaGraphicNodeIdentityAliasesV1Schema;
 export const FlaGraphicStructureSchema = FlaGraphicStructureV1Schema;
 
 export interface ReconstructedFlaStructureNode {
@@ -483,6 +549,11 @@ function canonicalizeStructureNode(node: FlaGraphicStructureNode): unknown {
  * project-bound storage IDs (such as image assetId and fallbackAssetId) and
  * transient runtime IDs so that identical authored definitions can be
  * compared and reused across different occurrences and commit runs.
+ *
+ * Author node-identity aliases are deliberately NOT part of this projection:
+ * they are post-import author metadata rather than a source-authored fact, so
+ * re-importing the same source must reuse the existing (aliased) definition
+ * instead of treating it as a different structure.
  */
 export function canonicalizeFlaGraphicStructure(structure: FlaGraphicStructure): unknown {
   const symbolDefinitions = structure.symbolDefinitions
