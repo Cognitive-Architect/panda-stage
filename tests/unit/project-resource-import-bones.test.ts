@@ -159,16 +159,17 @@ describe('cross-project import bone tree remap (#1455 x #1449)', () => {
     expect(boundDelta).toBeDefined();
     expect(boundDelta).not.toEqual({ a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 });
 
-    // #1449 linkage: the imported private copy lost the source Layer scope and
-    // became an independent shared action instead of a dangling owner.
-    const importedCopy = (imported.actions ?? []).find(
-      (action) => 'kind' in action && action.name === '招手 副本',
-    )!;
-    expect(importedCopy).toBeDefined();
-    expect('instanceScope' in importedCopy).toBe(false);
-    expect('originActionId' in importedCopy).toBe(false);
-    if ('kind' in importedCopy) {
-      expect(importedCopy.tracks[0]!.partId).toBe(imported.parts[0]!.partId);
+    // #1469 F2 / #1449: instance isolation is the default. Only the shared
+    // action is imported; the private modified copy is never promoted into the
+    // target project's shared library and no dangling owner is carried over.
+    const importedActions = imported.actions ?? [];
+    expect(importedActions.map((action) => action.name)).toEqual(['招手']);
+    expect(importedActions.some((action) => 'instanceScope' in action)).toBe(false);
+    expect(importedActions.some((action) => 'originActionId' in action)).toBe(false);
+    const importedShared = importedActions.find((action) => 'kind' in action)!;
+    if ('kind' in importedShared) {
+      expect(importedShared.tracks[0]!.partId).toBe(imported.parts[0]!.partId);
+      expect(importedShared.tracks[0]!.keys.map((key) => key.value)).toEqual([0, 20]);
     }
     expect(() => ProjectSchema.parse(candidate.project)).not.toThrow();
   });

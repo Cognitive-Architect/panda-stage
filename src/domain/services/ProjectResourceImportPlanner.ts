@@ -722,36 +722,58 @@ function remapFlaGraphicStructure(
   };
 }
 
+/**
+ * Resolves the shared action an authored action ultimately belongs to. An
+ * instance-scoped copy is private to the Character Layer instance named in
+ * `instanceScope`; importing a Character never brings the source Shot's Layers,
+ * and a target project merely containing a same-id/same-name Layer never proves
+ * ownership. The shared origin is therefore the only action identity an import
+ * may expose (#1469 F2 / #1449).
+ */
+function resolveSharedActionForImport(
+  action: CharacterAction,
+  actionsById: ReadonlyMap<string, CharacterAction>,
+): CharacterAction | undefined {
+  let current: CharacterAction | undefined = action;
+  const seen = new Set<string>();
+  while (current) {
+    if (seen.has(current.id)) return undefined;
+    seen.add(current.id);
+    if (!('kind' in current) || !current.instanceScope) return current;
+    current = current.originActionId
+      ? actionsById.get(current.originActionId)
+      : undefined;
+  }
+  return undefined;
+}
+
 function remapCharacterActions(
   actions: readonly CharacterAction[] | undefined,
   remapAnimation: (sourceId: string) => string,
   remapPartId: (sourceId: string) => string,
   allocateId: () => string,
-  targetLayerIds: ReadonlySet<string>,
   preallocatedActionIdMap?: ReadonlyMap<string, string>,
 ): { actions?: CharacterAction[]; actionIdMap: Map<string, string> } {
-  const actionIdMap = new Map<string, string>();
+  // The preallocated map covers every imported shared action, plus every
+  // importable private copy as an alias of its imported shared origin.
+  const actionIdMap = new Map<string, string>(preallocatedActionIdMap ?? []);
   if (!actions) return { actionIdMap };
-  // Allocate every action id first so `originActionId` can be remapped no
-  // matter where the origin action sits in the authored order.
+  const mapped: CharacterAction[] = [];
   for (const action of actions) {
-    actionIdMap.set(action.id, preallocatedActionIdMap?.get(action.id) ?? allocateId());
-  }
-  const mapped: CharacterAction[] = actions.map((action) => {
-    const nextId = actionIdMap.get(action.id)!;
+    // #1469 F2: instance isolation is the default. A private modified copy is
+    // never silently promoted into the target project's shared action library:
+    // it is excluded here, while references to it resolve to the imported
+    // shared origin through `actionIdMap` (or degrade when that origin is
+    // missing). The copy's private owner Layer lives in the source project and
+    // cannot be re-created by a resource import.
+    if ('kind' in action && action.instanceScope) continue;
+    const nextId = actionIdMap.get(action.id) ?? allocateId();
+    actionIdMap.set(action.id, nextId);
     if ('kind' in action) {
-      const { originActionId, instanceScope, ...layered } = action;
-      // #1449: an instance copy is private to the Layer that owns it. Importing
-      // a Character never brings the source Shot's Layers, so a scope that
-      // cannot exist in the target project must not survive as a dangling
-      // private owner: the copy degrades to an independent shared action.
-      const remappedOriginId = originActionId ? actionIdMap.get(originActionId) : undefined;
-      const keepInstanceScope = Boolean(
-        instanceScope && remappedOriginId && targetLayerIds.has(instanceScope.layerId),
-      );
-      return {
-        ...layered,
+      mapped.push({
         id: nextId,
+        name: action.name,
+        kind: 'layered',
         tracks: action.tracks.map((track) => ({
           ...track,
           partId: remapPartId(track.partId),
@@ -769,22 +791,20 @@ function remapCharacterActions(
               })),
             }
           : {}),
-        ...(keepInstanceScope && instanceScope && remappedOriginId
-          ? {
-              originActionId: remappedOriginId,
-              instanceScope: { layerId: instanceScope.layerId },
-            }
-          : {}),
-      };
+      });
+      continue;
     }
-    return {
+    mapped.push({
       ...action,
       id: nextId,
       animationId: remapAnimation(action.animationId),
       placement: { ...action.placement },
-    };
-  });
-  return { actions: mapped, actionIdMap };
+    });
+  }
+  return {
+    ...(mapped.length > 0 ? { actions: mapped } : {}),
+    actionIdMap,
+  };
 }
 
 function remapMouthPoseSet(
@@ -985,9 +1005,19 @@ export function buildImportedProjectCandidate(options: {
       characterPartIdMaps.set(character.id, partIdMap);
     }
     if (character.actions && character.actions.length > 0) {
+      const actionsById = new Map(
+        character.actions.map((action) => [action.id, action]),
+      );
       const actionIdMap = new Map<string, string>();
+      // #1469 F2: allocate one target id per imported shared action and alias
+      // every importable private copy to it, so `motionMappings` and any other
+      // formal reference remap deterministically regardless of authored order.
       for (const action of character.actions) {
-        actionIdMap.set(action.id, allocateId());
+        const sharedAction = resolveSharedActionForImport(action, actionsById);
+        if (!sharedAction) continue;
+        const targetId = actionIdMap.get(sharedAction.id) ?? allocateId();
+        actionIdMap.set(sharedAction.id, targetId);
+        actionIdMap.set(action.id, targetId);
       }
       characterActionIdMaps.set(character.id, actionIdMap);
     }
@@ -1012,11 +1042,10 @@ export function buildImportedProjectCandidate(options: {
     }
     return targetId;
   };
-  // #1449: an instance-scoped action copy may keep its private owner only when
-  // that Layer instance still exists in the target project.
-  const targetLayerIds = new Set(
-    targetProject.shots.flatMap((shot) => shot.layers.map((layer) => layer.id)),
-  );
+  // #1449: an instance-scoped action copy is private to the Character Layer
+  // instance that owns it in the source project. Cross-project import never
+  // brings that Shot/Layer, so no target-project Layer id can re-establish the
+  // private owner (#1469 F2).
 
   // Phase 2: Rewrite all formal references.
   const importedAssets: Asset[] = [];
@@ -1152,7 +1181,6 @@ export function buildImportedProjectCandidate(options: {
         remapAnimation,
         remapPartId,
         allocateId,
-        targetLayerIds,
         characterActionIdMaps.get(character.id),
       );
       const bodyPoses: CharacterBodyPose[] | undefined = character.bodyPoses?.map(
@@ -1308,7 +1336,9 @@ export function buildImportedProjectCandidate(options: {
           : {}),
         ...(mouthPoseSet ? { mouthPoseSet } : {}),
         ...(expressionTalkingSources ? { expressionTalkingSources } : {}),
-        ...(actions ? { actions } : {}),
+        // #1469 F2: clearing this explicitly prevents the source Character's
+        // promoted private actions from leaking through `...character`.
+        ...(actions ? { actions } : { actions: undefined }),
         ...(bodyPoses ? { bodyPoses } : {}),
         ...(armChain ? { armChain } : {}),
         ...(armChains ? { armChains } : {}),
@@ -1347,7 +1377,6 @@ export function buildImportedProjectCandidate(options: {
       remapAnimation,
       unusedPartRemapper,
       allocateId,
-      targetLayerIds,
       characterActionIdMaps.get(character.id),
     );
 
@@ -1378,7 +1407,9 @@ export function buildImportedProjectCandidate(options: {
         : {}),
       ...(mouthPoseSet ? { mouthPoseSet } : {}),
       ...(expressionTalkingSources ? { expressionTalkingSources } : {}),
-      ...(actions ? { actions } : {}),
+      // #1469 F2: clearing this explicitly prevents the source Character's
+      // promoted private actions from leaking through `...character`.
+      ...(actions ? { actions } : { actions: undefined }),
     };
 
     if (character.mode === 'composite') {
@@ -1419,6 +1450,14 @@ export function buildImportedProjectCandidate(options: {
     ) {
       const rest = { ...character };
       delete rest.motionMappings;
+      // #1469 F2: a source Character whose whole action library was private
+      // must not keep its promoted copies through the spread above.
+      if (character.actions === undefined) delete rest.actions;
+      return rest;
+    }
+    if (character.actions === undefined) {
+      const rest = { ...character };
+      delete rest.actions;
       return rest;
     }
     return character;
