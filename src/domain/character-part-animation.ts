@@ -6,7 +6,8 @@ import {
   type TargetLocalPivot,
 } from './models/animationCore';
 import {
-  resolveCharacterPartVisualSource, type AdaptivePartsCharacter, type CharacterPartTransform, type LayeredCharacterAction,
+  resolveCharacterPartVisualSource, type AdaptivePartsCharacter, type CharacterAction,
+  type CharacterPartTransform, type LayeredCharacterAction,
 } from './models/character';
 import type { Project } from './models/project';
 import { evaluateAnimationTrackAtTime, type EvaluatedAnimationValue } from './evaluate-animation-core';
@@ -73,6 +74,35 @@ export function characterFaceAndMouthPartIds(character: AdaptivePartsCharacter):
     ...(binding ? [binding.targetPartId, ...binding.replacePartIds] : []),
     ...(character.mouthPoseSet?.poses.flatMap(({ target }) => target.kind === 'mouth' ? [target.partId] : []) ?? []),
   ]);
+}
+
+/** Minimal Character shape needed to resolve one `character-action` reference. */
+export interface CharacterActionOwnerSource {
+  readonly actions?: readonly CharacterAction[];
+}
+
+/**
+ * #1449: resolves the action definition one Character Layer is allowed to
+ * consume for a `character-action` reference. An instance-scoped copy is
+ * private to the Layer named in `instanceScope.layerId`; any other reference
+ * (legacy data, a duplicated/imported Layer) degrades to that copy's shared
+ * origin action instead of silently playing the private copy. Returns
+ * `undefined` when the reference cannot be resolved locally, so callers treat
+ * the segment as absent.
+ */
+export function resolveCharacterActionForLayer(
+  character: CharacterActionOwnerSource | undefined,
+  actionId: string,
+  layerId: string,
+): CharacterAction | undefined {
+  const actions = character?.actions ?? [];
+  const action = actions.find((candidate) => candidate.id === actionId);
+  if (!action || !('kind' in action) || !action.instanceScope) return action;
+  if (action.instanceScope.layerId === layerId) return action;
+  const origin = action.originActionId
+    ? actions.find((candidate) => candidate.id === action.originActionId)
+    : undefined;
+  return origin && 'kind' in origin ? origin : undefined;
 }
 
 /** Overlay owned properties on the instance pose, then carry the head with the authored anchor. */

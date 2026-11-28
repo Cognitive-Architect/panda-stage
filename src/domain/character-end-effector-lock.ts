@@ -518,18 +518,14 @@ export function applyCharacterEndEffectorLocks(
         solvedBoneIds.push(leaf.id);
       }
     }
-    // Achieved pivot after weight/clamp: forward-rotate the base segments.
-    const achieved = { ...basePoints[0]! };
-    let cumulative = 0;
-    for (let index = 0; index < movableBoneIds.length; index += 1) {
-      const from = basePoints[index]!;
-      const to = basePoints[index + 1]!;
-      cumulative += appliedDeltas[index]!;
-      const radians = cumulative * TO_RAD;
-      const segment = { x: to.x - from.x, y: to.y - from.y };
-      achieved.x += segment.x * Math.cos(radians) - segment.y * Math.sin(radians);
-      achieved.y += segment.x * Math.sin(radians) + segment.y * Math.cos(radians);
-    }
+    // #1456: the residual must describe the ACTUAL final FK end position. The
+    // rigid-chain forward rotation is only the solver's internal model; under a
+    // non-uniform ancestor scale the real leaf pivot can differ a lot from the
+    // predicted one, so re-evaluate the pose after writing the solved values
+    // and measure the remaining distance in the lock's own target space.
+    const finalPoses = evaluateCharacterBonePoseFromValues(input.character, values);
+    const finalLeaf = finalPoses.get(resolved.chain.leafId) ?? leafPose;
+    const achieved = { x: finalLeaf.world.tx, y: finalLeaf.world.ty };
     const achievedStage = transformPoint(input.localToStage, achieved);
     const distance = lock.space === 'stage'
       ? Math.hypot(lock.target.x - achievedStage.x, lock.target.y - achievedStage.y)
