@@ -952,22 +952,6 @@ export function planScriptPerformance(
         );
         continue;
       }
-      // The authorized performance extension is the only way a directive may
-      // grow the shot; an unauthorized overflow stays a local diagnostic.
-      const cameraNeedsExtension = requestedEndMs > cameraShot.durationMs;
-      if (cameraNeedsExtension && !extendShotForPerformance) {
-        pushIssue(
-          'OUT_OF_SHOT_BOUNDS',
-          `第 ${directive.dialogueOrdinal} 句的运镜时段 ${cameraStartMs}–${requestedEndMs}ms 超出镜头「${sceneBlock.shotName}」时长 ${cameraShot.durationMs}ms；可确认延长镜头至 ${requestedEndMs}ms 或跳过此行。`,
-          {
-            shotId: cameraShot.id,
-            startMs: cameraStartMs,
-            endMs: requestedEndMs,
-            requiredShotDurationMs: requestedEndMs,
-          },
-        );
-        continue;
-      }
       // A scripted camera directive is an explicit authoring intent: convert
       // static/speaker-focus shots to manual only when the directive runs.
       const cameraReadyProject =
@@ -997,11 +981,14 @@ export function planScriptPerformance(
             ? { amplitude: directive.cameraAmplitude }
             : {}),
         };
-        // An authorized overflow must be sized from the preset's own snapped
-        // range, so the official planner is asked on a provisionally long shot.
-        const provisionalDurationMs = cameraNeedsExtension
-          ? requestedEndMs + Math.ceil(frameDurationMs()) + 1
-          : cameraShot.durationMs;
+        // Ask the official preset planner on a provisionally long shot so the
+        // real 24fps-snapped range decides whether extension is needed (e.g.
+        // start=21ms snaps up to 42ms, pushing 21+979=1000ms out to 1042ms).
+        const snapHeadroomMs = Math.ceil(frameDurationMs()) * 2 + 1;
+        const provisionalDurationMs = Math.max(
+          cameraShot.durationMs,
+          requestedEndMs + snapHeadroomMs,
+        );
         const presetBase =
           provisionalDurationMs > cameraShot.durationMs
             ? shotService.setDuration(
@@ -1022,14 +1009,30 @@ export function planScriptPerformance(
           cameraShot.durationMs,
           presetPlan.rangeEndMs,
         );
-        const cameraTargetProject =
-          requiredShotDurationMs > cameraShot.durationMs
-            ? shotService.setDuration(
-                cameraReadyProject,
-                cameraShot.id,
-                requiredShotDurationMs,
-              )
-            : cameraReadyProject;
+        const cameraNeedsExtension =
+          requiredShotDurationMs > cameraShot.durationMs;
+        // The authorized performance extension is the only way a directive may
+        // grow the shot; an unauthorized overflow stays a local diagnostic.
+        if (cameraNeedsExtension && !extendShotForPerformance) {
+          pushIssue(
+            'OUT_OF_SHOT_BOUNDS',
+            `第 ${directive.dialogueOrdinal} 句的运镜时段 ${presetPlan.startTimeMs}–${presetPlan.rangeEndMs}ms 超出镜头「${sceneBlock.shotName}」时长 ${cameraShot.durationMs}ms；可确认延长镜头至 ${requiredShotDurationMs}ms 或跳过此行。`,
+            {
+              shotId: cameraShot.id,
+              startMs: presetPlan.startTimeMs,
+              endMs: presetPlan.rangeEndMs,
+              requiredShotDurationMs,
+            },
+          );
+          continue;
+        }
+        const cameraTargetProject = cameraNeedsExtension
+          ? shotService.setDuration(
+              cameraReadyProject,
+              cameraShot.id,
+              requiredShotDurationMs,
+            )
+          : cameraReadyProject;
         // Apply the **snapped** span, never the raw request: re-planning 2800ms
         // +600ms against a shot that was only grown to the snapped 3375ms end
         // would look out of bounds even though the real keys fit.
