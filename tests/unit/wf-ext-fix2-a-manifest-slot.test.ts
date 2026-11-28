@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   attachDialogueManifestIdentities,
+  matchDialogueAudioRows,
   reconcileDialogueDraftRows,
+  ProjectSchema,
+  type AudioAsset,
   type DialogueDraftRowSeed,
   type DialogueManifestPendingIdentity,
   type StableDialogueDraftRow,
 } from '../../src/domain';
+import { buildProject, IDS } from './domain/testProject';
 
 const CHARACTER_ID = '20000000-0000-4000-8000-000000000001';
 
@@ -132,5 +136,95 @@ describe('WF-EXT FIX-02 A: manifest identity follows its own CSV slot (R-P2-01)'
     expect(attached[0]!.existingDialogueId).toBeUndefined();
     // Nothing was consumed: the entry still belongs to an unproduced slot.
     expect(pending.size).toBe(1);
+  });
+
+  it('marks an out-of-scope CSV slot explicitly unselected so matchDialogueAudioRows does not fall back to 1_熊猫.wav', () => {
+    const base = buildProject();
+    const audio1: AudioAsset = {
+      id: '10000000-0000-4000-8000-000000000951',
+      kind: 'audio',
+      name: '1_熊猫',
+      relativePath: 'assets/1_熊猫.wav',
+      mimeType: 'audio/wav',
+      sha256: '1'.repeat(64),
+      durationMs: 1_500,
+    };
+    const audio2: AudioAsset = {
+      id: '10000000-0000-4000-8000-000000000952',
+      kind: 'audio',
+      name: 'take_l002',
+      relativePath: 'assets/take_l002.wav',
+      mimeType: 'audio/wav',
+      sha256: '2'.repeat(64),
+      durationMs: 2_000,
+    };
+    const project = ProjectSchema.parse({
+      ...base,
+      assets: [...base.assets, audio1, audio2],
+    });
+
+    const rows = buildRows();
+    const pending = new Map<number, DialogueManifestPendingIdentity>([
+      [1, { speaker: '熊猫', text: '你来了？', explicitAudioUnselected: true }],
+      [2, identity()],
+    ]);
+
+    const attached = attachDialogueManifestIdentities(rows, pending);
+    expect(attached[0]!.explicitAudioUnselected).toBe(true);
+    expect(attached[0]!.lineKey).toBeUndefined();
+    expect(attached[0]!.existingDialogueId).toBeUndefined();
+    expect(attached[1]!.explicitAudioUnselected).toBeUndefined();
+    expect(attached[1]!.lineKey).toBe('L002');
+
+    // Reconcile after partial commit / reorder preserves explicitAudioUnselected
+    // and refuses stale confirmedAudioAssetId inheritance.
+    const survived = reconcileDialogueDraftRows(
+      [{ ...attached[0]!, confirmedAudioAssetId: audio1.id }],
+      [seed({ sourceLineNumber: 1, logicalOrdinal: 1 })],
+    );
+    expect(survived[0]!.explicitAudioUnselected).toBe(true);
+    expect(survived[0]!.confirmedAudioAssetId).toBeUndefined();
+
+    const report = matchDialogueAudioRows(
+      project,
+      [
+        {
+          draftRowId: survived[0]!.draftRowId,
+          ordinal: 1,
+          sourceLineNumber: 1,
+          text: survived[0]!.text,
+          speakerType: survived[0]!.speakerType,
+          characterId: survived[0]!.characterId,
+          speakerName: survived[0]!.speakerName,
+          manualAudioAssetId: survived[0]!.explicitAudioUnselected
+            ? null
+            : undefined,
+        },
+        {
+          draftRowId: attached[1]!.draftRowId,
+          ordinal: 2,
+          sourceLineNumber: 2,
+          text: attached[1]!.text,
+          speakerType: attached[1]!.speakerType,
+          characterId: attached[1]!.characterId,
+          speakerName: attached[1]!.speakerName,
+          manualAudioAssetId: audio2.id,
+          sourceStartMs: 200,
+          sourceEndMs: 1_200,
+        },
+      ],
+      { shotId: IDS.shot },
+    );
+    expect(report.rows[0]).toMatchObject({
+      ready: false,
+      audioAssetId: null,
+      issue: 'AUDIO_UNSELECTED',
+    });
+    expect(report.rows[1]).toMatchObject({
+      ready: true,
+      audioAssetId: audio2.id,
+      sourceStartMs: 200,
+      sourceEndMs: 1_200,
+    });
   });
 });

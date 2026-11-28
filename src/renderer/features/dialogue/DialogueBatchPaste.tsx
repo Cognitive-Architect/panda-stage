@@ -366,11 +366,12 @@ export function DialogueBatchPaste({
         const activeManual =
           manual && manual.speakerKey === speakerKey ? manual : undefined;
         const confirmed = confirmedAudioByRowIdRef.current[row.draftRowId];
-        const activeConfirmedAssetId =
-          row.confirmedAudioAssetId ??
-          (confirmed && confirmed.speakerKey === speakerKey
-            ? confirmed.assetId
-            : undefined);
+        const activeConfirmedAssetId = row.explicitAudioUnselected
+          ? undefined
+          : row.confirmedAudioAssetId ??
+            (confirmed && confirmed.speakerKey === speakerKey
+              ? confirmed.assetId
+              : undefined);
         const lineKey =
           row.lineKey ?? lineKeyByDraftRowIdRef.current.get(row.draftRowId);
         const imported = lineKey
@@ -386,7 +387,9 @@ export function DialogueBatchPaste({
             ? importedTextMatches
               ? imported.assetId
               : null
-            : undefined;
+            : row.explicitAudioUnselected
+              ? null
+              : undefined;
         const sourceStartMs = activeManual
           ? activeManual.sourceStartMs
           : imported && importedTextMatches
@@ -737,6 +740,11 @@ export function DialogueBatchPaste({
         );
         if (!inScope) {
           outOfScope += 1;
+          pending.set(lineNumber, {
+            speaker: row.speaker,
+            text: row.text,
+            explicitAudioUnselected: true,
+          });
           return;
         }
         if (issues.some((issue) => issue.code === 'DIALOGUE_ID_MISSING')) {
@@ -794,6 +802,8 @@ export function DialogueBatchPaste({
       lineKeyByDraftRowIdRef.current = new Map();
       previousStableRowsRef.current = [];
       confirmedAudioByRowIdRef.current = {};
+      preservedLineOrdinalsRef.current = null;
+      committedMaxOrdinalRef.current = 0;
       setManualAudioState({ sessionKey, entries: {} });
       setConfirmedExtensionToMs(null);
       setCommitError(null);
