@@ -345,7 +345,7 @@ describe('instance-scoped editable action copy (#1449)', () => {
     const address = { shotId: IDS.shot, layerId: rig.layerA, timeMs: 500 };
     let project = saveCharacterArmChain(rig.project, address, armChain);
     // Shared action still owns the arm.
-    expect(() => planCharacterArmIk(project, address, { x: 0, y: 0 })).toThrow(/当前动作段控制手臂/);
+    expect(() => planCharacterArmIk(project, address, { x: 0, y: 0 })).toThrow(/当前动作段控制该?骨链/);
 
     const copy = copyForA(rig, project);
     project = copy.project;
