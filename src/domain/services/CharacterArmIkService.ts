@@ -15,6 +15,10 @@ import {
 import { ProjectSchema, type Project } from '../models/project';
 import { isValidFrameTime } from '../timeline/frame-grid';
 import { CharacterMotionService, characterMotionValues } from './CharacterMotionService';
+import {
+  resolveCharacterActionInstanceEdit,
+  type CharacterActionInstanceEdit,
+} from './CharacterActionCopyService';
 
 export interface CharacterArmIkAddress {
   shotId: string;
@@ -43,7 +47,8 @@ function resolveArmInstance(project: Project, address: CharacterArmIkAddress, di
   const horizontal = layerPivotStageVector({ x: 1, y: 0 }, evaluated.rotationDeg, evaluated.scaleX, evaluated.scaleY, evaluated.flipX);
   const vertical = layerPivotStageVector({ x: 0, y: 1 }, evaluated.rotationDeg, evaluated.scaleX, evaluated.scaleY, evaluated.flipX);
   const localToStage = { a: horizontal.x, b: horizontal.y, c: vertical.x, d: vertical.y, tx: evaluated.x, ty: evaluated.y };
-  return { character, evaluated, localToStage, clip: createCharacterPartAnimationClip(project, shot.id, layer.id) };
+  const actionEdit = resolveCharacterActionInstanceEdit(project, shot.id, layer.id, address.timeMs);
+  return { character, evaluated, localToStage, clip: createCharacterPartAnimationClip(project, shot.id, layer.id), layer, actionEdit };
 }
 
 interface CharacterArmAssemblyPart {
@@ -80,13 +85,26 @@ export function resolveCharacterArmAssemblyParts(
   return parts;
 }
 
+function motionInput(
+  address: CharacterArmIkAddress,
+  partId: string,
+  actionEdit?: CharacterActionInstanceEdit,
+) {
+  return {
+    ...address,
+    partId,
+    autoKey: true,
+    ...(actionEdit ? { actionEdit } : {}),
+  };
+}
+
 function calibrate(project: Project, address: CharacterArmIkAddress, instance: ReturnType<typeof resolveArmInstance>, chain: CharacterArmChain) {
-  const { character, clip } = instance;
+  const { character, clip, actionEdit } = instance;
   const protectedIds = characterFaceAndMouthPartIds(character);
   const segments = chain.segments.map(segment => {
     const basis = clip.targetBases.find(({ target, visible }) => visible && target.partId === segment.partId);
     if (!basis || protectedIds.has(segment.partId)) throw new Error('骨链包含缺失、隐藏或由脸嘴系统控制的部件。');
-    const values = characterMotionValues(project, { ...address, partId: segment.partId, autoKey: true });
+    const values = characterMotionValues(project, motionInput(address, segment.partId, actionEdit));
     const restMatrix = composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, []);
     const current = (Object.keys(values) as AnimationProperty[]).map(property => ({ target: basis.target, property, value: values[property] }));
     const currentMatrix = composeAnimatedCharacterPartTransform(basis, clip.fixedCharacterCenter, current);
@@ -205,9 +223,17 @@ export function characterArmTipOnStage(project: Project, address: CharacterArmIk
 }
 
 function checkActionOwnership(instance: ReturnType<typeof resolveArmInstance>, chain: CharacterArmChain): void {
-  const { evaluated } = instance;
-  if (evaluated.characterAction || evaluated.layeredCharacterAction?.action.tracks.some(({ partId }) =>
-    chain.segments.some(segment => segment.partId === partId))) throw new Error('当前动作段控制该骨链，请在段外摆姿势。');
+  const { evaluated, layer } = instance;
+  const layered = evaluated.layeredCharacterAction;
+  const controlledByAction = Boolean(layered && layered.action.tracks.some(({ partId }) =>
+    chain.segments.some(segment => segment.partId === partId)));
+  // An instance-scoped copy for this layer is the designed local-edit surface;
+  // shared and baked actions still own the chain and keep the guard.
+  const editableInstanceCopy = Boolean(layered &&
+    layered.action.instanceScope?.layerId === layer.id);
+  if (evaluated.characterAction || (controlledByAction && !editableInstanceCopy)) {
+    throw new Error('当前动作段控制该骨链，请在段外摆姿势。');
+  }
 }
 
 export function planCharacterArmIk(
@@ -238,7 +264,7 @@ export function planCharacterArmIk(
     ]);
     const originalJoint = transformPoint(rotated, segment.joint);
     const plannedJoint = solved.joints[index]!;
-    next = service.apply(next, { ...address, partId: segment.partId, autoKey: true }, {
+    next = service.apply(next, motionInput(address, segment.partId, instance.actionEdit), {
       'transform.rotationDeg': rotation,
       'transform.offsetX': plannedJoint.x - originalJoint.x,
       'transform.offsetY': plannedJoint.y - originalJoint.y,
