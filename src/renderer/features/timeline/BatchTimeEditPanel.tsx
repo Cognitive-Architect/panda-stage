@@ -38,6 +38,8 @@ interface ActionCandidate {
   readonly endMs: number;
   readonly supportedModes: readonly BatchTimeMode[];
   readonly spanRef?: BatchLayerMotionSpanRef;
+  readonly layerId?: string;
+  readonly keyTimeMs?: number;
 }
 
 type PreviewResult =
@@ -146,19 +148,27 @@ function listActionCandidates(shot: Shot): ActionCandidate[] {
   for (const layer of shot.layers) {
     if (layer.id === shot.backgroundLayerId) continue;
     const times = layerCompositeKeyTimes(layer);
-    const nonZero = times.filter((t) => t > 0);
-    if (nonZero.length >= 2) {
-      const startMs = nonZero[0]!;
-      const endMs = nonZero[nonZero.length - 1]!;
-      const spanId = `layer-motion:${layer.id}:${startMs}:${endMs}`;
+    const nonZero = [...new Set(times.filter((t) => t > 0))].sort(
+      (left, right) => left - right,
+    );
+    for (const timeMs of nonZero) {
+      const spanId = `layer-motion:${layer.id}:${timeMs}`;
       items.push({
         id: spanId,
         kind: 'layer-motion-span',
-        label: `${layer.name} · 关键帧选段`,
-        startMs,
-        endMs,
+        label: `${layer.name} · 关键帧 ${formatSeconds(timeMs)}`,
+        startMs: timeMs,
+        endMs: timeMs,
         supportedModes: layer.locked ? [] : ['shift', 'unify-duration'],
-        spanRef: { id: spanId, layerId: layer.id, startMs, endMs },
+        spanRef: {
+          id: spanId,
+          layerId: layer.id,
+          startMs: timeMs,
+          endMs: timeMs,
+          keyTimesMs: [timeMs],
+        },
+        layerId: layer.id,
+        keyTimeMs: timeMs,
       });
     }
   }
@@ -241,13 +251,34 @@ export function BatchTimeEditPanel({
       ),
     [selectedActionIds, actionById, mode],
   );
-  const selectedMotionSpans = useMemo(
-    () =>
-      selectedActionIds
-        .map((id) => actionById.get(id)?.spanRef)
-        .filter((span): span is BatchLayerMotionSpanRef => Boolean(span)),
-    [selectedActionIds, actionById],
-  );
+  const selectedMotionSpans = useMemo(() => {
+    const timesByLayer = new Map<string, number[]>();
+    for (const id of selectedActionIds) {
+      const item = actionById.get(id);
+      if (
+        item?.kind !== 'layer-motion-span' ||
+        !item.layerId ||
+        item.keyTimeMs === undefined
+      ) {
+        continue;
+      }
+      const times = timesByLayer.get(item.layerId) ?? [];
+      times.push(item.keyTimeMs);
+      timesByLayer.set(item.layerId, times);
+    }
+    return [...timesByLayer.entries()].map(
+      ([layerId, times]): BatchLayerMotionSpanRef => {
+        const sorted = [...new Set(times)].sort((left, right) => left - right);
+        return {
+          id: `layer-motion:${layerId}:${sorted.join(':')}`,
+          layerId,
+          startMs: sorted[0]!,
+          endMs: sorted[sorted.length - 1]!,
+          keyTimesMs: sorted,
+        };
+      },
+    );
+  }, [selectedActionIds, actionById]);
 
   const hasSharedClipWithUnselected = useMemo(() => {
     if (activeDialogueIds.length === 0) return false;
@@ -676,7 +707,7 @@ export function BatchTimeEditPanel({
 
         {actionCandidates.length > 0 ? (
           <div className="batch-time-group">
-            <div className="batch-time-group-title">动作区间</div>
+            <div className="batch-time-group-title">动作与关键帧</div>
             <ul className="batch-time-list" data-testid="batch-time-action-list">
               {actionCandidates.map((item) => {
                 const checked = selectedActionIds.includes(item.id);
@@ -705,8 +736,9 @@ export function BatchTimeEditPanel({
                         ) : null}
                       </span>
                       <span className="batch-time-item-meta">
-                        {formatSeconds(item.startMs)}–
-                        {formatSeconds(item.endMs)}
+                        {item.keyTimeMs !== undefined
+                          ? '关键帧'
+                          : `${formatSeconds(item.startMs)}–${formatSeconds(item.endMs)}`}
                       </span>
                     </label>
                   </li>

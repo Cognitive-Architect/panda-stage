@@ -202,6 +202,8 @@ export interface BatchLayerMotionSpanRef {
   readonly layerId: string;
   readonly startMs: number;
   readonly endMs: number;
+  /** Explicit selected key times; when omitted, all layer keys inside the range participate. */
+  readonly keyTimesMs?: readonly number[];
 }
 
 export interface BatchEditTimelineEventsInput {
@@ -579,7 +581,12 @@ export class TimelineEventBatchService {
     const eventIds = [...new Set(input.eventIds ?? [])];
     const uniqueSpans = new Map<string, BatchLayerMotionSpanRef>();
     for (const span of input.layerMotionSpans ?? []) {
-      if (!uniqueSpans.has(span.id)) uniqueSpans.set(span.id, span);
+      const selectionKey = span.keyTimesMs
+        ? `${span.layerId}:keys:${[...new Set(span.keyTimesMs)]
+            .sort((left, right) => left - right)
+            .join(',')}`
+        : `${span.layerId}:range:${span.startMs}:${span.endMs}`;
+      if (!uniqueSpans.has(selectionKey)) uniqueSpans.set(selectionKey, span);
     }
     const spans = [...uniqueSpans.values()];
 
@@ -717,10 +724,20 @@ export class TimelineEventBatchService {
         continue;
       }
       const allKeyTimes = layerCompositeKeyTimes(layer);
-      const keyTimesMs = allKeyTimes.filter(
-        (timeMs) => timeMs >= span.startMs && timeMs <= span.endMs,
+      const requestedKeyTimes = span.keyTimesMs
+        ? [...new Set(span.keyTimesMs)].sort((left, right) => left - right)
+        : allKeyTimes.filter(
+            (timeMs) => timeMs >= span.startMs && timeMs <= span.endMs,
+          );
+      const keyTimesMs = requestedKeyTimes.filter((timeMs) =>
+        allKeyTimes.includes(timeMs),
       );
-      if (span.endMs <= span.startMs || keyTimesMs.length < 2) {
+      const minimumKeyCount = edit.action === 'shift' ? 1 : 2;
+      if (
+        span.endMs < span.startMs ||
+        keyTimesMs.length !== requestedKeyTimes.length ||
+        keyTimesMs.length < minimumKeyCount
+      ) {
         skipped.push({
           itemId: span.id,
           kind: 'layer-motion-span',
@@ -728,9 +745,29 @@ export class TimelineEventBatchService {
           layerName: layer.name,
           label: `${layer.name} · 关键帧选段`,
           reasonCode: 'INVALID_MOTION_SPAN',
-          reason: `「${layer.name}」的关键帧选段至少需要 2 枚关键帧，已跳过。`,
+          reason:
+            edit.action === 'shift'
+              ? `「${layer.name}」的关键帧选段至少需要 1 枚真实关键帧，已跳过。`
+              : `「${layer.name}」的关键帧选段至少需要 2 枚真实关键帧，已跳过。`,
         });
         continue;
+      }
+      if (edit.action === 'unify-duration') {
+        const covered = allKeyTimes.filter(
+          (timeMs) => timeMs >= keyTimesMs[0]! && timeMs <= keyTimesMs[keyTimesMs.length - 1]!,
+        );
+        if (covered.length !== keyTimesMs.length) {
+          skipped.push({
+            itemId: span.id,
+            kind: 'layer-motion-span',
+            layerId: layer.id,
+            layerName: layer.name,
+            label: `${layer.name} · 关键帧选段`,
+            reasonCode: 'INVALID_MOTION_SPAN',
+            reason: `「${layer.name}」的统一时长要求选段连续，已跳过。`,
+          });
+          continue;
+        }
       }
       if (edit.action === 'shift' && keyTimesMs.includes(0)) {
         skipped.push({
