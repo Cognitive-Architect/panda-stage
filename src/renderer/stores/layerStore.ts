@@ -474,6 +474,42 @@ export class LayerStore {
     return next;
   }
 
+  setFlaGraphicNodeIdentityAlias(
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    aliasId?: string,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setFlaGraphicNodeIdentityAlias(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+      aliasId,
+    );
+    if (next !== project) this.editorStore.updateProject(next, '建立节点关联');
+    return next;
+  }
+
+  clearFlaGraphicNodeIdentityAlias(
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.clearFlaGraphicNodeIdentityAlias(
+      project,
+      shotId,
+      layerId,
+      frameOrdinal,
+      nodePath,
+    );
+    if (next !== project) this.editorStore.updateProject(next, '解除节点关联');
+    return next;
+  }
+
   extractFlaGraphicShapeRegion(input: {
     readonly layerId: string;
     readonly frameOrdinal: number;

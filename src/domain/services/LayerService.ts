@@ -39,11 +39,14 @@ import {
 } from '../geometry';
 import { evaluateAnimationEase } from '../evaluate-animation-core';
 import {
+  FLA_GRAPHIC_IDENTITY_ALIAS_ID_PATTERN,
   isFlaGraphicDefinition,
   isFlaGraphicEditableSubtreeShapeNode,
   isFlaGraphicNodeTransformable,
   ProjectSchema,
   type AnimationPlayback,
+  type FlaGraphicDefinition,
+  type FlaGraphicStructure,
   type Layer,
   type Project,
   type Shot,
@@ -79,11 +82,14 @@ import {
 } from '../models/flaGraphicInstanceOverrides';
 import {
   addFlaGraphicTimelineKeyframe as addTimelineKeyframePure,
+  clearFlaGraphicNodeIdentityAlias as clearNodeIdentityAliasPure,
   deleteFlaGraphicTimelineKeyframe as deleteTimelineKeyframePure,
   duplicateFlaGraphicTimelineKeyframe as duplicateTimelineKeyframePure,
   evaluateFlaGraphicTrackAtTime,
+  listFlaGraphicIdentityAliasAssignments,
   moveFlaGraphicTimelineKeyframe as moveTimelineKeyframePure,
   resolveFlaGraphicTimelineTarget,
+  setFlaGraphicNodeIdentityAlias as setNodeIdentityAliasPure,
   setFlaGraphicTimelineKeyframeEasing as setTimelineKeyframeEasingPure,
   updateFlaGraphicTimelineKeyframeTransform as updateTimelineKeyframeTransformPure,
   withFlaGraphicContainerTimeline,
@@ -235,7 +241,16 @@ export type LayerServiceErrorCode =
   | 'INVALID_RADIAL_ARRAY'
   | 'INVALID_PATH_ARRAY'
   | 'INVALID_AFTERIMAGE'
-  | 'INVALID_RADIAL_BURST';
+  | 'INVALID_RADIAL_BURST'
+  | 'NODE_IDENTITY_TARGET_NOT_FOUND'
+  | 'NODE_IDENTITY_OPAQUE'
+  | 'NODE_IDENTITY_PROVEN'
+  | 'INVALID_NODE_IDENTITY_ALIAS'
+  | 'NODE_IDENTITY_ALIAS_NOT_FOUND'
+  | 'NODE_IDENTITY_ALIAS_CONFLICT'
+  | 'NODE_IDENTITY_ALIAS_TRACKED'
+  | 'NODE_IDENTITY_ALIAS_ATTACHED'
+  | 'NODE_IDENTITY_ALIAS_GENERATION_FAILED';
 
 export class LayerServiceError extends Error {
   constructor(
@@ -1151,6 +1166,224 @@ export class LayerService {
       ...project,
       animations: nextAnimations,
     };
+  }
+
+  /**
+   * Assigns an author-stable identity to an otherwise ambiguous FLA Graphic
+   * node. Only nodes without a source-proven identity can be associated; the
+   * node path is unchanged, so existing tracks and instance overrides for other
+   * nodes stay valid. Passing `aliasId` joins an existing author association
+   * (the explicit cross-frame mapping path).
+   */
+  setFlaGraphicNodeIdentityAlias(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    aliasId?: string,
+  ): Project {
+    const { animationIndex, definition } = this.resolveEditableFlaGraphicContext(
+      project,
+      shotId,
+      layerId,
+    );
+    const structure = definition.structure!;
+    const target = resolveFlaGraphicTimelineTarget(
+      structure,
+      frameOrdinal,
+      nodePath,
+    );
+    if (!target) {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_TARGET_NOT_FOUND',
+        '找不到要关联的元件节点。',
+      );
+    }
+    if (target.authoringCapability === 'readonly-opaque') {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_OPAQUE',
+        '当前对象只读，无法建立节点关联。',
+      );
+    }
+    if (target.identitySource !== null && target.identitySource !== 'alias') {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_PROVEN',
+        '当前节点已有源稳定身份，无需建立关联。',
+      );
+    }
+    const assignments = listFlaGraphicIdentityAliasAssignments(structure);
+    const currentAliasId = target.identityAliasId;
+    const nextAliasId =
+      aliasId === undefined
+        ? this.nextFlaGraphicNodeIdentityAliasId(assignments)
+        : aliasId;
+    if (!FLA_GRAPHIC_IDENTITY_ALIAS_ID_PATTERN.test(nextAliasId)) {
+      throw new LayerServiceError(
+        'INVALID_NODE_IDENTITY_ALIAS',
+        '关联身份格式无效。',
+      );
+    }
+    if (currentAliasId === nextAliasId) return project;
+    if (
+      aliasId !== undefined &&
+      !assignments.some((assignment) => assignment.aliasId === nextAliasId)
+    ) {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_ALIAS_NOT_FOUND',
+        '所选关联身份不存在，请刷新后重试。',
+      );
+    }
+    if (
+      assignments.some(
+        (assignment) =>
+          assignment.containerKey === target.identityContainerKey &&
+          assignment.nodeId !== target.targetNode.id &&
+          assignment.aliasId === nextAliasId,
+      )
+    ) {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_ALIAS_CONFLICT',
+        '同一帧中的不同节点不能共用同一关联身份。',
+      );
+    }
+    if (currentAliasId) {
+      this.assertFlaGraphicIdentityAliasDetachable(
+        project,
+        target.timeline,
+        currentAliasId,
+        '调整',
+      );
+    }
+    const nextStructure = setNodeIdentityAliasPure(
+      structure,
+      frameOrdinal,
+      nodePath,
+      nextAliasId,
+    );
+    if (nextStructure === structure) return project;
+    return this.commitFlaGraphicStructureChange(
+      project,
+      animationIndex,
+      definition,
+      nextStructure,
+    );
+  }
+
+  /**
+   * Removes an author-stable identity. Rejected while the identity still owns
+   * keyframes or an attachment target, so the operation can never silently
+   * orphan authored data.
+   */
+  clearFlaGraphicNodeIdentityAlias(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+  ): Project {
+    const { animationIndex, definition } = this.resolveEditableFlaGraphicContext(
+      project,
+      shotId,
+      layerId,
+    );
+    const structure = definition.structure!;
+    const target = resolveFlaGraphicTimelineTarget(
+      structure,
+      frameOrdinal,
+      nodePath,
+    );
+    if (!target) {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_TARGET_NOT_FOUND',
+        '找不到要解除关联的元件节点。',
+      );
+    }
+    const currentAliasId = target.identityAliasId;
+    if (!currentAliasId) return project;
+    this.assertFlaGraphicIdentityAliasDetachable(
+      project,
+      target.timeline,
+      currentAliasId,
+      '解除',
+    );
+    const nextStructure = clearNodeIdentityAliasPure(
+      structure,
+      frameOrdinal,
+      nodePath,
+    );
+    if (nextStructure === structure) return project;
+    return this.commitFlaGraphicStructureChange(
+      project,
+      animationIndex,
+      definition,
+      nextStructure,
+    );
+  }
+
+  /**
+   * Rejects an alias change that would leave a track or attachment target
+   * pointing at an identity the node no longer resolves to.
+   */
+  private assertFlaGraphicIdentityAliasDetachable(
+    project: Project,
+    timeline: FlaGraphicTimelineTargetInfo['timeline'],
+    aliasId: string,
+    action: string,
+  ): void {
+    const trackId = `alias:${aliasId}`;
+    if (timeline?.tracks.some((track) => track.trackId === trackId)) {
+      throw new LayerServiceError(
+        'NODE_IDENTITY_ALIAS_TRACKED',
+        `当前关联身份上已有关键帧轨道，请先删除该轨道的关键帧后再${action}关联。`,
+      );
+    }
+    for (const shot of project.shots) {
+      for (const layer of shot.layers) {
+        const attachment = layer.parentAttachment?.target;
+        if (
+          attachment?.kind === 'graphic-node' &&
+          attachment.identityPath?.includes(trackId)
+        ) {
+          throw new LayerServiceError(
+            'NODE_IDENTITY_ALIAS_ATTACHED',
+            `当前关联身份仍被图层挂接引用，请先修改挂接目标后再${action}关联。`,
+          );
+        }
+      }
+    }
+  }
+
+  private nextFlaGraphicNodeIdentityAliasId(
+    assignments: ReturnType<typeof listFlaGraphicIdentityAliasAssignments>,
+  ): string {
+    const usedAliasIds = new Set(
+      assignments.map((assignment) => assignment.aliasId),
+    );
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const candidate = `identity-${this.createId()}`;
+      if (
+        FLA_GRAPHIC_IDENTITY_ALIAS_ID_PATTERN.test(candidate) &&
+        !usedAliasIds.has(candidate)
+      ) {
+        return candidate;
+      }
+    }
+    throw new LayerServiceError(
+      'NODE_IDENTITY_ALIAS_GENERATION_FAILED',
+      '无法生成节点关联身份，请重试。',
+    );
+  }
+
+  private commitFlaGraphicStructureChange(
+    project: Project,
+    animationIndex: number,
+    definition: FlaGraphicDefinition,
+    nextStructure: FlaGraphicStructure,
+  ): Project {
+    const nextAnimations = [...project.animations];
+    nextAnimations[animationIndex] = { ...definition, structure: nextStructure };
+    return ProjectSchema.parse({ ...project, animations: nextAnimations });
   }
 
   private resolveEditableFlaGraphicContext(
