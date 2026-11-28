@@ -1504,7 +1504,16 @@ export class TimelineEventBatchService {
         const dialogue = shot.dialogues.find(
           (candidate) => candidate.id === dialogueId,
         );
-        if (dialogue) maxEndMs = Math.max(maxEndMs, dialogue.endMs);
+        if (!dialogue) continue;
+        maxEndMs = Math.max(maxEndMs, dialogue.endMs);
+        // A linked audio clip can outlast its dialogue; the shifted copy must
+        // still fit, so its end participates in the required duration.
+        const clip = dialogue.audioClipId
+          ? shot.audioClips.find(
+              (candidate) => candidate.id === dialogue.audioClipId,
+            )
+          : undefined;
+        if (clip) maxEndMs = Math.max(maxEndMs, clip.endMs);
       }
       // "Move linked dialogues too" must never quietly drag content that sits
       // before the insert point; that would move crossed-over material the
@@ -1546,8 +1555,9 @@ export class TimelineEventBatchService {
     const requiredEndMs = maxEndMs + durationMs;
     // Keyframe shifts are quantized to the 24fps grid, so the real result may
     // land later than `maxEndMs + requestedDelta` (e.g. 1000ms + 30ms -> 1042ms).
-    // Probe far enough to learn the actual delta, then extend the shot to the
-    // real end instead of a rounded-down estimate that fails as out-of-bounds.
+    // Probe once with slack to learn the actual frame-aligned delta, then plan,
+    // extend and later apply with **that** delta. Re-using the raw millisecond
+    // request against the already-snapped shorter shot would reject valid work.
     let extensionToMs: number | null = null;
     let crossTypePlan: CrossTypeBatchShiftPlan | null = null;
     let probeDeltaMs: number | null = null;
@@ -1571,59 +1581,47 @@ export class TimelineEventBatchService {
       });
 
       if (probePlan) {
-        probeDeltaMs = probePlan.deltaMs;
-        const actualEndMs = maxEndMs + probePlan.deltaMs;
-        const shiftInput = {
+        const actualDeltaMs = probePlan.deltaMs;
+        probeDeltaMs = actualDeltaMs;
+        // Real target end: the actual shifted content plus whatever the probe
+        // already knows is furthest (events, root keys, linked audio clips).
+        const contentEndMs = Math.max(
+          maxEndMs + actualDeltaMs,
+          probePlan.latestEndMs,
+        );
+        const needsExtension = contentEndMs > shot.durationMs;
+        const planningProject = needsExtension
+          ? this.shotService.setDuration(project, shot.id, contentEndMs)
+          : project;
+        if (needsExtension) extensionToMs = contentEndMs;
+        crossTypePlan = this.tryPlanCrossTypeShift(planningProject, {
           shotId: shot.id,
           dialogueIds,
           eventIds,
           layerMotionSpans,
-          deltaMs: durationMs,
+          deltaMs: actualDeltaMs,
           ...(input.sharedClipPolicy
             ? { sharedClipPolicy: input.sharedClipPolicy }
             : {}),
-        };
-        if (actualEndMs > shot.durationMs) {
-          extensionToMs = actualEndMs;
-          crossTypePlan = this.tryPlanCrossTypeShift(
-            this.shotService.setDuration(project, shot.id, actualEndMs),
-            shiftInput,
-          );
-        } else {
-          // The snapped result already fits. Re-plan on the real duration so the
-          // preview equals apply; a sub-frame request that quantizes to 0 has
-          // nothing to move even though the raw ms value looks out of bounds.
-          try {
-            crossTypePlan = this.planCrossTypeShift(project, shiftInput);
-          } catch (error) {
-            const recoverable =
-              error instanceof TimelineEventBatchError &&
-              (error.code === 'TIMELINE_EVENT_UNSUPPORTED' ||
-                error.code === 'TIMELINE_EVENT_BATCH_TOO_SMALL' ||
-                (error.code === 'TIMELINE_EVENT_BATCH_OUT_OF_RANGE' &&
-                  probePlan.deltaMs === 0));
-            if (!recoverable) throw error;
-            crossTypePlan = null;
-          }
-        }
+        });
       }
     }
 
     const needsShotExtension = extensionToMs !== null;
     const allSkipped = [...skipped, ...(crossTypePlan?.skipped ?? [])];
     const changedCount = crossTypePlan?.changedCount ?? 0;
+    const effectiveDeltaMs =
+      crossTypePlan?.deltaMs ?? probeDeltaMs ?? durationMs;
     return {
       shotId: shot.id,
       atMs,
       durationMs,
-      effectiveDeltaMs:
-        crossTypePlan?.deltaMs ?? probeDeltaMs ?? durationMs,
+      effectiveDeltaMs,
       ...(crossTypePlan?.deltaFrames !== undefined
         ? { deltaFrames: crossTypePlan.deltaFrames }
         : {}),
-      ...(crossTypePlan?.frameSnapped !== undefined
-        ? { frameSnapped: crossTypePlan.frameSnapped }
-        : {}),
+      // Snap is judged against the caller's request, not the already-snapped plan.
+      frameSnapped: effectiveDeltaMs !== durationMs,
       dialogueIds,
       eventIds,
       layerMotionSpans,
@@ -1667,23 +1665,25 @@ export class TimelineEventBatchService {
   applyInsertGap(project: Project, input: InsertTimeGapInput): Project {
     const plan = this.planInsertGap(project, input);
     if (plan.changedCount === 0) return project;
-    let candidate = plan.needsShotExtension && plan.extensionToMs !== null
+    const candidate = plan.needsShotExtension && plan.extensionToMs !== null
       ? this.shotService.setDuration(project, plan.shotId, plan.extensionToMs)
       : project;
-    candidate = this.applyCrossTypeShift(candidate, {
+    // Apply the delta the plan actually resolved (frame-snapped), never the raw
+    // millisecond request: the extended shot is sized for the real offset.
+    return this.applyCrossTypeShift(candidate, {
       shotId: plan.shotId,
       dialogueIds: plan.dialogueIds,
       eventIds: plan.eventIds,
       layerMotionSpans: plan.layerMotionSpans,
-      deltaMs: plan.durationMs,
+      deltaMs: plan.effectiveDeltaMs,
       ...(input.sharedClipPolicy
         ? { sharedClipPolicy: input.sharedClipPolicy }
         : {}),
     });
-    return candidate;
   }
 
-  private collectUnsupportedAsSkipped(    project: Project,
+  private collectUnsupportedAsSkipped(
+    project: Project,
     shotId: string,
     eventIds: readonly string[],
     layerMotionSpans: readonly BatchLayerMotionSpanRef[],
