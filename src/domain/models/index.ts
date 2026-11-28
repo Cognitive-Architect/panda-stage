@@ -3,6 +3,7 @@ export * from './animation';
 export * from './audio';
 export * from './character';
 export * from './dialogue';
+export * from './importProvenance';
 export * from './flaGraphicStructure';
 export * from './flaGraphicTimeline';
 export * from './flaGraphicInstanceOverrides';

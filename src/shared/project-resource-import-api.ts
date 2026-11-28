@@ -58,6 +58,52 @@ export const ProjectResourceImportNameConflictSchema = z
   })
   .strict();
 
+export const ProjectResourceImportReuseChoiceSchema = z
+  .object({
+    kind: z.enum(['character', 'animation']),
+    sourceId: IdSchema,
+    targetId: IdSchema,
+  })
+  .strict();
+export type ProjectResourceImportReuseChoice = z.infer<
+  typeof ProjectResourceImportReuseChoiceSchema
+>;
+
+export const ProjectResourceImportReusableDefinitionSchema = z
+  .object({
+    kind: z.enum(['character', 'animation']),
+    sourceId: IdSchema,
+    sourceName: z.string().trim().min(1).max(300),
+    targetId: IdSchema,
+    targetName: z.string().trim().min(1).max(300),
+  })
+  .strict();
+export type ProjectResourceImportReusableDefinition = z.infer<
+  typeof ProjectResourceImportReusableDefinitionSchema
+>;
+
+export const ProjectResourceImportReuseDiagnosticSchema = z
+  .object({
+    kind: z.enum(['character', 'animation']),
+    sourceId: IdSchema,
+    sourceName: z.string().trim().min(1).max(300),
+    targetId: IdSchema.optional(),
+    targetName: z.string().trim().min(1).max(300).optional(),
+    code: z.enum([
+      'TARGET_MODIFIED',
+      'SOURCE_OR_DEPENDENCY_CHANGED',
+      'INTERNAL_IDENTITY_AMBIGUOUS',
+      'MULTIPLE_TARGET_CANDIDATES',
+      'NAME_ONLY_MATCH',
+      'DISK_ASSET_UNVERIFIED',
+    ]),
+    reason: z.string().trim().min(1).max(500),
+  })
+  .strict();
+export type ProjectResourceImportReuseDiagnostic = z.infer<
+  typeof ProjectResourceImportReuseDiagnosticSchema
+>;
+
 export const ProjectResourceImportErrorCodeSchema = z.enum([
   'PROJECT_RESOURCE_SOURCE_INVALID',
   'PROJECT_RESOURCE_SOURCE_EQUALS_TARGET',
@@ -133,6 +179,10 @@ export const ProjectResourceImportPreviewRequestSchema = z
     sourceToken: IdSchema,
     resources: z.array(ProjectResourceImportSelectionSchema).max(100),
     reuseIdenticalAssets: z.boolean().optional(),
+    reuseDefinitions: z
+      .array(ProjectResourceImportReuseChoiceSchema)
+      .max(200)
+      .optional(),
   })
   .strict();
 export type ProjectResourceImportPreviewRequest = z.infer<
@@ -149,6 +199,16 @@ export const ProjectResourceImportPreviewResponseSchema = z.union([
       assetCount: NonNegativeIntSchema,
       reusableAssetCount: NonNegativeIntSchema,
       newFileCount: NonNegativeIntSchema,
+      reusedCharacterCount: NonNegativeIntSchema.optional(),
+      reusedAnimationCount: NonNegativeIntSchema.optional(),
+      reusableDefinitions: z
+        .array(ProjectResourceImportReusableDefinitionSchema)
+        .max(200)
+        .optional(),
+      reuseDiagnostics: z
+        .array(ProjectResourceImportReuseDiagnosticSchema)
+        .max(200)
+        .optional(),
       nameConflicts: z.array(ProjectResourceImportNameConflictSchema).max(500),
       issues: z.array(z.string().trim().min(1).max(500)).max(200),
     })
@@ -173,6 +233,10 @@ export const ProjectResourceImportApplyRequestSchema = z
     sourceToken: IdSchema,
     resources: z.array(ProjectResourceImportSelectionSchema).min(1).max(100),
     reuseIdenticalAssets: z.boolean().optional(),
+    reuseDefinitions: z
+      .array(ProjectResourceImportReuseChoiceSchema)
+      .max(200)
+      .optional(),
   })
   .strict();
 export type ProjectResourceImportApplyRequest = z.infer<
@@ -194,7 +258,9 @@ export const ProjectResourceImportApplyResponseSchema = z.union([
       importedAssets: z.array(AssetSchema),
       reusedAssetIds: z.array(IdSchema),
       importedAnimations: z.array(ProjectAnimationDefinitionSchema),
+      reusedAnimationIds: z.array(IdSchema).optional(),
       importedCharacters: z.array(CharacterSchema),
+      reusedCharacterIds: z.array(IdSchema).optional(),
       importedVoiceProfiles: z.array(VoiceProfileSchema),
       nameConflicts: z.array(ProjectResourceImportNameConflictSchema).max(500),
     })

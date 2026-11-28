@@ -11,6 +11,7 @@ import {
 } from '../fla-shape-vector';
 import { FlaGraphicInstanceTransformOverridesV22Schema, type FlaGraphicInstanceTransformOverrides } from './flaGraphicInstanceOverrides';
 import { FLA_GRAPHIC_STRUCTURE_MAX_DEPTH } from './flaGraphicStructure';
+import { ResourceImportProvenanceSchema } from './importProvenance';
 
 export const CharacterExpressionV19Schema = z
   .object({
@@ -1040,6 +1041,7 @@ const AdaptivePartsCharacterV39Schema = AdaptivePartsCharacterV37Schema.safeExte
 });
 const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV39Schema.safeExtend({
   bodyPoses: bodyPoseLibrary(CharacterBodyPoseSchema),
+  importProvenance: ResourceImportProvenanceSchema.optional(),
 });
 
 function validateExpressionTalkingSources(character: {
@@ -1058,8 +1060,14 @@ export const CharacterV34Schema = z.discriminatedUnion('mode', [
 ]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
 
 const CharacterCurrentSchema = z.discriminatedUnion('mode', [
-  SingleImageCharacterV26Schema.safeExtend(CurrentCharacterFields),
-  CompositeCharacterV26Schema.safeExtend(CurrentCharacterFields),
+  SingleImageCharacterV26Schema.safeExtend({
+    ...CurrentCharacterFields,
+    importProvenance: ResourceImportProvenanceSchema.optional(),
+  }),
+  CompositeCharacterV26Schema.safeExtend({
+    ...CurrentCharacterFields,
+    importProvenance: ResourceImportProvenanceSchema.optional(),
+  }),
   AdaptivePartsCharacterCurrentSchema,
 ]).superRefine(validateMouthSource).superRefine(validateNamedActions).superRefine(validateExpressionTalkingSources);
 
