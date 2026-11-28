@@ -2,10 +2,13 @@ import { useState } from 'react';
 import Konva from 'konva';
 import { FLA_STATIC_TEXT_LIMITS } from '../../../shared/fla-static-text';
 import {
+  findFlaShapeTweenTrackForTarget,
   listFlaShapeRegionVertices,
   resolveFlaGraphicInternalAuthoringState,
+  resolveFlaGraphicTimelineTarget,
   unapplyFlaGraphicSubtreeViewBox,
   type EvaluatedFlaGraphicNode,
+  type FlaShapeTweenEasing,
 } from '../../../domain';
 import { layerStore } from '../../stores/layerStore';
 import { selectionStore } from '../../stores/selectionStore';
@@ -32,6 +35,7 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
   } = useStructuredGraphicSelection();
   const time = useTimelineUi();
   const [error, setError] = useState('');
+  const [tweenDurationInput, setTweenDurationInput] = useState('1000');
   if (!target || !scope || !path?.length) return null;
   const node = getFlaGraphicNodeAtPath(
     target.frame,
@@ -98,6 +102,34 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
   });
   const activeRegion = shapeEditInfo?.activeRegion ?? null;
   const vertexHandles = activeRegion ? listFlaShapeRegionVertices(activeRegion) : [];
+  const tweenStructure = target.animation.structure;
+  const tweenTargetInfo =
+    tweenStructure && activeRegion && !shapeEditInfo?.isExtractedSibling
+      ? resolveFlaGraphicTimelineTarget(tweenStructure, scope.frameOrdinal, path)
+      : null;
+  const shapeTween = tweenStructure && activeRegion && tweenTargetInfo?.trackId
+    ? findFlaShapeTweenTrackForTarget(tweenStructure.shapeTweenTracks, {
+        nodeTrackId: tweenTargetInfo.trackId,
+        ownerKind: tweenTargetInfo.ownerKind,
+        ...(tweenTargetInfo.ownerSymbolDefId
+          ? { ownerSymbolDefId: tweenTargetInfo.ownerSymbolDefId }
+          : {}),
+        regionRef: activeRegion.regionRef,
+        sourceFrameOrdinal: scope.frameOrdinal,
+        sourceNodePath: [...path],
+      })
+    : null;
+  const tweenDurationMs = shapeTween
+    ? shapeTween.endTimeMs - shapeTween.startTimeMs
+    : 1000;
+  const canCreateTween = Boolean(
+    internal &&
+      activeRegion &&
+      !shapeEditInfo?.isExtractedSibling &&
+      tweenTargetInfo?.trackId &&
+      !shapeTween &&
+      !target.layer.locked,
+  );
   const activeVertex =
     (selectedVertex
       ? vertexHandles.find(
@@ -179,10 +211,84 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
         x: nextX,
         y: nextY,
         svgText,
+        ...(internalTimeMs !== undefined ? { internalTimeMs } : {}),
       });
       setError('');
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : '顶点坐标修改失败。');
+    }
+  };
+
+  const resolveTweenDurationMs = (raw: string): number | null => {
+    const duration = Math.round(Number(raw));
+    if (!Number.isFinite(duration) || duration <= 0) {
+      setError('补间时长必须为正整数毫秒。');
+      return null;
+    }
+    return duration;
+  };
+
+  const handleCreateShapeTween = () => {
+    if (!activeRegion || !internal) return;
+    const durationMs = resolveTweenDurationMs(tweenDurationInput);
+    if (durationMs === null) return;
+    try {
+      layerStore.createFlaGraphicShapeTween({
+        layerId: target.layerId,
+        frameOrdinal: scope.frameOrdinal,
+        nodePath: path,
+        regionRef: activeRegion.regionRef,
+        mode: scope.editMode,
+        svgText,
+        startTimeMs: Math.max(0, Math.round(internalTimeMs ?? 0)),
+        durationMs,
+      });
+      setError('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '创建形状补间失败。');
+    }
+  };
+
+  const handleShapeTweenDurationCommit = (raw: string) => {
+    if (!shapeTween) return;
+    const durationMs = resolveTweenDurationMs(raw);
+    if (durationMs === null) return;
+    try {
+      layerStore.updateFlaGraphicShapeTween({
+        layerId: target.layerId,
+        tweenId: shapeTween.tweenId,
+        endTimeMs: shapeTween.startTimeMs + durationMs,
+      });
+      setError('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '修改补间时长失败。');
+    }
+  };
+
+  const handleShapeTweenEasingChange = (easing: FlaShapeTweenEasing) => {
+    if (!shapeTween) return;
+    try {
+      layerStore.updateFlaGraphicShapeTween({
+        layerId: target.layerId,
+        tweenId: shapeTween.tweenId,
+        easing,
+      });
+      setError('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '修改补间缓动失败。');
+    }
+  };
+
+  const handleDeleteShapeTween = () => {
+    if (!shapeTween) return;
+    try {
+      layerStore.deleteFlaGraphicShapeTween({
+        layerId: target.layerId,
+        tweenId: shapeTween.tweenId,
+      });
+      setError('');
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : '删除形状补间失败。');
     }
   };
 
@@ -255,6 +361,80 @@ export function FlaGraphicChildTransform(): React.JSX.Element | null {
             </button>
           </div>
         )}
+        {!shapeEditInfo?.hasUnrenderableResidue && internal && !shapeEditInfo?.isExtractedSibling && activeRegion ? (
+          <div className="fla-shape-tween-row" data-testid="fla-shape-tween-row">
+            {shapeTween ? (
+              <>
+                <output data-testid="fla-shape-tween-range">
+                  形状补间 {shapeTween.startTimeMs}–{shapeTween.endTimeMs} ms
+                </output>
+                <label>
+                  <span>时长</span>
+                  <input
+                    aria-label="形状补间时长"
+                    data-testid="fla-shape-tween-duration"
+                    key={`${shapeTween.tweenId}:${tweenDurationMs}`}
+                    min={1}
+                    step={1}
+                    type="number"
+                    defaultValue={tweenDurationMs}
+                    onChange={(event) => setTweenDurationInput(event.currentTarget.value)}
+                    onBlur={(event) => handleShapeTweenDurationCommit(event.currentTarget.value)}
+                  />
+                </label>
+                <select
+                  aria-label="形状补间缓动"
+                  data-testid="fla-shape-tween-easing"
+                  value={shapeTween.easing}
+                  onChange={(event) =>
+                    handleShapeTweenEasingChange(event.currentTarget.value as FlaShapeTweenEasing)
+                  }
+                >
+                  <option value="linear">线性</option>
+                  <option value="ease">平滑</option>
+                  <option value="hold">保持</option>
+                </select>
+                <button
+                  type="button"
+                  className="fla-subtree-stage-button"
+                  data-testid="fla-shape-tween-delete"
+                  onClick={handleDeleteShapeTween}
+                >
+                  删除补间
+                </button>
+                <span className="fla-subtree-note">拖到补间起点或终点可直接编辑对应姿态</span>
+              </>
+            ) : tweenTargetInfo?.trackId ? (
+              <>
+                <label>
+                  <span>时长</span>
+                  <input
+                    aria-label="形状补间时长"
+                    data-testid="fla-shape-tween-duration"
+                    min={1}
+                    step={1}
+                    type="number"
+                    value={tweenDurationInput}
+                    onChange={(event) => setTweenDurationInput(event.currentTarget.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="fla-subtree-stage-button"
+                  data-testid="fla-shape-tween-create"
+                  disabled={!canCreateTween}
+                  onClick={handleCreateShapeTween}
+                >
+                  创建形状补间
+                </button>
+              </>
+            ) : (
+              <span className="fla-subtree-note">
+                当前形状节点缺少稳定的跨帧身份，暂不支持形状补间。
+              </span>
+            )}
+          </div>
+        ) : null}
         {!shapeEditInfo?.hasUnrenderableResidue && vertexEditActive && activeVertex ? (
           <div className="fla-shape-vertex-fields" key={`${activeVertex.contourIndex}:${activeVertex.commandIndex}:${activeVertex.pointKind}:${activeVertex.x}:${activeVertex.y}`}>
             <label>

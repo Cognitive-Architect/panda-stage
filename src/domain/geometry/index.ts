@@ -6,5 +6,6 @@ export * from './characterPartLayout';
 export * from './cubicBezierPath';
 export * from './radialBurst';
 export * from './richEasing';
+export * from './shapeMorph';
 export * from './staticArrayLayout';
 export * from './viewportTransform';

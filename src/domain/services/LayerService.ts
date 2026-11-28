@@ -97,6 +97,19 @@ import {
   type FlaGraphicTimelineTargetInfo,
   type FlaGraphicTransformEasing,
 } from '../models/flaGraphicTimeline';
+import {
+  findFlaShapeTweenTrackById,
+  findFlaShapeTweenTrackForTarget,
+  flaShapeTweenTargetKey,
+  prepareFlaShapeTweenTrack,
+  resolveFlaShapeTweenPoseEdit,
+  sameFlaShapeTweenStyle,
+  withFlaShapeTweenTrack,
+  withoutFlaShapeTweenTrack,
+  type FlaShapeTweenEasing,
+  type FlaShapeTweenTarget,
+  type FlaShapeTweenTrack,
+} from '../models/flaShapeTween';
 import type { AssetDropPayload } from '../assetDropPayload';
 import { resolveBackgroundSourceDimensions } from '../selectors/canvasLayers';
 import {
@@ -237,6 +250,14 @@ export type LayerServiceErrorCode =
   | 'SHAPE_REGION_NOT_FOUND'
   | 'SHAPE_REGION_REQUIRED'
   | 'SHAPE_FILL_NOT_SOLID'
+  | 'SHAPE_TWEEN_DEFINITION_ONLY'
+  | 'SHAPE_TWEEN_GEOMETRY_UNSUPPORTED'
+  | 'SHAPE_TWEEN_REGION_REQUIRED'
+  | 'SHAPE_TWEEN_DUPLICATE'
+  | 'SHAPE_TWEEN_NOT_FOUND'
+  | 'SHAPE_TWEEN_TARGET_UNSUPPORTED'
+  | 'SHAPE_TWEEN_MID_RANGE_READONLY'
+  | 'SHAPE_TWEEN_INVALID_TIME'
   | 'INVALID_GRID_ARRAY'
   | 'INVALID_RADIAL_ARRAY'
   | 'INVALID_PATH_ARRAY'
@@ -1656,6 +1677,9 @@ export class LayerService {
       readonly svgText?: string;
       readonly mutator: (region: FlaEditableShapeRegion) => FlaEditableShapeRegion | null;
       readonly failReason?: { readonly code: LayerServiceErrorCode; readonly message: string };
+      /** Mirror an editable endpoint region edit into its author Shape Tween pose(s). */
+      readonly tweenPoseScope?: 'current-endpoint' | 'both';
+      readonly internalTimeMs?: number;
     },
   ): Project {
     const context = this.resolveEditableFlaGraphicContext(
@@ -1768,7 +1792,17 @@ export class LayerService {
     }
     const nextRegions = [...nodeOverride.regions];
     nextRegions[regionIndex] = updated;
-    return this.commitShapeOverrides(
+    const nextTweenTrack = this.resolveShapeTweenPoseUpdate({
+      definition: context.definition,
+      frameOrdinal: input.frameOrdinal,
+      nodePath: input.nodePath,
+      regionRef: currentRegion.regionRef,
+      mutator: input.mutator,
+      ...(input.tweenPoseScope ? { tweenPoseScope: input.tweenPoseScope } : {}),
+      ...(input.internalTimeMs !== undefined ? { internalTimeMs: input.internalTimeMs } : {}),
+      ...(input.failReason ? { failReason: input.failReason } : {}),
+    });
+    const committed = this.commitShapeOverrides(
       project,
       context,
       input.mode,
@@ -1779,6 +1813,425 @@ export class LayerService {
         regions: nextRegions,
       },
     );
+    if (!nextTweenTrack) return committed;
+    return this.commitFlaGraphicShapeTweenTrack(
+      committed,
+      context.animationIndex,
+      nextTweenTrack,
+    );
+  }
+
+  /**
+   * Mirrors an endpoint region edit into the region's author Shape Tween so the
+   * two authored poses stay directly editable at the tween's start / end time.
+   * Mid-range geometry edits are rejected; fill/style edits update both poses.
+   */
+  private resolveShapeTweenPoseUpdate(input: {
+    readonly definition: FlaGraphicDefinition;
+    readonly frameOrdinal: number;
+    readonly nodePath: readonly string[];
+    readonly regionRef: string;
+    readonly mutator: (region: FlaEditableShapeRegion) => FlaEditableShapeRegion | null;
+    readonly tweenPoseScope?: 'current-endpoint' | 'both';
+    readonly internalTimeMs?: number;
+    readonly failReason?: { readonly code: LayerServiceErrorCode; readonly message: string };
+  }): FlaShapeTweenTrack | null {
+    if (!input.tweenPoseScope || !input.definition.structure) return null;
+    const track = this.resolveShapeTweenForShapeNode(
+      input.definition.structure,
+      input.frameOrdinal,
+      input.nodePath,
+      input.regionRef,
+    );
+    if (!track) return null;
+    const noChange = (): FlaShapeTweenTrack | null => {
+      if (input.failReason) {
+        throw new LayerServiceError(input.failReason.code, input.failReason.message);
+      }
+      return null;
+    };
+    if (input.tweenPoseScope === 'both') {
+      const from = input.mutator(track.from);
+      const to = input.mutator(track.to);
+      if (!from || !to) return noChange();
+      return { ...track, from, to };
+    }
+    const internalTimeMs =
+      input.internalTimeMs ??
+      Math.round(
+        (input.frameOrdinal * 1_000) /
+          Math.max(1, input.definition.source.sourceFps || 24),
+      );
+    const pose = resolveFlaShapeTweenPoseEdit(track, internalTimeMs);
+    if (pose === 'interpolated') {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_MID_RANGE_READONLY',
+        '形状补间区间内不能直接编辑端点姿态，请拖到补间起点或终点后再编辑。',
+      );
+    }
+    const updatedPose = input.mutator(track[pose]);
+    if (!updatedPose) return noChange();
+    return { ...track, [pose]: updatedPose };
+  }
+
+  private resolveShapeTweenForShapeNode(
+    structure: NonNullable<FlaGraphicDefinition['structure']>,
+    frameOrdinal: number,
+    nodePath: readonly string[],
+    regionRef: string,
+  ): FlaShapeTweenTrack | null {
+    const target = resolveFlaGraphicTimelineTarget(structure, frameOrdinal, nodePath);
+    if (!target?.trackId) return null;
+    return findFlaShapeTweenTrackForTarget(structure.shapeTweenTracks, {
+      nodeTrackId: target.trackId,
+      ownerKind: target.ownerKind,
+      ...(target.ownerSymbolDefId
+        ? { ownerSymbolDefId: target.ownerSymbolDefId }
+        : {}),
+      regionRef,
+      sourceFrameOrdinal: frameOrdinal,
+      sourceNodePath: [...nodePath],
+    });
+  }
+
+  private commitFlaGraphicShapeTweenTrack(
+    project: Project,
+    animationIndex: number,
+    nextTrack: FlaShapeTweenTrack,
+  ): Project {
+    const definition = project.animations[animationIndex];
+    if (!definition || !isFlaGraphicDefinition(definition) || !definition.structure) {
+      return project;
+    }
+    const nextStructure = withFlaShapeTweenTrack(definition.structure, nextTrack);
+    if (nextStructure === definition.structure) return project;
+    const nextAnimations = [...project.animations];
+    nextAnimations[animationIndex] = {
+      ...definition,
+      structure: nextStructure,
+    };
+    return { ...project, animations: nextAnimations };
+  }
+
+  private assertFlaShapeTweenGeometrySupported(
+    region: FlaEditableShapeRegion,
+    other?: FlaEditableShapeRegion,
+  ): void {
+    if (region.fill.kind === 'preserved') {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_GEOMETRY_UNSUPPORTED',
+        '当前区域包含位图或受保护填充，暂不支持形状补间。',
+      );
+    }
+    const prepared = prepareFlaShapeTweenTrack({
+      tweenId: 'shape-tween-validation',
+      target: {
+        nodeTrackId: 'validation',
+        ownerKind: 'frame',
+        regionRef: region.regionRef,
+        sourceFrameOrdinal: 0,
+        sourceNodePath: ['validation'],
+      },
+      startTimeMs: 0,
+      endTimeMs: 1,
+      easing: 'linear',
+      from: region,
+      to: other ?? region,
+    });
+    if (prepared.ok) return;
+    const message =
+      prepared.code === 'open-contour'
+        ? '形状补间要求两个姿态都是闭合轮廓。'
+        : prepared.code === 'unsupported-topology'
+          ? '暂不支持带孔洞或多轮廓的形状补间，请选择单一闭合轮廓区域。'
+          : prepared.code === 'degenerate-contour'
+            ? '当前轮廓的面积为 0，无法创建形状补间。'
+            : prepared.code === 'too-many-segments'
+              ? '当前轮廓过于复杂，暂不支持形状补间。'
+              : prepared.code === 'empty-pose'
+                ? '当前区域没有可用的闭合轮廓。'
+                : '当前轮廓无法进行形状补间。';
+    throw new LayerServiceError('SHAPE_TWEEN_GEOMETRY_UNSUPPORTED', message);
+  }
+
+  private stableFlaShapeTweenId(target: FlaShapeTweenTarget): string {
+    const text = flaShapeTweenTargetKey(target);
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < text.length; index += 1) {
+      hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193);
+    }
+    return `shape-tween-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+  }
+
+  private sanitizeFlaShapeTweenTime(
+    value: number,
+    label: string,
+  ): number {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_INVALID_TIME',
+        `${label}必须为非负整数毫秒。`,
+      );
+    }
+    return value;
+  }
+
+  createFlaGraphicShapeTween(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly frameOrdinal: number;
+      readonly nodePath: readonly string[];
+      readonly regionRef?: string;
+      readonly mode: 'instance' | 'definition';
+      readonly svgText?: string;
+      readonly startTimeMs: number;
+      readonly durationMs: number;
+      readonly easing?: FlaShapeTweenEasing;
+    },
+  ): Project {
+    if (input.mode !== 'definition') {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_DEFINITION_ONLY',
+        '形状补间仅支持在共享元件定义中创建，请切换到元件内部时间轴后再试。',
+      );
+    }
+    const context = this.resolveEditableFlaGraphicContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const structure = context.definition.structure!;
+    const frameKey = String(input.frameOrdinal);
+    const existingExtracted = findFlaExtractedShapeRegionByPath(
+      context.definition.flaGraphicSharedShapeOverrides?.[frameKey],
+      input.nodePath,
+    );
+    if (existingExtracted) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_TARGET_UNSUPPORTED',
+        '已拆分出的独立区域暂不支持形状补间，请直接对 Shape 内的区域创建补间。',
+      );
+    }
+    const targetInfo = resolveFlaGraphicTimelineTarget(
+      structure,
+      input.frameOrdinal,
+      input.nodePath,
+    );
+    if (!targetInfo || !isFlaGraphicEditableSubtreeShapeNode(targetInfo.targetNode)) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_TARGET_UNSUPPORTED',
+        '请选择可编辑的独立 Shape 内部区域后再创建形状补间。',
+      );
+    }
+    if (!targetInfo.trackId) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_TARGET_UNSUPPORTED',
+        '当前形状节点缺少稳定的跨帧身份，暂不支持形状补间。',
+      );
+    }
+    const ownerPathKey = flaGraphicInstanceNodePathKey(input.nodePath);
+    const nodeOverride = this.resolveOrSeedShapeNodeOverride({
+      existingOverride:
+        context.definition.flaGraphicSharedShapeOverrides?.[frameKey]?.[ownerPathKey],
+      fallbackViewBox: targetInfo.targetNode.fallbackViewBox,
+      sourceShapeRef: targetInfo.targetNode.sourceRef,
+      svgText: input.svgText,
+    });
+    this.assertShapeOverrideSafeForEdit(nodeOverride);
+    const regionRef =
+      input.regionRef ??
+      (nodeOverride.regions.length === 1
+        ? nodeOverride.regions[0]!.regionRef
+        : undefined);
+    if (!regionRef) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_REGION_REQUIRED',
+        '请先点选要补间的具体绘制区域。',
+      );
+    }
+    const region = nodeOverride.regions.find(
+      (candidate) => candidate.regionRef === regionRef,
+    );
+    if (!region) {
+      throw new LayerServiceError(
+        'SHAPE_REGION_NOT_FOUND',
+        '未找到对应的绘制区域。',
+      );
+    }
+    this.assertFlaShapeTweenGeometrySupported(region);
+    const target: FlaShapeTweenTarget = {
+      nodeTrackId: targetInfo.trackId,
+      ownerKind: targetInfo.ownerKind,
+      ...(targetInfo.ownerSymbolDefId
+        ? { ownerSymbolDefId: targetInfo.ownerSymbolDefId }
+        : {}),
+      regionRef,
+      sourceFrameOrdinal: input.frameOrdinal,
+      sourceNodePath: [...input.nodePath],
+    };
+    if (
+      findFlaShapeTweenTrackForTarget(structure.shapeTweenTracks, target)
+    ) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_DUPLICATE',
+        '当前区域已存在形状补间，请直接编辑或删除现有补间。',
+      );
+    }
+    const startTimeMs = this.sanitizeFlaShapeTweenTime(
+      input.startTimeMs,
+      '补间开始时间',
+    );
+    const durationMs = this.sanitizeFlaShapeTweenTime(
+      input.durationMs,
+      '补间时长',
+    );
+    if (durationMs <= 0) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_INVALID_TIME',
+        '补间时长必须大于 0 毫秒。',
+      );
+    }
+    const endTimeMs = startTimeMs + durationMs;
+    if (!Number.isSafeInteger(endTimeMs)) {
+      throw new LayerServiceError('SHAPE_TWEEN_INVALID_TIME', '补间结束时间超出支持范围。');
+    }
+    const from = cloneFlaEditableShapeRegion(region);
+    const to = cloneFlaEditableShapeRegion(region);
+    const track: FlaShapeTweenTrack = {
+      tweenId: this.stableFlaShapeTweenId(target),
+      target,
+      startTimeMs,
+      endTimeMs,
+      easing: input.easing ?? 'linear',
+      from,
+      to,
+    };
+    const committed = this.commitShapeOverrides(
+      project,
+      context,
+      'definition',
+      frameKey,
+      ownerPathKey,
+      nodeOverride,
+    );
+    const next = this.commitFlaGraphicShapeTweenTrack(
+      committed,
+      context.animationIndex,
+      track,
+    );
+    return ProjectSchema.parse(next);
+  }
+
+  updateFlaGraphicShapeTween(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly tweenId: string;
+      readonly pose?: 'from' | 'to';
+      readonly region?: FlaEditableShapeRegion;
+      readonly startTimeMs?: number;
+      readonly endTimeMs?: number;
+      readonly easing?: FlaShapeTweenEasing;
+    },
+  ): Project {
+    const context = this.resolveEditableFlaGraphicContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const structure = context.definition.structure!;
+    const track = findFlaShapeTweenTrackById(structure.shapeTweenTracks, input.tweenId);
+    if (!track) {
+      return project;
+    }
+    if (input.pose && !input.region) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_GEOMETRY_UNSUPPORTED',
+        '修改补间姿态需要提供新的区域几何。',
+      );
+    }
+    if (input.region && !input.pose) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_GEOMETRY_UNSUPPORTED',
+        '请指定要修改的补间姿态。',
+      );
+    }
+    if (!input.pose && !input.region && input.startTimeMs === undefined &&
+        input.endTimeMs === undefined && input.easing === undefined) {
+      return project;
+    }
+    let nextTrack: FlaShapeTweenTrack = { ...track };
+    if (input.pose && input.region) {
+      const nextRegion = cloneFlaEditableShapeRegion(input.region);
+      const otherPose = input.pose === 'from' ? track.to : track.from;
+      if (!sameFlaShapeTweenStyle(nextRegion, otherPose)) {
+        throw new LayerServiceError(
+          'SHAPE_TWEEN_GEOMETRY_UNSUPPORTED',
+          '形状补间的两个姿态必须使用相同的填充和描边样式。',
+        );
+      }
+      this.assertFlaShapeTweenGeometrySupported(
+        nextRegion,
+        input.pose === 'from' ? track.to : track.from,
+      );
+      nextTrack = { ...nextTrack, [input.pose]: nextRegion };
+    }
+    const startTimeMs =
+      input.startTimeMs !== undefined
+        ? this.sanitizeFlaShapeTweenTime(input.startTimeMs, '补间开始时间')
+        : nextTrack.startTimeMs;
+    const endTimeMs =
+      input.endTimeMs !== undefined
+        ? this.sanitizeFlaShapeTweenTime(input.endTimeMs, '补间结束时间')
+        : nextTrack.endTimeMs;
+    if (endTimeMs <= startTimeMs) {
+      throw new LayerServiceError(
+        'SHAPE_TWEEN_INVALID_TIME',
+        '补间结束时间必须晚于开始时间。',
+      );
+    }
+    nextTrack = {
+      ...nextTrack,
+      startTimeMs,
+      endTimeMs,
+      ...(input.easing !== undefined ? { easing: input.easing } : {}),
+    };
+    const next = this.commitFlaGraphicShapeTweenTrack(
+      project,
+      context.animationIndex,
+      nextTrack,
+    );
+    return ProjectSchema.parse(next);
+  }
+
+  deleteFlaGraphicShapeTween(
+    project: Project,
+    input: {
+      readonly shotId: string;
+      readonly layerId: string;
+      readonly tweenId: string;
+    },
+  ): Project {
+    const context = this.resolveEditableFlaGraphicContext(
+      project,
+      input.shotId,
+      input.layerId,
+    );
+    const structure = context.definition.structure!;
+    if (!findFlaShapeTweenTrackById(structure.shapeTweenTracks, input.tweenId)) {
+      return project;
+    }
+    const nextStructure = withoutFlaShapeTweenTrack(structure, input.tweenId);
+    if (nextStructure === structure) return project;
+    const nextAnimations = [...project.animations];
+    nextAnimations[context.animationIndex] = {
+      ...context.definition,
+      structure: nextStructure,
+    };
+    return ProjectSchema.parse({ ...project, animations: nextAnimations });
   }
 
   updateFlaGraphicShapeRegionFillColor(
@@ -1797,6 +2250,9 @@ export class LayerService {
   ): Project {
     return this.mutateFlaGraphicShapeRegion(project, {
       ...input,
+      ...(input.mode === 'definition'
+        ? { tweenPoseScope: 'both' as const }
+        : {}),
       mutator: (region) => setShapeRegionSolidFillColorPure(region, input.color, input.opacity),
       failReason: {
         code: 'SHAPE_FILL_NOT_SOLID',
@@ -1818,10 +2274,15 @@ export class LayerService {
       readonly x: number;
       readonly y: number;
       readonly svgText?: string;
+      /** Current internal Graphic time used to resolve the authored tween endpoint. */
+      readonly internalTimeMs?: number;
     },
   ): Project {
     return this.mutateFlaGraphicShapeRegion(project, {
       ...input,
+      ...(input.mode === 'definition'
+        ? { tweenPoseScope: 'current-endpoint' as const }
+        : {}),
       mutator: (region) => moveShapeRegionVertexPure(region, input.target, input.x, input.y),
     });
   }

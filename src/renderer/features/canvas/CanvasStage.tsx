@@ -958,6 +958,7 @@ export function CanvasStage({
         x,
         y,
         svgText,
+        ...(sharedInternalTimeMs !== undefined ? { internalTimeMs: sharedInternalTimeMs } : {}),
       });
     } catch (error) {
       setInteractionStatus(

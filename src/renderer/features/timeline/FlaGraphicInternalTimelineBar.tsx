@@ -123,11 +123,15 @@ export function FlaGraphicInternalTimelineBar({
 
   const activeTimeline = target?.timeline ?? structure.timeline;
   const overviewTimes = [
-    ...new Set(
-      (activeTimeline?.tracks ?? []).flatMap((track) =>
+    ...new Set([
+      ...(activeTimeline?.tracks ?? []).flatMap((track) =>
         track.keyframes.map((kf) => kf.timeMs),
       ),
-    ),
+      ...(structure.shapeTweenTracks ?? []).flatMap((track) => [
+        track.startTimeMs,
+        track.endTimeMs,
+      ]),
+    ]),
   ].sort((left, right) => left - right);
 
   const track =
