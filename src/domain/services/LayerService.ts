@@ -56,6 +56,26 @@ import {
 import { invertAffineMatrix, multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine-matrix';
 import { NameSchema } from '../models/common';
 import { LayerCoverageMaskTargetsSchema } from '../models/layerCoverageMask';
+import {
+  PIN_WARP_DEFAULT_MESH,
+  addPinWarpPoseAtTime,
+  createPinWarp,
+  pinWarpRectForImage,
+  removePinWarpPoseAtTime,
+  reseedPinWarpPins,
+  resetPinWarpPoseToRest,
+  resolvePinWarpAuthoringTimeMs,
+  setPinWarpMeshDensity as applyPinWarpMeshDensity,
+  setPinWarpPinAtTime,
+  validatePinWarpForShot,
+  type PinWarpRect,
+} from '../pin-warp';
+import {
+  PinWarpAuthoringSchema,
+  type PinWarp,
+  type PinWarpMeshDensity,
+  type PinWarpPoint,
+} from '../models/pinWarp';
 import { assertCoverageMaskChange, resolveShotCoverageMasks } from '../coverage-mask';
 import { hasLayerVisualEffects, LayerVisualEffectsSchema, type LayerVisualEffects } from '../models/layerVisualEffects';
 import { AnimationSourceRangeSchema, type AnimationSourceRange } from '../models/animationSourceRange';
@@ -257,6 +277,8 @@ export type LayerServiceErrorCode =
   | 'FLA_GRAPHIC_REQUIRED'
   | 'COVERAGE_MASK_CONTROL_LAYER'
   | 'COVERAGE_MASK_LAYER_CONFLICT'
+  | 'PIN_WARP_LAYER_INVALID'
+  | 'PIN_WARP_INVALID'
   | 'SHAPE_SVG_REQUIRED'
   | 'SHAPE_NO_EDITABLE_REGIONS'
   | 'SHAPE_NODE_REQUIRED'
@@ -3008,6 +3030,239 @@ export class LayerService {
         entry === layer ? { ...entry, maskTargets: parsed } : entry,
       ),
     });
+  }
+
+  /**
+   * Resolves a Layer that may author a bitmap pin-warp (#1460): an unlocked,
+   * non-background ordinary image Layer. The prototype deliberately supports
+   * one bitmap asset per Layer, not characters/Graphics/video.
+   */
+  private pinWarpTarget(
+    project: Project,
+    shotId: string,
+    layerId: string,
+  ): { readonly shot: Shot; readonly layer: Layer; readonly rect: PinWarpRect } {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    this.assertEditable(shot, layer);
+    if (shot.backgroundLayerId === layer.id) {
+      throw new LayerServiceError(
+        'PIN_WARP_LAYER_INVALID',
+        '背景图层不支持控制点变形。',
+      );
+    }
+    if (layer.source.kind !== 'asset') {
+      throw new LayerServiceError(
+        'PIN_WARP_LAYER_INVALID',
+        '只有普通位图图层支持控制点变形。',
+      );
+    }
+    const source = layer.source;
+    const asset = project.assets.find((candidate) => candidate.id === source.assetId);
+    if (!asset || asset.kind !== 'image') {
+      throw new LayerServiceError(
+        'ASSET_TYPE_MISMATCH',
+        '控制点变形只支持图片素材。',
+      );
+    }
+    const rect = pinWarpRectForImage(asset.width, asset.height);
+    if (!rect) {
+      throw new LayerServiceError(
+        'PIN_WARP_LAYER_INVALID',
+        '图片素材尺寸无效，无法建立变形网格。',
+      );
+    }
+    return { shot, layer, rect };
+  }
+
+  private pinWarpAuthoringTimeMs(shot: Shot, requestedTimeMs: number): number {
+    return resolvePinWarpAuthoringTimeMs(requestedTimeMs, shot.durationMs);
+  }
+
+  /** One pin-warp authoring commit: validate, no-op when unchanged, replace Layer. */
+  private commitPinWarp(
+    project: Project,
+    shot: Shot,
+    layer: Layer,
+    nextPinWarp: PinWarp,
+  ): Project {
+    const parsed = PinWarpAuthoringSchema.safeParse(nextPinWarp);
+    if (!parsed.success) {
+      throw new LayerServiceError(
+        'PIN_WARP_INVALID',
+        parsed.error.issues[0]?.message ?? '控制点变形数据无效。',
+      );
+    }
+    const issues = validatePinWarpForShot(parsed.data, shot.durationMs);
+    if (issues.length > 0) {
+      throw new LayerServiceError(
+        'PIN_WARP_INVALID',
+        issues[0]!.message,
+      );
+    }
+    if (JSON.stringify(parsed.data) === JSON.stringify(layer.pinWarp ?? null)) {
+      return project;
+    }
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((entry) =>
+        entry.id === layer.id ? { ...entry, pinWarp: parsed.data } : entry,
+      ),
+    });
+  }
+
+  /** Enables a default pin-warp mesh with one pose at the requested frame. */
+  bindPinWarp(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    requestedTimeMs: number,
+  ): Project {
+    const { shot, layer, rect } = this.pinWarpTarget(project, shotId, layerId);
+    if (layer.pinWarp) return project;
+    return this.commitPinWarp(
+      project,
+      shot,
+      layer,
+      createPinWarp(
+        rect,
+        this.pinWarpAuthoringTimeMs(shot, requestedTimeMs),
+        PIN_WARP_DEFAULT_MESH,
+      ),
+    );
+  }
+
+  /** Removes the pin-warp authoring data; the Layer renders un-warped again. */
+  clearPinWarp(project: Project, shotId: string, layerId: string): Project {
+    const { shot, layer } = this.pinWarpTarget(project, shotId, layerId);
+    if (!layer.pinWarp) return project;
+    const { pinWarp: _previous, ...base } = layer;
+    void _previous;
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((entry) => (entry.id === layer.id ? base : entry)),
+    });
+  }
+
+  /** One pin drag: writes the pose at the requested frame (auto-keying). */
+  setPinWarpPin(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    requestedTimeMs: number,
+    pinIndex: number,
+    point: PinWarpPoint,
+  ): Project {
+    const { shot, layer } = this.pinWarpTarget(project, shotId, layerId);
+    if (!layer.pinWarp) {
+      throw new LayerServiceError('PIN_WARP_INVALID', '图层尚未启用控制点变形。');
+    }
+    const next = setPinWarpPinAtTime({
+      pinWarp: layer.pinWarp,
+      timeMs: this.pinWarpAuthoringTimeMs(shot, requestedTimeMs),
+      pinIndex,
+      point,
+    });
+    return this.commitPinWarp(project, shot, layer, next);
+  }
+
+  /** Explicitly records the currently evaluated pins as a pose key. */
+  addPinWarpPose(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    requestedTimeMs: number,
+  ): Project {
+    const { shot, layer } = this.pinWarpTarget(project, shotId, layerId);
+    if (!layer.pinWarp) {
+      throw new LayerServiceError('PIN_WARP_INVALID', '图层尚未启用控制点变形。');
+    }
+    return this.commitPinWarp(
+      project,
+      shot,
+      layer,
+      addPinWarpPoseAtTime(
+        layer.pinWarp,
+        this.pinWarpAuthoringTimeMs(shot, requestedTimeMs),
+      ),
+    );
+  }
+
+  /** Removes the exact-frame pose; the last pose is protected. */
+  removePinWarpPose(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    requestedTimeMs: number,
+  ): Project {
+    const { shot, layer } = this.pinWarpTarget(project, shotId, layerId);
+    if (!layer.pinWarp) {
+      throw new LayerServiceError('PIN_WARP_INVALID', '图层尚未启用控制点变形。');
+    }
+    return this.commitPinWarp(
+      project,
+      shot,
+      layer,
+      removePinWarpPoseAtTime(
+        layer.pinWarp,
+        this.pinWarpAuthoringTimeMs(shot, requestedTimeMs),
+      ),
+    );
+  }
+
+  /** Changes the deformation mesh density without touching pins or poses. */
+  setPinWarpMeshDensity(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    density: PinWarpMeshDensity,
+  ): Project {
+    const { shot, layer } = this.pinWarpTarget(project, shotId, layerId);
+    if (!layer.pinWarp) {
+      throw new LayerServiceError('PIN_WARP_INVALID', '图层尚未启用控制点变形。');
+    }
+    return this.commitPinWarp(
+      project,
+      shot,
+      layer,
+      applyPinWarpMeshDensity(layer.pinWarp, density),
+    );
+  }
+
+  /** Resets the exact-frame pose to the rest pin shape. */
+  resetPinWarpPose(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    requestedTimeMs: number,
+  ): Project {
+    const { shot, layer } = this.pinWarpTarget(project, shotId, layerId);
+    if (!layer.pinWarp) {
+      throw new LayerServiceError('PIN_WARP_INVALID', '图层尚未启用控制点变形。');
+    }
+    return this.commitPinWarp(
+      project,
+      shot,
+      layer,
+      resetPinWarpPoseToRest(
+        layer.pinWarp,
+        this.pinWarpAuthoringTimeMs(shot, requestedTimeMs),
+      ),
+    );
+  }
+
+  /** Reseeds the rest pin layout from the current image rect and all poses. */
+  reseedPinWarp(project: Project, shotId: string, layerId: string): Project {
+    const { shot, layer, rect } = this.pinWarpTarget(project, shotId, layerId);
+    if (!layer.pinWarp) {
+      throw new LayerServiceError('PIN_WARP_INVALID', '图层尚未启用控制点变形。');
+    }
+    return this.commitPinWarp(
+      project,
+      shot,
+      layer,
+      reseedPinWarpPins(layer.pinWarp, rect),
+    );
   }
 
   setVisualEffects(project: Project, shotId: string, layerId: string, effects?: LayerVisualEffects): Project {

@@ -37,6 +37,8 @@ import {
   type LayerTransformInput,
   type OrbitFlightInput,
   type PathArrayInput,
+  type PinWarpMeshDensity,
+  type PinWarpPoint,
   type Point,
   type Project,
   type RadialArrayInput,
@@ -1128,6 +1130,93 @@ export class LayerStore {
         next,
         targetLayerIds === null ? '解除图层遮罩' : '设置图层遮罩',
       );
+    }
+    return next;
+  }
+
+  /** Enables the bitmap pin-warp prototype on one Layer; one undo step. */
+  bindPinWarp(layerId: string, timeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.bindPinWarp(project, shotId, layerId, timeMs);
+    if (next !== project) {
+      this.editorStore.updateProject(next, '启用控制点变形');
+    }
+    return next;
+  }
+
+  /** Removes the pin-warp data; the Layer draws un-warped again. One undo step. */
+  clearPinWarp(layerId: string): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.clearPinWarp(project, shotId, layerId);
+    if (next !== project) {
+      this.editorStore.updateProject(next, '移除控制点变形');
+    }
+    return next;
+  }
+
+  /** One pin drag = one pose write / one undo entry; an unchanged drag writes nothing. */
+  setPinWarpPin(
+    layerId: string,
+    timeMs: number,
+    pinIndex: number,
+    point: PinWarpPoint,
+  ): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setPinWarpPin(
+      project,
+      shotId,
+      layerId,
+      timeMs,
+      pinIndex,
+      point,
+    );
+    if (next !== project) {
+      this.editorStore.updateProject(next, '拖动控制点');
+    }
+    return next;
+  }
+
+  addPinWarpPose(layerId: string, timeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.addPinWarpPose(project, shotId, layerId, timeMs);
+    if (next !== project) {
+      this.editorStore.updateProject(next, '记录控制点姿态');
+    }
+    return next;
+  }
+
+  removePinWarpPose(layerId: string, timeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.removePinWarpPose(project, shotId, layerId, timeMs);
+    if (next !== project) {
+      this.editorStore.updateProject(next, '删除控制点姿态');
+    }
+    return next;
+  }
+
+  setPinWarpMeshDensity(layerId: string, density: PinWarpMeshDensity): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setPinWarpMeshDensity(project, shotId, layerId, density);
+    if (next !== project) {
+      this.editorStore.updateProject(next, '调整变形网格');
+    }
+    return next;
+  }
+
+  resetPinWarpPose(layerId: string, timeMs: number): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.resetPinWarpPose(project, shotId, layerId, timeMs);
+    if (next !== project) {
+      this.editorStore.updateProject(next, '重置控制点姿态');
+    }
+    return next;
+  }
+
+  reseedPinWarp(layerId: string): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.reseedPinWarp(project, shotId, layerId);
+    if (next !== project) {
+      this.editorStore.updateProject(next, '重置控制点');
     }
     return next;
   }

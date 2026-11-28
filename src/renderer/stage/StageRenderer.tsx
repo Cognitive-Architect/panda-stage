@@ -8,7 +8,7 @@ import {
 } from 'react';
 import type Konva from 'konva';
 import { Group, Image as KonvaImage, Layer, Rect, Stage, Text } from 'react-konva';
-import type { CameraView, EvaluatedShot, Project } from '../../domain';
+import type { CameraView, EvaluatedPinWarpMesh, EvaluatedShot, Project } from '../../domain';
 import { resolveLayerCameraTransform } from '../../domain/shot-camera';
 import { StageLayerSpace } from './StageLayerSpace';
 import type { SubtitleStyle } from '../../domain';
@@ -69,6 +69,8 @@ import type { LayerVisualEffects } from '../../domain/models/layerVisualEffects'
 import type { LayerEffectPreview } from './LayerEffectPreview';
 import { cacheLayerVisualEffects } from './layerVisualEffects';
 import { drawStageLayersSynchronously } from './stage-draw-completion';
+import { PinWarpImage } from './PinWarpImage';
+import { resolvePinWarpDrawPlan } from './pinWarpCanvas';
 
 interface StageRendererProps {
   solidClear?: boolean;
@@ -225,6 +227,8 @@ interface StagePartImagesProps {
   visualBounds: VisualLocalRect;
   structuredVisual?: NonNullable<StageRenderLayer['visual']>['flaGraphic'];
   resources?: readonly StageRenderResource[];
+  /** Shared evaluated pin-warp mesh (#1460); null keeps the ordinary image path. */
+  pinWarp?: EvaluatedPinWarpMesh | null;
 }
 
 export function StagePartImages({
@@ -238,6 +242,7 @@ export function StagePartImages({
   visualBounds,
   structuredVisual,
   resources = [],
+  pinWarp = null,
 }: StagePartImagesProps): React.JSX.Element {
   const visualRef = useRef<Konva.Group | null>(null);
   const cachedVisualSignatureRef = useRef<string | null>(null);
@@ -417,6 +422,11 @@ export function StagePartImages({
     }
     const image = images.get(part.id);
     if (!image) return null;
+    if (pinWarp && orderedParts.length === 1) {
+      // #1460: one shared evaluated mesh, painted as clipped affine triangles
+      // on Canvas 2D. Mesh vertices already live in Layer-local coordinates.
+      return <PinWarpImage image={image} key={part.id} mesh={pinWarp} />;
+    }
     return (
       <KonvaImage
         height={render.height}
@@ -812,6 +822,16 @@ export function StageRenderer({
       data-coverage-mask-unresolved-layer-ids={JSON.stringify([
         ...coverageMaskClips.unresolvedMaskLayerIds,
       ])}
+      data-pin-warp-layer-ids={JSON.stringify(
+        displayModel!.layers
+          .filter((layer) => layer.pinWarp?.status === 'valid')
+          .map((layer) => layer.id),
+      )}
+      data-pin-warp-invalid-layer-ids={JSON.stringify(
+        displayModel!.layers
+          .filter((layer) => layer.pinWarp?.status === 'invalid')
+          .map((layer) => layer.id),
+      )}
       data-render-contract="shared-stage-layer-v1"
       data-stage-error={String(Boolean(error))}
       data-stage-display-ready={String(displayReady)}
@@ -850,6 +870,13 @@ export function StageRenderer({
             const clip = coverageMaskClips.clips.get(layer.id) ?? null;
             const image = imageState.images.get(primaryPart.id);
             if (!image && !layer.visual) return null;
+            // #1460: one shared decision for the per-triangle pin-warp texture
+            // path vs. the ordinary image path. Invalid/unsupported warp data
+            // resolves to `plain` and keeps the pre-#1460 rendering.
+            const pinWarpPlan = resolvePinWarpDrawPlan(layer, layer.visual, {
+              isBackground: render.isBackground,
+            });
+            const pinWarp = pinWarpPlan.kind === 'pin-warp' ? pinWarpPlan.mesh : null;
             if ((render.isBackground && layer.visual?.kind !== 'fla-graphic') || !layer.visual) {
               if (!image) return null;
               return (
@@ -896,6 +923,7 @@ export function StageRenderer({
                   images={imageState.images}
                   ownerLayerId={layer.id}
                   parts={layer.parts}
+                  pinWarp={pinWarp}
                   resources={layer.resources}
                   scheduleLayerDraw={drawMode === 'legacy-raf'}
                   structuredVisual={layer.visual.flaGraphic}

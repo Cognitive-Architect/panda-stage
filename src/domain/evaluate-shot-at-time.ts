@@ -60,6 +60,7 @@ import {
   type LayerBasePose,
 } from './layer-animation';
 import { resolveCharacterActionForLayer } from './character-part-animation';
+import { evaluateLayerPinWarp, type EvaluatedPinWarp } from './pin-warp';
 
 /**
  * A single evaluated layer at one exact moment. Its formal fields remain
@@ -101,6 +102,13 @@ export interface EvaluatedLayer {
    * was skipped because a higher-priority lock owns a shared ancestor.
    */
   endEffectorResiduals?: CharacterEndEffectorResidual[];
+  /**
+   * Transient bitmap pin-warp evaluation for this exact frame (#1460). Present
+   * only for Layers that author `pinWarp`; Stage, Preview, Export, and the
+   * editor all consume this one evaluated mesh. `invalid` means the local
+   * degradation path (draw the ordinary un-warped image).
+   */
+  pinWarp?: EvaluatedPinWarp;
   id: string;
   assetId: string;
   /** The formal Expression state before any transient Mouth projection. */
@@ -941,6 +949,27 @@ export function evaluateShotAtTime(
         eventsByLayer.get(layer.id) ?? [],
         options?.graphicFrameTimeMs,
       );
+      // #1460: the pin-warp mesh is resolved once per frame by the single
+      // formal evaluator; renderers never re-derive poses or deformation.
+      // Asset lookup stays inside the authored-warp branch so a Layer without
+      // `pinWarp` takes the exact pre-#1460 evaluation path (and structural
+      // probe callers without a full Project are unaffected).
+      let pinWarpAsset: { readonly width: number; readonly height: number; readonly kind: string } | null = null;
+      if (layer.pinWarp && layer.source.kind === 'asset') {
+        const sourceAssetId = layer.source.assetId;
+        const sourceAsset = project.assets.find(
+          (candidate) => candidate.id === sourceAssetId,
+        );
+        if (sourceAsset?.kind === 'image') pinWarpAsset = sourceAsset;
+      }
+      const pinWarp = layer.pinWarp
+        ? evaluateLayerPinWarp({
+            pinWarp: layer.pinWarp,
+            sourceKind: layer.source.kind,
+            asset: pinWarpAsset,
+            timeMs,
+          })
+        : undefined;
       const clip = layer.animationClip;
       const clipTimeMs =
         clip?.version === 2 && options?.graphicFrameTimeMs !== undefined
@@ -1003,6 +1032,7 @@ export function evaluateShotAtTime(
 
       return {
         id: layer.id,
+        ...(pinWarp ? { pinWarp } : {}),
         ...(animationValues ? { animationValues, animationTimeMs: timeMs } : {}),
         ...(faceTransform ? { faceTransform } : {}),
         ...(characterBonePose?.length ? { characterBonePose } : {}),

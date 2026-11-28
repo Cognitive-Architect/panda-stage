@@ -15,6 +15,7 @@ import {
 import { LAYER_ANCHOR } from '../constants';
 import { LAYER_DEPTH_MAX, LAYER_DEPTH_MIN } from '../constants';
 import { AnimationKeySchema } from './animationKeys';
+import { PinWarpSchema } from './pinWarp';
 import { FiniteNumberSchema, IdSchema, MillisecondsSchema, NameSchema } from './common';
 import { FlaGraphicShapeOverridesSchema } from '../fla-shape-vector';
 import { FlaGraphicInstanceTextOverridesSchema } from './flaGraphicInstanceText';
@@ -611,6 +612,13 @@ export const LayerSchema = LayerV46Schema.safeExtend({
   maskTargets: LayerCoverageMaskTargetsSchema.optional(),
   /** Per-instance end-effector locks (#1456). Optional so old projects stay byte-identical. */
   endEffectorLocks: CharacterEndEffectorLocksSchema.optional(),
+  /**
+   * Optional bitmap pin-warp mesh (#1460, R-D / R06 prototype). Additive
+   * per-Layer authoring data in layer-local image pixels; schema v47 stays
+   * unchanged and no migration is required. A Layer without this field renders
+   * exactly as before.
+   */
+  pinWarp: PinWarpSchema.optional(),
 }).superRefine((layer, context) => {
   if (layer.maskTargets?.includes(layer.id)) {
     context.addIssue({

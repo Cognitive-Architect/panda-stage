@@ -47,6 +47,7 @@ import { CharacterActionAtTimeControl } from '../features/properties/CharacterAc
 import { BatchLayerControls } from '../features/properties/BatchLayerControls';
 import { LayerEffectsPreviewControl } from '../features/properties/LayerEffectsPreviewControl';
 import { LayerCoverageMaskControl } from '../features/properties/LayerCoverageMaskControl';
+import { PinWarpControl } from '../features/properties/PinWarpControl';
 import { CharacterMotionTemplateControl } from '../features/properties/CharacterMotionTemplateControl';
 import { CharacterBodyPoseControl } from '../features/properties/CharacterBodyPoseControl';
 import { CharacterArmChainControl } from '../features/properties/CharacterArmChainControl';
@@ -810,6 +811,13 @@ export function RightInspector({
       {currentShot && selection.layer ? (
         <LayerCoverageMaskControl
           key={`mask:${currentShot.id}:${selection.layer.id}`}
+          layer={selection.layer}
+          shot={currentShot}
+        />
+      ) : null}
+      {currentShot && selection.layer ? (
+        <PinWarpControl
+          key={`pin-warp:${currentShot.id}:${selection.layer.id}`}
           layer={selection.layer}
           shot={currentShot}
         />

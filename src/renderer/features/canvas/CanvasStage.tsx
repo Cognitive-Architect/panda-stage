@@ -106,7 +106,8 @@ import {
   structuredChildTransformerScales,
 } from './LayerTransformer';
 import { ParentLayerTransformer } from './ParentLayerTransformer';
-import { SelectableLayer } from './SelectableLayer';
+import { SelectableLayer, type SelectableLayerPinWarp, type SelectableLayerPinWarpEditing } from './SelectableLayer';
+import { resolvePinWarpDrawPlan } from '../../stage/pinWarpCanvas';
 import { StageLayerSpace } from '../../stage/StageLayerSpace';
 import { CoverageMaskClipGroup } from '../../stage/coverageMaskClip';
 import { SubtitleRenderer } from '../subtitles/SubtitleRenderer';
@@ -1733,6 +1734,16 @@ export function CanvasStage({
                   maskLayerId: clip.maskLayerId,
                 })),
               )}
+              data-pin-warp-layer-ids={JSON.stringify(
+                (stageModel?.layers ?? [])
+                  .filter((stageLayer) => stageLayer.evaluated.pinWarp?.status === 'valid')
+                  .map((stageLayer) => stageLayer.layer.id),
+              )}
+              data-pin-warp-invalid-layer-ids={JSON.stringify(
+                (stageModel?.layers ?? [])
+                  .filter((stageLayer) => stageLayer.evaluated.pinWarp?.status === 'invalid')
+                  .map((stageLayer) => stageLayer.layer.id),
+              )}
               data-coverage-mask-unresolved-layer-ids={JSON.stringify([
                 ...coverageMaskClips.unresolvedMaskLayerIds,
               ])}
@@ -1813,6 +1824,66 @@ export function CanvasStage({
                           ? resolveCharacterView(snapshot.project, layer, visual)
                           : null;
                         const image = imageForStageLayer(stageLayer);
+                        // #1460: one shared decision + evaluated mesh for the
+                        // bitmap pin-warp path, matching Stage/Preview/Export.
+                        const pinWarpPlan = resolvePinWarpDrawPlan(
+                          stageLayer.evaluated,
+                          visual,
+                          { isBackground: render.isBackground },
+                        );
+                        const evaluatedPinWarp = stageLayer.evaluated.pinWarp;
+                        const pinWarp: SelectableLayerPinWarp | null =
+                          pinWarpPlan.kind === 'pin-warp' &&
+                          layer.pinWarp &&
+                          evaluatedPinWarp?.status === 'valid'
+                            ? {
+                                mesh: layer.pinWarp.mesh,
+                                restPins: layer.pinWarp.restPins,
+                                pins: evaluatedPinWarp.pins,
+                                rect: pinWarpPlan.mesh.rect,
+                                committed: pinWarpPlan.mesh,
+                              }
+                            : null;
+                        const pinWarpEditing: SelectableLayerPinWarpEditing | null =
+                          pinWarp && selectedLayerId === layer.id &&
+                          !displayCamera && !cameraTool && !pickingParent
+                            ? {
+                                enabled:
+                                  !layer.locked &&
+                                  !activeScenePreview &&
+                                  !render.isBackground &&
+                                  !armAssembly,
+                                pinRadius: Math.max(
+                                  6,
+                                  Math.min(
+                                    48,
+                                    16 /
+                                      Math.max(
+                                        0.1,
+                                        transform.scale *
+                                          Math.abs(stageLayer.render.scaleX),
+                                      ),
+                                  ),
+                                ),
+                                onCommitPin: (pinIndex, point) => {
+                                  try {
+                                    layerStore.setPinWarpPin(
+                                      layer.id,
+                                      timelineUiStore.getSnapshot().currentTimeMs,
+                                      pinIndex,
+                                      point,
+                                    );
+                                    setInteractionStatus('控制点姿态已记录。');
+                                  } catch (error) {
+                                    setInteractionStatus(
+                                      error instanceof Error
+                                        ? error.message
+                                        : '无法记录控制点姿态。',
+                                    );
+                                  }
+                                },
+                              }
+                            : null;
                         const editProjection =
                           flaGraphicEditActive &&
                           flaGraphicEditScope &&
@@ -2107,6 +2178,8 @@ export function CanvasStage({
                                  : null
                              }
                             effects={activeEffects?.layerId === layer.id ? activeEffects.effects : layer.visualEffects}
+                            pinWarp={pinWarp}
+                            pinWarpEditing={pinWarpEditing}
                             selected={selectedLayerId === layer.id}
                             visualSourceKeys={
                               temporalCanvasModel?.visualSourceKeysByLayer.get(
