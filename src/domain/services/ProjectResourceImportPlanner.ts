@@ -1148,6 +1148,18 @@ export function buildImportedProjectCandidate(options: {
             tip: { ...character.armChain.tip },
           }
         : undefined;
+      const armChains = character.armChains?.map((entry) => ({
+        ...entry,
+        chain: {
+          ...entry.chain,
+          segments: entry.chain.segments.map((segment) => ({
+            ...segment,
+            partId: remapPartId(segment.partId),
+            joint: { ...segment.joint },
+          })),
+          tip: { ...entry.chain.tip },
+        },
+      }));
       // Preserve motionMappings only when the referenced source character, its
       // source action, every rule's sourcePartId, the generatedActionId, and
       // every defined targetPartId are all completely remapped in this batch.
@@ -1259,6 +1271,7 @@ export function buildImportedProjectCandidate(options: {
         ...(actions ? { actions } : {}),
         ...(bodyPoses ? { bodyPoses } : {}),
         ...(armChain ? { armChain } : {}),
+        ...(armChains ? { armChains } : {}),
         ...(motionMappings && motionMappings.length > 0
           ? { motionMappings }
           : { motionMappings: undefined }),

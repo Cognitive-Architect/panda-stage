@@ -359,6 +359,20 @@ function createGraphicSourceProject(): {
         parts: [{ partId: partBodyId, properties: { 'transform.rotationDeg': 5 } }],
       },
     ],
+    armChains: [
+      {
+        id: randomUUID(),
+        name: '默认骨链',
+        kind: 'right-arm',
+        chain: {
+          segments: [
+            { partId: partBodyId, joint: { x: 0, y: 0 }, minDeg: -180, maxDeg: 180 },
+            { partId: partHeadId, joint: { x: 0, y: 0 }, minDeg: -180, maxDeg: 180 },
+          ],
+          tip: { x: 20, y: 0 },
+        },
+      },
+    ],
   };
 
   const project = makeBaseProject({
@@ -530,6 +544,21 @@ describe('ProjectResourceImportPlanner', () => {
             candidate.assetIdMap.get(src.fallbackAssetId),
           );
         }
+      }
+      // Named rigid chains keep their stable id/name while their Part references are remapped.
+      const sourceCharacter = src.project.characters[0]!;
+      const sourceChain = sourceCharacter.mode === 'adaptive-parts' ? sourceCharacter.armChains?.[0] : undefined;
+      const importedChain = importedChar.armChains?.[0];
+      expect(sourceChain).toBeDefined();
+      expect(importedChain).toBeDefined();
+      if (sourceChain && importedChain) {
+        expect(importedChain.id).toBe(sourceChain.id);
+        expect(importedChain.name).toBe(sourceChain.name);
+        const importedPartIds = new Set(importedChar.parts.map(({ partId }) => partId));
+        expect(importedChain.chain.segments.every(({ partId }) => importedPartIds.has(partId))).toBe(true);
+        expect(importedChain.chain.segments.map(({ partId }) => partId))
+          .not.toEqual(sourceChain.chain.segments.map(({ partId }) => partId));
+        expect(importedChain.chain.tip).toEqual(sourceChain.chain.tip);
       }
     }
   });

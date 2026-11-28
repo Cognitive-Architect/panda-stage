@@ -954,6 +954,39 @@ export const CharacterArmChainSchema = z.object({
 }).strict().refine(({ segments }) => new Set(segments.map(({ partId }) => partId)).size === segments.length &&
   segments.every(({ minDeg, maxDeg }) => minDeg <= maxDeg), 'Invalid rigid arm joints or limits.');
 
+/** User-facing role of a named rigid chain; purely descriptive metadata. */
+export const CHARACTER_ARM_CHAIN_KINDS = [
+  'left-arm',
+  'right-arm',
+  'left-leg',
+  'right-leg',
+  'custom',
+] as const;
+export const CharacterArmChainKindSchema = z.enum(CHARACTER_ARM_CHAIN_KINDS);
+export type CharacterArmChainKind = z.infer<typeof CharacterArmChainKindSchema>;
+
+/**
+ * Stable identity of the implicit chain that wraps a legacy `armChain`. It is a
+ * fixed UUID because persisted chain ids share the formal project id contract.
+ */
+export const DEFAULT_ARM_CHAIN_ID = '00000000-0000-4000-8000-000000000144';
+export const DEFAULT_ARM_CHAIN_NAME = '手臂';
+
+/** A named rigid chain. `chain` keeps the exact legacy arm-chain contract. */
+export const CharacterArmChainEntrySchema = z.object({
+  id: IdSchema,
+  name: NameSchema,
+  kind: CharacterArmChainKindSchema.optional(),
+  chain: CharacterArmChainSchema,
+}).strict();
+export type CharacterArmChainEntry = z.infer<typeof CharacterArmChainEntrySchema>;
+
+const CharacterArmChainsSchema = z.array(CharacterArmChainEntrySchema).max(8).refine((entries) => {
+  const ids = new Set(entries.map(({ id }) => id));
+  const names = new Set(entries.map(({ name }) => name.toLocaleLowerCase()));
+  return ids.size === entries.length && names.size === entries.length;
+}, 'Arm chain ids and names must be unique.');
+
 export const CharacterMotionMappingRuleSchema = z.object({
   sourcePartId: IdSchema,
   targetPartId: IdSchema.optional(),
@@ -1040,6 +1073,7 @@ const AdaptivePartsCharacterV39Schema = AdaptivePartsCharacterV37Schema.safeExte
 });
 const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV39Schema.safeExtend({
   bodyPoses: bodyPoseLibrary(CharacterBodyPoseSchema),
+  armChains: CharacterArmChainsSchema.optional(),
 });
 
 function validateExpressionTalkingSources(character: {
@@ -1097,6 +1131,37 @@ export type CharacterBodyPose = z.infer<typeof CharacterBodyPoseSchema>;
 export type CharacterArmChain = z.infer<typeof CharacterArmChainSchema>;
 export type CharacterMotionMappingRule = z.infer<typeof CharacterMotionMappingRuleSchema>;
 export type CharacterMotionMapping = z.infer<typeof CharacterMotionMappingSchema>;
+
+/** Structural input for the migration-free multi-chain resolver. */
+export interface CharacterArmChainSource {
+  /** Present so every Character union member is structurally acceptable. */
+  mode?: string;
+  armChain?: CharacterArmChain;
+  armChains?: readonly CharacterArmChainEntry[];
+}
+
+/**
+ * Resolves the named rigid chains of a Character. A project that only has the
+ * legacy single `armChain` is exposed as one default chain, so callers never
+ * need a migration to read multi-chain data.
+ */
+export function resolveCharacterArmChains(character: CharacterArmChainSource): CharacterArmChainEntry[] {
+  const chains = character.armChains ?? [];
+  if (chains.length > 0) return [...chains];
+  return character.armChain
+    ? [{ id: DEFAULT_ARM_CHAIN_ID, name: DEFAULT_ARM_CHAIN_NAME, kind: 'right-arm', chain: character.armChain }]
+    : [];
+}
+
+/** Resolves one chain by id, defaulting to the default chain or the first chain. */
+export function resolveCharacterArmChain(
+  character: CharacterArmChainSource,
+  chainId?: string,
+): CharacterArmChainEntry | undefined {
+  const chains = resolveCharacterArmChains(character);
+  if (chainId !== undefined) return chains.find(({ id }) => id === chainId);
+  return chains.find(({ id }) => id === DEFAULT_ARM_CHAIN_ID) ?? chains[0];
+}
 
 export function resolveExpressionVisualSource(expression: CharacterExpression): CharacterFaceSource {
   if (expression.visualSource) return expression.visualSource;
