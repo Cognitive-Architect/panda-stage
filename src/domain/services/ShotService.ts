@@ -254,6 +254,13 @@ export class ShotService {
             delete cloned.animationTimeLink;
           }
         }
+        if (cloned.maskTargets) {
+          // Duplicating a Shot regenerates its Layer ids; keep the authored
+          // coverage mask relationship inside the duplicated Shot.
+          cloned.maskTargets = cloned.maskTargets
+            .map((targetLayerId) => layerIds.get(targetLayerId))
+            .filter((targetLayerId): targetLayerId is string => targetLayerId !== undefined);
+        }
         return {
           ...cloned,
           id: layerId,

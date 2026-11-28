@@ -1,5 +1,10 @@
 import { applyLayerParenting } from './layer-parent-space';
 import { resolveLayerAnimationTimeLink } from './animation-time-link';
+import {
+  applyResolvedCoverageMasks,
+  resolveShotCoverageMasks,
+  type EvaluatedCoverageMask,
+} from './coverage-mask';
 import type { AffineMatrix2D } from '../shared/affine-matrix';
 import type {
   FlaGraphicDefinition,
@@ -49,6 +54,12 @@ import {
  */
 export interface EvaluatedLayer {
   visualEffects?: import('./models/layerVisualEffects').LayerVisualEffects;
+  /**
+   * Resolved author-level coverage mask relation for this exact frame (#1454).
+   * A `mask-layer` Layer supplies coverage and must not be drawn as ordinary
+   * output; a `masked-target` Layer is clipped by `maskLayerId`.
+   */
+  coverageMask?: EvaluatedCoverageMask;
   /** Inherited affine space. The ordinary pose and animation tracks stay local. */
   parentSpace?: AffineMatrix2D;
   parentSpaceUnavailable?: true;
@@ -838,6 +849,10 @@ export function evaluateShotAtTime(
   options?: { graphicFrameTimeMs?: number; includeShake?: boolean },
 ): EvaluatedShot {
   const timeMs = normalizeShotTimeMs(requestedTimeMs, shot.durationMs);
+  // Author-level coverage mask relations are resolved once from the authored
+  // Shot and projected onto the evaluated Layers; Renderers never re-derive
+  // them. Invalid relations degrade locally instead of failing the frame.
+  const coverageMaskResolution = resolveShotCoverageMasks(shot);
 
   const eventsByLayer = new Map<string, TimelineEvent[]>();
   for (const event of shot.timelineEvents) {
@@ -990,6 +1005,9 @@ export function evaluateShotAtTime(
     shotId: shot.id,
     timeMs,
     backgroundLayerId: shot.backgroundLayerId,
-    layers: applyLayerParenting(project, shot, layers, timeMs),
+    layers: applyResolvedCoverageMasks(
+      applyLayerParenting(project, shot, layers, timeMs),
+      coverageMaskResolution,
+    ),
   };
 }

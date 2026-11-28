@@ -51,6 +51,8 @@ import {
 } from '../models';
 import { invertAffineMatrix, multiplyAffineMatrices, type AffineMatrix2D } from '../../shared/affine-matrix';
 import { NameSchema } from '../models/common';
+import { LayerCoverageMaskTargetsSchema } from '../models/layerCoverageMask';
+import { assertCoverageMaskChange, resolveShotCoverageMasks } from '../coverage-mask';
 import { hasLayerVisualEffects, LayerVisualEffectsSchema, type LayerVisualEffects } from '../models/layerVisualEffects';
 import { AnimationSourceRangeSchema, type AnimationSourceRange } from '../models/animationSourceRange';
 import { ReusableAnimationSegmentSchema, type ReusableAnimationSegment } from '../models/reusableAnimationSegment';
@@ -223,6 +225,8 @@ export type LayerServiceErrorCode =
   | 'LAYER_LOCKED'
   | 'ID_GENERATION_FAILED'
   | 'FLA_GRAPHIC_REQUIRED'
+  | 'COVERAGE_MASK_CONTROL_LAYER'
+  | 'COVERAGE_MASK_LAYER_CONFLICT'
   | 'SHAPE_SVG_REQUIRED'
   | 'SHAPE_NO_EDITABLE_REGIONS'
   | 'SHAPE_NODE_REQUIRED'
@@ -1967,6 +1971,63 @@ export class LayerService {
     });
   }
 
+  /**
+   * Sets (or clears) an author-level coverage mask relationship (#1454).
+   * A Layer with `maskTargets` present is a mask layer and is not drawn as
+   * ordinary output content; the listed Layers are clipped by its coverage.
+   * `targetLayerIds === null` removes the mask relationship entirely.
+   */
+  setMaskTargets(
+    project: Project,
+    shotId: string,
+    layerId: string,
+    targetLayerIds: readonly string[] | null,
+  ): Project {
+    const shot = this.shot(project, shotId);
+    const layer = shot.layers[this.layerIndex(shot, layerId)]!;
+    this.assertContentLayer(shot, layer);
+    this.assertEditable(shot, layer);
+    if (layer.source.kind === 'control') {
+      throw new LayerServiceError(
+        'COVERAGE_MASK_CONTROL_LAYER',
+        '控制层没有可用于遮罩的画面。',
+      );
+    }
+    if (targetLayerIds === null) {
+      if (layer.maskTargets === undefined) return project;
+      const { maskTargets: _previous, ...base } = layer;
+      void _previous;
+      return this.replaceShot(project, {
+        ...shot,
+        layers: shot.layers.map((entry) => (entry === layer ? base : entry)),
+      });
+    }
+    const claimedMaskLayerId = resolveShotCoverageMasks(shot)
+      .maskLayerIdByTarget.get(layer.id);
+    if (claimedMaskLayerId !== undefined) {
+      throw new LayerServiceError(
+        'COVERAGE_MASK_LAYER_CONFLICT',
+        `图层“${layer.name}”当前被其他遮罩覆盖，不能同时作为遮罩。请先解除原遮罩。`,
+      );
+    }
+    const parsed = LayerCoverageMaskTargetsSchema.parse([...targetLayerIds]);
+    const previous = layer.maskTargets;
+    if (
+      previous !== undefined &&
+      previous.length === parsed.length &&
+      previous.every((id, index) => id === parsed[index])
+    ) {
+      return project;
+    }
+    assertCoverageMaskChange(shot, layer.id, parsed);
+    return this.replaceShot(project, {
+      ...shot,
+      layers: shot.layers.map((entry) =>
+        entry === layer ? { ...entry, maskTargets: parsed } : entry,
+      ),
+    });
+  }
+
   setVisualEffects(project: Project, shotId: string, layerId: string, effects?: LayerVisualEffects): Project {
     const shot = this.shot(project, shotId);
     const layer = shot.layers[this.layerIndex(shot, layerId)]!;
@@ -2432,15 +2493,22 @@ export class LayerService {
       return atTime.get(targetLayerId);
     };
     const remaining = shot.layers.filter((candidate) => candidate.id !== layer.id).map((candidate) => {
+      // Deleting a target Layer must not persist a dangling mask relationship.
+      const nextCandidate = candidate.maskTargets?.includes(layer.id)
+        ? {
+            ...candidate,
+            maskTargets: candidate.maskTargets.filter((id) => id !== layer.id),
+          }
+        : candidate;
       const baseRefsDeleted = candidate.parentLayerId === layerId;
       const keysRefDeleted = Boolean(candidate.parentKeys?.some((key) => key.parentLayerId === layerId));
-      if (!baseRefsDeleted && !keysRefDeleted) return candidate;
-      let nextCandidate = candidate;
+      if (!baseRefsDeleted && !keysRefDeleted) return nextCandidate;
+      let updatedCandidate = nextCandidate;
       if (baseRefsDeleted) {
         const baseIsActive = !candidate.parentKeys?.length || timeMs < candidate.parentKeys[0]!.timeMs;
         const basePose = poseAt(baseIsActive ? timeMs : 0, candidate.id);
-        nextCandidate = {
-          ...nextCandidate,
+        updatedCandidate = {
+          ...updatedCandidate,
           parentLayerId: undefined,
           parentAttachment: undefined,
           parentSpaceOffset: basePose?.parentSpace,
@@ -2454,8 +2522,8 @@ export class LayerService {
           const nextTime = candidate.parentKeys![index + 1]?.timeMs ?? Infinity;
           const isCurrentSegment = timeMs >= key.timeMs && timeMs < nextTime;
           const segPose = poseAt(isCurrentSegment ? timeMs : key.timeMs, candidate.id);
-          const preservedDepth = frozenParentKeyDepth(nextCandidate, segPose, false);
-          const preservedSpace = frozenDetachedKeyCameraSpace(nextCandidate, segPose);
+          const preservedDepth = frozenParentKeyDepth(updatedCandidate, segPose, false);
+          const preservedSpace = frozenDetachedKeyCameraSpace(updatedCandidate, segPose);
           return {
             timeMs: key.timeMs,
             parentLayerId: null,
@@ -2465,9 +2533,9 @@ export class LayerService {
             ...(preservedSpace ? { cameraSpace: preservedSpace } : {}),
           };
         });
-        nextCandidate = { ...nextCandidate, parentKeys: nextKeys };
+        updatedCandidate = { ...updatedCandidate, parentKeys: nextKeys };
       }
-      return nextCandidate;
+      return updatedCandidate;
     });
     const remainingShot = { ...shot, layers: remaining };
     return this.replaceShot(project, {
@@ -4121,6 +4189,9 @@ export class LayerService {
       rotationDeg,
       zIndex,
     };
+    // A duplicated/copied Layer is an ordinary Layer: copying the authored mask
+    // relationship would give one target several masks and change output.
+    if (duplicate.maskTargets !== undefined) delete duplicate.maskTargets;
     const motionBasis = { x: position.x, y: position.y, rotationDeg, scaleX: layer.scaleX, scaleY: layer.scaleY };
     if (duplicate.animationClip?.version === 2) {
       duplicate.animationClip = syncLayerAnimationClipBasis(duplicate.animationClip, duplicateId, motionBasis);

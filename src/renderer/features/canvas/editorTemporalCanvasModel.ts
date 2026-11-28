@@ -1,9 +1,11 @@
 import {
+  applyResolvedCoverageMasks,
   evaluateLayerMotionAtTime,
   buildEditorStageRenderModel,
   evaluateShotAtTime,
   projectShotDialogueVisual,
   resolveLayerImageAsset,
+  resolveShotCoverageMasks,
   type EditorStageRenderModel,
   type EvaluatedLayer,
   type EvaluatedShot,
@@ -130,7 +132,7 @@ function buildBaseEditorShot(project: Project, shot: Shot): EvaluatedShot {
     shotId: shot.id,
     timeMs: 0,
     backgroundLayerId: shot.backgroundLayerId,
-    layers,
+    layers: applyResolvedCoverageMasks(layers, resolveShotCoverageMasks(shot)),
   };
 }
 

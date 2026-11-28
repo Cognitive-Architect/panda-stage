@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { LayerVisualEffectsSchema } from './layerVisualEffects';
+import { LayerCoverageMaskTargetsSchema } from './layerCoverageMask';
 import { FlaInstanceColorSchema } from '../../shared/fla-instance-color';
 import { AnimationSourceRangeSchema } from './animationSourceRange';
 import {
@@ -548,6 +549,20 @@ export const LayerV46Schema = z.strictObject({
 
 export const LayerSchema = LayerV46Schema.safeExtend({
   visualEffects: LayerVisualEffectsSchema.optional(),
+  /**
+   * Author-level coverage mask targets (#1454). Present (possibly empty) means
+   * this Layer is a mask layer: it clips the listed layers and is never drawn as
+   * ordinary output content. Additive optional field; no schema version bump.
+   */
+  maskTargets: LayerCoverageMaskTargetsSchema.optional(),
+}).superRefine((layer, context) => {
+  if (layer.maskTargets?.includes(layer.id)) {
+    context.addIssue({
+      code: 'custom',
+      path: ['maskTargets'],
+      message: '图层不能遮罩自身。',
+    });
+  }
 });
 
 /** Exact persisted v16 layer shape before Graphic frame offsets and provenance. */
