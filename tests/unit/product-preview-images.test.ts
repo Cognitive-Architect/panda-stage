@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   evaluateShotAtTime,
   ProjectSchema,
+  type AnimationDefinition,
   type Project,
 } from '../../src/domain';
 import type { AssetCanvasImageReadResponse } from '../../src/shared/asset-canvas-image-api';
@@ -486,7 +487,7 @@ describe('Product Preview bounded-original image session — Phase 2 gate C', ()
         endBehavior: 'hold',
       },
     ]);
-    const baseAnimation = baseProject.animations[0]!;
+    const baseAnimation = baseProject.animations[0] as AnimationDefinition;
     const longFrameCount = 256;
     const longFrameAssets = Array.from({ length: longFrameCount }, (_, index) => ({
       id: `90000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,

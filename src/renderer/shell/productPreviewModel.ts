@@ -137,7 +137,11 @@ function getAnimationFrameAssetIdIndex(
 ): ReadonlySet<string> {
   const cached = animationFrameAssetIdIndex.get(animation);
   if (cached) return cached;
-  const index = new Set(animation.frames.map((frame) => frame.assetId));
+  const index = new Set(
+    animation.frames
+      .map((frame) => frame.assetId)
+      .filter((assetId): assetId is string => assetId !== undefined),
+  );
   animationFrameAssetIdIndex.set(animation, index);
   return index;
 }
@@ -217,7 +221,7 @@ function upcomingAnimationFrameAssetIds(
           ? (firstFrameIndex + frameStep) % animation.frames.length
           : firstFrameIndex + frameStep;
       const frame = animation.frames[frameIndex];
-      if (!frame) continue;
+      if (!frame || !frame.assetId) continue;
       pending.push({
         assetId: frame.assetId,
         aheadMs: firstFrameAheadMs + frameStep * frameDurationMs,
@@ -310,7 +314,7 @@ function retainedLoopAnimationAssetIds(
       const frameIndex =
         (loop.firstFrameIndex + frameOffset) % loop.frames.length;
       const frame = loop.frames[frameIndex];
-      if (frame) retainedAssetIds.add(frame.assetId);
+      if (frame?.assetId) retainedAssetIds.add(frame.assetId);
     }
     if (inspectedFrameCount >= PRODUCT_PREVIEW_MAX_RETAINED_LOOP_ASSETS) break;
     if (!hasMoreFrames) break;

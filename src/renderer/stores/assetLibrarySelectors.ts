@@ -314,7 +314,7 @@ export function filterAssetLibraryItems(
     )) return false;
     if (!normalizedQuery) return true;
     const values = item.kind === 'animation'
-      ? [item.animation.name, item.animation.source.basename, item.animation.source.targetName]
+      ? [item.animation.name, item.animation.source.basename ?? '', item.animation.source.targetName]
       : [
           item.entry.asset.name,
           item.entry.contextLabel,

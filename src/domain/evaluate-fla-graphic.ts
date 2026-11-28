@@ -599,12 +599,16 @@ export function evaluateFlaGraphicVisual(input: {
   const structureFrame = definition.structure?.frames.find(
     (candidate) => candidate.ordinal === frameOrdinal,
   ) ?? null;
-  const resourceAssetIds = new Set<string>(structureFrame ? [] : [frame.assetId]);
+  // A native Definition frame has no baked media asset; it renders from its structure.
+  const frameAssetId = frame.assetId ?? '';
+  const resourceAssetIds = new Set<string>(
+    structureFrame || !frame.assetId ? [] : [frame.assetId],
+  );
   if (!structureFrame) {
     const visual: EvaluatedFlaGraphicVisual = {
       mode,
       frameOrdinal,
-      frameAssetId: frame.assetId,
+      frameAssetId,
       ...(instanceColor ? { instanceColor } : {}),
       frameOffset: frame.offset,
       frameViewport: frame.sourceViewport,
@@ -714,9 +718,40 @@ export function evaluateFlaGraphicVisual(input: {
           node,
           authoredOrOverrideTransform,
         );
+        const authoredShapeNodeOverride =
+          node.type === 'opaque'
+            ? resolveEffectiveShapeNodeOverride(
+                definition,
+                mode,
+                frameOrdinal,
+                path,
+                instanceShapeOverrides,
+              )
+            : undefined;
+        const authoredExcludedRegionRefs = authoredShapeNodeOverride
+          ? new Set(authoredShapeNodeOverride.excludedRegionRefs)
+          : null;
+        const authoredRemainingRegions = authoredShapeNodeOverride
+          ? authoredShapeNodeOverride.regions.filter(
+              (region) => !authoredExcludedRegionRefs?.has(region.regionRef),
+            )
+          : null;
+        /**
+         * Authored-native Shapes draw from their editable vector regions, so a
+         * frame image fallback is not required for them. Imported opaque nodes
+         * keep the exact previous fallback requirement.
+         */
+        const authoredNativeVectorContent = Boolean(
+          node.type === 'opaque' &&
+            node.authored === 'native' &&
+            authoredRemainingRegions &&
+            (authoredRemainingRegions.length > 0 || (authoredShapeNodeOverride?.residueStrokes?.length ?? 0) > 0),
+        );
         const worldTransform = compose(parentEffectiveWorld, localTransform);
-        const fallbackReady = node.type !== 'opaque' || safeOpaqueFallback(node);
-        const clipResult = node.type === 'opaque' && fallbackReady && node.fallbackScope === 'frame-crop'
+        const fallbackReady = node.type !== 'opaque' ||
+          safeOpaqueFallback(node) ||
+          authoredNativeVectorContent;
+        const clipResult = node.type === 'opaque' && safeOpaqueFallback(node) && node.fallbackScope === 'frame-crop'
           // Safe opaque fallback images already contain their authored mask.
           ? { clips: [], valid: true }
           : evaluateClipPaths(node, parentAuthoredWorld, parentEffectiveWorld);
@@ -770,16 +805,6 @@ export function evaluateFlaGraphicVisual(input: {
             childTimelineContext,
           );
         }
-        const authoredShapeNodeOverride =
-          node.type === 'opaque'
-            ? resolveEffectiveShapeNodeOverride(
-                definition,
-                mode,
-                frameOrdinal,
-                path,
-                instanceShapeOverrides,
-              )
-            : undefined;
         const shapeNodeOverride =
           node.type === 'opaque' && shapeTweenTracksForNode.length > 0
             ? applyFlaShapeTweensToShapeNodeOverride({
@@ -909,7 +934,7 @@ export function evaluateFlaGraphicVisual(input: {
   const visual: EvaluatedFlaGraphicVisual = {
     mode,
     frameOrdinal,
-    frameAssetId: frame.assetId,
+    frameAssetId,
     ...(instanceColor ? { instanceColor } : {}),
     frameOffset: frame.offset,
     frameViewport: frame.sourceViewport,

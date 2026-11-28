@@ -262,7 +262,7 @@ function buildStaleCheckToken(
     const animation = project.animations.find((a) => a.id === animationId);
     if (animation) {
       for (const frame of animation.frames) {
-        assetIds.add(frame.assetId);
+        if (frame.assetId) assetIds.add(frame.assetId);
       }
     }
   }

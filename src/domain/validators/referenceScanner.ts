@@ -255,6 +255,135 @@ export function scanAssetReferences(
   return references;
 }
 
+export type AnimationDefinitionReferenceKind =
+  | 'shot-layer'
+  | 'shot-background'
+  | 'timeline-graphic-event'
+  | 'character-expression'
+  | 'character-mouth'
+  | 'character-talking'
+  | 'character-action'
+  | 'character-part'
+  | 'animation-segment';
+
+export interface AnimationDefinitionReference {
+  kind: AnimationDefinitionReferenceKind;
+  path: string;
+  label: string;
+}
+
+/**
+ * Lists every persisted owner that still references one Animation Definition.
+ * Reused by Definition deletion protection so a shared/native Graphic can never
+ * be removed while a Layer instance, Character part, event, or saved segment
+ * still points at it.
+ */
+export function scanAnimationDefinitionReferences(
+  project: Project,
+  animationId: string,
+): AnimationDefinitionReference[] {
+  const references: AnimationDefinitionReference[] = [];
+
+  project.shots.forEach((shot, shotIndex) => {
+    shot.layers.forEach((layer, layerIndex) => {
+      if (layer.source.kind !== 'animation' || layer.source.animationId !== animationId) return;
+      const isBackground = shot.backgroundLayerId === layer.id;
+      references.push({
+        kind: isBackground ? 'shot-background' : 'shot-layer',
+        path: `shots[${shotIndex}].layers[${layerIndex}].source.animationId`,
+        label: `镜头“${shot.name}”的${isBackground ? '背景' : '动画'}图层“${layer.name}”`,
+      });
+    });
+    shot.timelineEvents.forEach((event, eventIndex) => {
+      if (
+        (event.type === 'graphic-frame' || event.type === 'graphic-playback') &&
+        event.animationId === animationId
+      ) {
+        references.push({
+          kind: 'timeline-graphic-event',
+          path: `shots[${shotIndex}].timelineEvents[${eventIndex}].animationId`,
+          label: `镜头“${shot.name}”的元件帧事件`,
+        });
+      }
+    });
+  });
+
+  for (const [animationSegmentIndex, segment] of (project.animationSegments ?? []).entries()) {
+    if (segment.animationId !== animationId) continue;
+    references.push({
+      kind: 'animation-segment',
+      path: `animationSegments[${animationSegmentIndex}].animationId`,
+      label: `可复用片段“${segment.name}”`,
+    });
+  }
+
+  project.characters.forEach((character, characterIndex) => {
+    if (character.talkingAnimationId === animationId) {
+      references.push({
+        kind: 'character-talking',
+        path: `characters[${characterIndex}].talkingAnimationId`,
+        label: `角色“${character.name}”的说话动画`,
+      });
+    }
+    for (const [expressionId, source] of Object.entries(character.expressionTalkingSources ?? {})) {
+      if (source.animationId !== animationId) continue;
+      const expression = (character.expressions ?? []).find((entry) => entry.id === expressionId);
+      references.push({
+        kind: 'character-talking',
+        path: `characters[${characterIndex}].expressionTalkingSources.${expressionId}.animationId`,
+        label: `角色“${character.name}”的表情“${expression?.name ?? ''}”专属说话动画`,
+      });
+    }
+    for (const [poseIndex, pose] of (character.mouthPoseSet?.poses ?? []).entries()) {
+      if (pose.source.kind !== 'fla-graphic' || pose.source.animationId !== animationId) continue;
+      references.push({
+        kind: 'character-mouth',
+        path: `characters[${characterIndex}].mouthPoseSet.poses[${poseIndex}].source.animationId`,
+        label: `角色“${character.name}”的口型“${pose.name}”`,
+      });
+    }
+    if (
+      character.mouthOpenVisualSource &&
+      character.mouthOpenVisualSource.animationId === animationId
+    ) {
+      references.push({
+        kind: 'character-mouth',
+        path: `characters[${characterIndex}].mouthOpenVisualSource.animationId`,
+        label: `角色“${character.name}”的张嘴状态`,
+      });
+    }
+    (character.actions ?? []).forEach((action, actionIndex) => {
+      if (!('animationId' in action) || action.animationId !== animationId) return;
+      references.push({
+        kind: 'character-action',
+        path: `characters[${characterIndex}].actions[${actionIndex}].animationId`,
+        label: `角色“${character.name}”的动作`,
+      });
+    });
+    (character.expressions ?? []).forEach((expression, expressionIndex) => {
+      if (expression.visualSource?.animationId !== animationId) return;
+      references.push({
+        kind: 'character-expression',
+        path: `characters[${characterIndex}].expressions[${expressionIndex}].visualSource.animationId`,
+        label: `角色“${character.name}”的表情“${expression.name}”`,
+      });
+    });
+    if (character.mode === 'adaptive-parts') {
+      character.parts.forEach((part, partIndex) => {
+        const visualSource = resolveCharacterPartVisualSource(part);
+        if (visualSource.kind !== 'fla-graphic' || visualSource.animationId !== animationId) return;
+        references.push({
+          kind: 'character-part',
+          path: `characters[${characterIndex}].parts[${partIndex}].visualSource.animationId`,
+          label: `角色“${character.name}”的零件“${part.displayName ?? part.partId}”`,
+        });
+      });
+    }
+  });
+
+  return references;
+}
+
 export function scanCharacterReferences(
   project: Project,
   characterId: string,

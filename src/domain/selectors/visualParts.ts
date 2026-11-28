@@ -133,7 +133,7 @@ export interface VisualPartRenderTransform {
 export type VisualPartSource =
   | { kind: 'character-face-fla-graphic'; animationId: string; firstFrame: number }
   | { kind: 'asset'; assetId: string }
-  | { kind: 'animation-frame'; animationId: string; assetId: string }
+  | { kind: 'animation-frame'; animationId: string; assetId?: string }
   | { kind: 'character-body'; assetId: string }
   | { kind: 'character-head'; assetId: string }
   | { kind: 'character-expression'; expressionId: string; assetId: string }
@@ -1560,7 +1560,30 @@ export function resolveLayerVisualParts(
             drawOrder: 0,
             ownerZIndex: evaluated.zIndex,
           }]
-        : [];
+        : flaGraphic.structureFrame
+          ? [{
+              // A native Definition has no baked frame asset; the structured
+              // visual above is the only display source (same render path as a
+              // source-backed Definition).
+              partId: layer.id + ':animation-frame',
+              ownerLayerId: layer.id,
+              slot: 'single',
+              source: {
+                kind: 'animation-frame',
+                animationId: animation.id,
+              },
+              localRect: {
+                x: -flaGraphic.canvas.width / 2,
+                y: -flaGraphic.canvas.height / 2,
+                width: flaGraphic.canvas.width,
+                height: flaGraphic.canvas.height,
+              },
+              rotationDeg: 0,
+              flipX: false,
+              drawOrder: 0,
+              ownerZIndex: evaluated.zIndex,
+            }]
+          : [];
       const required = flaGraphic.resourceAssetIds.flatMap((assetId) => {
         const resource = project.assets.find(
           (candidate) => candidate.id === assetId && candidate.kind === 'image',
@@ -1633,12 +1656,14 @@ export function resolveLayerVisualParts(
       drawOrder: 0,
       ownerZIndex: evaluated.zIndex,
     };
-    const otherFrames = animation.frames
-      .filter((candidate) => candidate.assetId !== asset.id)
-      .map((candidate) => ({
-        assetId: candidate.assetId,
-        reason: 'animation-frame' as const,
-      }));
+    const otherFrames = animation.frames.flatMap((candidate) =>
+      candidate.assetId && candidate.assetId !== asset.id
+        ? [{
+            assetId: candidate.assetId,
+            reason: 'animation-frame' as const,
+          }]
+        : [],
+    );
     return {
       ...baseResult(
         evaluated,

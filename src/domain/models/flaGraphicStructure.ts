@@ -88,6 +88,12 @@ const NodeBase = {
   /** Stable node identity: the source address, or a deterministic path fallback. */
   id: SourceTextSchema,
   sourceAddress: SourceTextSchema.optional(),
+  /**
+   * Present when this node's content was authored inside Panda (native Graphic
+   * Definition) rather than captured from an external FLA archive. Imported
+   * nodes never carry it, so imported editability rules stay unchanged.
+   */
+  authored: z.literal('native').optional(),
   /** Index among siblings in authored back-to-front draw order. */
   drawOrder: z.number().int().nonnegative(),
   localTransform: FlaStructureMatrixV1Schema,
@@ -108,6 +114,7 @@ export type FlaGraphicStructureNode =
       type: 'group';
       id: string;
       sourceAddress?: string;
+      authored?: 'native';
       drawOrder: number;
       localTransform: z.infer<typeof FlaStructureMatrixV1Schema>;
       clipPaths?: z.infer<typeof FlaStructureClipPathV1Schema>[];
@@ -118,6 +125,7 @@ export type FlaGraphicStructureNode =
       type: 'symbol';
       id: string;
       sourceAddress?: string;
+      authored?: 'native';
       drawOrder: number;
       localTransform: z.infer<typeof FlaStructureMatrixV1Schema>;
       clipPaths?: z.infer<typeof FlaStructureClipPathV1Schema>[];
@@ -142,6 +150,7 @@ export type FlaGraphicStructureNode =
       type: 'bitmap';
       id: string;
       sourceAddress?: string;
+      authored?: 'native';
       drawOrder: number;
       localTransform: z.infer<typeof FlaStructureMatrixV1Schema>;
       clipPaths?: z.infer<typeof FlaStructureClipPathV1Schema>[];
@@ -156,6 +165,7 @@ export type FlaGraphicStructureNode =
       type: 'opaque';
       id: string;
       sourceAddress?: string;
+      authored?: 'native';
       drawOrder: number;
       localTransform: z.infer<typeof FlaStructureMatrixV1Schema>;
       clipPaths?: z.infer<typeof FlaStructureClipPathV1Schema>[];
@@ -526,6 +536,7 @@ function canonicalizeStructureNode(node: FlaGraphicStructureNode): unknown {
       ty: node.localTransform.ty,
     },
     ...(node.sourceAddress ? { sourceAddress: node.sourceAddress } : {}),
+    ...(node.authored ? { authored: node.authored } : {}),
     ...(node.clipPaths ? { clipPaths: node.clipPaths } : {}),
   };
   if (node.type === 'group') {
@@ -666,8 +677,10 @@ export function sameAuthoredStructure(
 }
 
 /**
- * Whether an `opaque` node is an isolated Shape SVG that can be safely moved,
- * rotated, and scaled as a whole block without touching sibling/frame-crop nodes.
+ * Whether an `opaque` node is an editable isolated Shape that can be safely
+ * moved, rotated, and scaled as a whole block without touching sibling/frame-crop
+ * nodes. Authored-native Shapes carry their vector regions in the Definition's
+ * shape overrides instead of a fallback SVG asset, so they qualify too.
  */
 export function isFlaGraphicEditableSubtreeShapeNode(
   node: FlaGraphicStructureNode,
@@ -676,7 +689,8 @@ export function isFlaGraphicEditableSubtreeShapeNode(
     node.type === 'opaque' &&
     node.opaqueKind === 'shape' &&
     node.fallbackScope === 'subtree' &&
-    Boolean(node.fallbackAssetId && node.fallbackViewBox)
+    Boolean(node.fallbackViewBox) &&
+    (node.authored === 'native' || Boolean(node.fallbackAssetId))
   );
 }
 

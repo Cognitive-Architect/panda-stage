@@ -43,7 +43,9 @@ export function listCharacterActionVisualAssetIds(project: Project, shot: Shot):
       ? project.animations.find((candidate) => candidate.id === action.animationId)
       : undefined;
     if (!animation) continue;
-    for (const frame of animation.frames) assetIds.add(frame.assetId);
+    for (const frame of animation.frames) {
+      if (frame.assetId) assetIds.add(frame.assetId);
+    }
     if (isFlaGraphicDefinition(animation)) {
       for (const frame of animation.frames) {
         const visual = evaluateFlaGraphicVisual({

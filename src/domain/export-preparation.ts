@@ -462,7 +462,9 @@ function addShotAnimationMedia(
     if (!animation) continue;
     const resourceIds = ensureAnimationResources(animation.id);
     if (!('kind' in animation) || animation.kind !== 'fla-graphic') {
-      for (const frame of animation.frames) resourceIds.add(frame.assetId);
+      for (const frame of animation.frames) {
+        if (frame.assetId) resourceIds.add(frame.assetId);
+      }
       continue;
     }
     const definition = animation as FlaGraphicDefinition;
@@ -490,7 +492,7 @@ function addShotAnimationMedia(
       );
       if (structureFrame) {
         for (const layer of structureFrame.layers) collectNodeResources(layer.nodes);
-      } else {
+      } else if (frame.assetId) {
         resourceIds.add(frame.assetId);
       }
     }

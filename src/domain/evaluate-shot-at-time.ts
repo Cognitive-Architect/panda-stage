@@ -398,7 +398,9 @@ function resolveAnimationFrame(
   const frame = selectedSample ? animation.frames[selectedSample.frameOrdinal] ?? state.frame : state.frame;
   const internalTimeMs = selectedSample?.internalTimeMs ?? state.internalTimeMs;
   return {
-    assetId: frame.assetId,
+    // Native FLA Graphic Definitions have no baked frame media asset; the
+    // structured animationFrame below is their display source.
+    assetId: frame.assetId ?? null,
     currentExpressionId: null,
     animationVisible:
       elapsedMs >= 0 &&

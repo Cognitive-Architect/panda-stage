@@ -770,7 +770,9 @@ export class FlaGraphicInstanceCommitService {
         isolatedAssetMap,
       );
       if (reused && upgradeStructure && batch.structure) {
-        const frameAssetIds = reused.frames.map((frame) => frame.assetId);
+        const frameAssetIds = reused.frames.flatMap((frame) =>
+          frame.assetId ? [frame.assetId] : [],
+        );
         let boundStructure = bindFallbackAssetToStructure(reused.structure ?? batch.structure, frameAssetIds, isolatedAssetMap);
         if (bitmapAssetMap.size > 0) {
           boundStructure = bindBitmapAssetsToStructure(boundStructure, bitmapAssetMap, batch.source.basename);

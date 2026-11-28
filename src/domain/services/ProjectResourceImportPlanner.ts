@@ -2,12 +2,14 @@ import {
   isFlaGraphicDefinition,
   ProjectSchema,
   resolveCharacterPartVisualSource,
+  type AnimationDefinition,
   type Asset,
   type Character,
   type CharacterAction,
   type CharacterBodyPose,
   type CharacterExpression,
   type CharacterMotionMapping,
+  type FlaGraphicDefinition,
   type FlaGraphicStructure,
   type FlaGraphicStructureNode,
   type ImageAsset,
@@ -344,10 +346,10 @@ export function collectProjectResourceClosure(
       );
       if (hasStructureFrame) {
         // Optional display/fallback SVG frame asset if present in source project.
-        if (assetsById.has(frame.assetId)) {
+        if (frame.assetId && assetsById.has(frame.assetId)) {
           collectAsset(frame.assetId, 'image', animLabel);
         }
-      } else {
+      } else if (frame.assetId) {
         collectAsset(frame.assetId, 'image', animLabel);
       }
     }
@@ -1027,11 +1029,11 @@ export function buildImportedProjectCandidate(options: {
     (animation) => {
       const targetId = remapAnimation(animation.id);
       const targetName = animationNameMap.get(animation.id)!;
-      const frames = animation.frames.map((frame) => ({
-        ...frame,
-        assetId: remapAssetOptional(frame.assetId),
-      }));
       if (isFlaGraphicDefinition(animation)) {
+        const frames: FlaGraphicDefinition['frames'] = animation.frames.map((frame) => ({
+          ...frame,
+          ...(frame.assetId ? { assetId: remapAssetOptional(frame.assetId) } : {}),
+        }));
         return {
           ...animation,
           id: targetId,
@@ -1047,11 +1049,15 @@ export function buildImportedProjectCandidate(options: {
             : {}),
         };
       }
+      const plainFrames: AnimationDefinition['frames'] = animation.frames.map((frame) => ({
+        ...frame,
+        assetId: remapAssetOptional(frame.assetId as string),
+      }));
       return {
         ...animation,
         id: targetId,
         name: targetName,
-        frames,
+        frames: plainFrames,
       };
     },
   );

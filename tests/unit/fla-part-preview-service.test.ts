@@ -913,7 +913,7 @@ describe('F1-02 Main part preview service', () => {
       // Hidden Export receives only the assets frozen into its export snapshot.
       const exportUrls = Object.fromEntries(collectExportPreparationMedia(reopened)
         .map(({ asset }) => [asset.id, 'export-asset:' + asset.id]));
-      expect(exportUrls[definition.frames[0]!.assetId]).toBeUndefined();
+      expect(exportUrls[definition.frames[0]!.assetId ?? '']).toBeUndefined();
       const exportStage = buildStageRenderModel(reopened, evaluated, exportUrls);
       for (const layer of exportStage.layers) {
         expect(layer.visual?.flaGraphic?.instanceColor).toEqual(importedLayers.get(layer.id)!.effect);
