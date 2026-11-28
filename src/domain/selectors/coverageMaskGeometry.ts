@@ -19,7 +19,12 @@ import type { FlaGraphicStructureNode } from '../models';
 import type { LayerVisualParts } from './visualParts';
 import { visualPartRenderTransform } from './visualParts';
 import {
+  coverageBoundsDisjoint,
+  coverageContourBounds,
+  coverageContourHasCurve,
   convertCoverageRegionToNonzero,
+  type CoverageMaskBounds,
+  type CoverageMaskFillRule,
   type CoverageMaskFillRuleIssueCode,
 } from './coverageMaskFillRule';
 
@@ -36,11 +41,29 @@ import {
  *
  * #1464 R3: coverage is collected recursively from the actual drawable
  * descendants (never from a Group/Symbol/Layer bounding box), with every region
- * normalized to a single `nonzero` winding by `coverageMaskFillRule.ts`. A mask
- * that resolves to no drawable filled geometry is a *valid empty* coverage (the
+ * normalized to a single winding by `coverageMaskFillRule.ts`. A mask that
+ * resolves to no drawable filled geometry is a *valid empty* coverage (the
  * targets are clipped to nothing, matching the FLA `destination-in` semantics),
  * while geometry that cannot be represented is reported as typed, per-Layer
  * `unsupported` and only that mask degrades to unclipped output.
+ *
+ * #1469 F4 exactness boundary:
+ * - Line-only (polygon) regions are normalized exactly by
+ *   `coverageMaskFillRule.ts`; every merged region then has non-negative
+ *   winding, so one `nonzero` clip is their exact union.
+ * - Bézier regions are never converted from a polyline approximation. When the
+ *   whole mask is a single authored region, or when same-rule regions have
+ *   provably disjoint exact bounds, the authored curves are emitted unchanged
+ *   with their authored fill rule/`nonzero` winding, which is exact by
+ *   definition. Any other curve region that would need a fill-rule
+ *   conversion/merge is reported as `unsupported-curve-fill-rule` and is
+ *   degraded locally (other regions of the same mask, other masks, and other
+ *   Layers keep working).
+ * - No curve geometry is sampled anywhere in this decision path. The remaining
+ *   approximations are outside the fill-rule decision: path data is serialized
+ *   with 4-decimal coordinates (pre-existing vector pipeline) and a mask
+ *   graphic's internal FLA `clipPaths` are not intersected with its coverage
+ *   (pre-existing F07 boundary).
  *
  * Deliberately out of scope for F07: alpha/luminance masks, soft edges,
  * arbitrary mask nesting, text-node coverage, and bitmap texel alpha.
@@ -73,8 +96,14 @@ export type CoverageMaskGeometryStatus = 'resolved' | 'empty' | 'unsupported';
 
 export interface CoverageMaskGeometryResolution {
   readonly status: CoverageMaskGeometryStatus;
-  /** Every region converted to a single non-negative `nonzero` winding. */
+  /** Paths for exactly one clip; see {@link fillRule}. */
   readonly paths: readonly CoverageMaskClipPath[];
+  /**
+   * Author fill rule required by `paths`. `nonzero` whenever any region was
+   * normalized; the mask's authored `evenodd` rule only survives for a
+   * single-region (or provably disjoint same-rule) curve mask.
+   */
+  readonly fillRule: CoverageMaskFillRule;
   readonly issues: readonly CoverageMaskGeometryIssue[];
 }
 
@@ -82,6 +111,8 @@ export interface CoverageMaskClip {
   /** Mask Layer that supplies the coverage. */
   readonly maskLayerId: string;
   readonly paths: readonly CoverageMaskClipPath[];
+  /** Fill rule the whole clip must be rendered with. */
+  readonly fillRule: CoverageMaskFillRule;
   /** True for valid empty coverage: targets are clipped to nothing. */
   readonly empty: boolean;
   /** Typed local degradations; representable regions still clip. */
@@ -312,9 +343,31 @@ function graphicLeafRectSize(
   return null;
 }
 
+/**
+ * One drawable coverage path.
+ *
+ * `normalized` contributions were converted to a non-negative `nonzero`
+ * winding (polygon regions, positive-winding bitmap rectangles), so they can
+ * overlap each other and the authored curves below without cancellation.
+ * Non-normalized contributions are authored Bézier regions emitted verbatim:
+ * they are exact on their own (path + authored rule) and are only merged into a
+ * shared clip when their exact bounds are provably disjoint from every other
+ * kept contribution.
+ */
+interface CoverageContribution {
+  readonly d: string;
+  /** Exact for polygons, conservative for curves (control-point hull). */
+  readonly bounds: CoverageMaskBounds;
+  /** Fill rule that renders this contribution exactly. */
+  readonly fillRule: CoverageMaskFillRule;
+  readonly normalized: boolean;
+  readonly nodePath?: readonly string[];
+  readonly regionRef?: string;
+}
+
 interface CoverageCollection {
   readonly maskLayerId: string;
-  readonly paths: CoverageMaskClipPath[];
+  readonly contributions: CoverageContribution[];
   readonly issues: CoverageMaskGeometryIssue[];
   /** A drawable leaf/region could not be represented faithfully. */
   sawUnsupported: boolean;
@@ -325,6 +378,49 @@ function pushIssue(
   issue: Omit<CoverageMaskGeometryIssue, 'maskLayerId'>,
 ): void {
   collection.issues.push({ ...issue, maskLayerId: collection.maskLayerId });
+}
+
+function unionBounds(left: CoverageMaskBounds, right: CoverageMaskBounds): CoverageMaskBounds {
+  return {
+    minX: Math.min(left.minX, right.minX),
+    minY: Math.min(left.minY, right.minY),
+    maxX: Math.max(left.maxX, right.maxX),
+    maxY: Math.max(left.maxY, right.maxY),
+  };
+}
+
+function contoursBounds(
+  contours: readonly (readonly FlaVectorPathCommand[])[],
+): CoverageMaskBounds | null {
+  let bounds: CoverageMaskBounds | null = null;
+  for (const commands of contours) {
+    const next = coverageContourBounds(commands);
+    if (!next) continue;
+    bounds = bounds ? unionBounds(bounds, next) : next;
+  }
+  return bounds;
+}
+
+function rectBounds(
+  matrix: AffineMatrix2D,
+  width: number,
+  height: number,
+): CoverageMaskBounds {
+  const corners = [
+    { x: 0, y: 0 },
+    { x: width, y: 0 },
+    { x: width, y: height },
+    { x: 0, y: height },
+  ].map(({ x, y }) => ({
+    x: matrix.a * x + matrix.c * y + matrix.tx,
+    y: matrix.b * x + matrix.d * y + matrix.ty,
+  }));
+  return {
+    minX: Math.min(...corners.map((corner) => corner.x)),
+    minY: Math.min(...corners.map((corner) => corner.y)),
+    maxX: Math.max(...corners.map((corner) => corner.x)),
+    maxY: Math.max(...corners.map((corner) => corner.y)),
+  };
 }
 
 /**
@@ -361,10 +457,29 @@ function appendNodeCoverage(
         // Drawable but not painted: a valid, empty coverage contribution.
         continue;
       }
+      const contours = region.contours.map((contour) =>
+        transformCommands(contour.commands, viewMatrix));
+      if (contours.some((commands) => coverageContourHasCurve(commands))) {
+        // #1469 F4: never claim a fill-rule equivalence from a flattened curve.
+        // Keep the authored path + its authored rule exactly; whether it can
+        // join a shared clip is decided once every contribution is known.
+        const bounds = contoursBounds(contours);
+        const d = contours.map((commands) => commandsToSvgPathD(commands)).join(' ').trim();
+        if (d && bounds) {
+          collection.contributions.push({
+            d,
+            bounds,
+            fillRule: region.fill.fillRule,
+            normalized: false,
+            nodePath: node.path,
+            regionRef: region.regionRef,
+          });
+        }
+        continue;
+      }
       const converted = convertCoverageRegionToNonzero({
         fillRule: region.fill.fillRule,
-        contours: region.contours.map((contour) =>
-          transformCommands(contour.commands, viewMatrix)),
+        contours,
       });
       if (!converted.ok) {
         collection.sawUnsupported = true;
@@ -376,11 +491,21 @@ function appendNodeCoverage(
         });
         continue;
       }
+      const bounds = contoursBounds(converted.contours);
       const d = converted.contours
         .map((contour) => commandsToSvgPathD(contour))
         .join(' ')
         .trim();
-      if (d) collection.paths.push({ d });
+      if (d && bounds) {
+        collection.contributions.push({
+          d,
+          bounds,
+          fillRule: 'nonzero',
+          normalized: true,
+          nodePath: node.path,
+          regionRef: region.regionRef,
+        });
+      }
     }
     // Residue strokes are not filled coverage; F07 masks only filled shapes.
   } else if (node.staticText) {
@@ -394,8 +519,12 @@ function appendNodeCoverage(
   } else if (node.source.type === 'bitmap' || node.source.type === 'opaque') {
     const size = graphicLeafRectSize(node.source, imageSizes);
     if (size) {
-      collection.paths.push({
+      collection.contributions.push({
         d: positiveWindingRectPathD(nodeMatrix, 0, 0, size.width, size.height),
+        bounds: rectBounds(nodeMatrix, size.width, size.height),
+        fillRule: 'nonzero',
+        normalized: true,
+        nodePath: node.path,
       });
     } else {
       collection.sawUnsupported = true;
@@ -438,18 +567,100 @@ function graphicCollection(
 ): CoverageCollection {
   return {
     maskLayerId,
-    paths: [],
+    contributions: [],
     issues: [],
     sawUnsupported: false,
   };
 }
 
-function collectionStatus(collection: CoverageCollection): CoverageMaskGeometryStatus {
-  if (collection.paths.length > 0) return 'resolved';
-  // Geometry that exists but cannot be represented must never be mistaken for
-  // an intentionally empty coverage (which clips the targets away).
-  if (collection.sawUnsupported) return 'unsupported';
-  return 'empty';
+interface ResolvedCoverageCollection {
+  readonly status: CoverageMaskGeometryStatus;
+  readonly paths: CoverageMaskClipPath[];
+  readonly fillRule: CoverageMaskFillRule;
+  readonly issues: CoverageMaskGeometryIssue[];
+}
+
+/**
+ * Decides the single clip rule and the merge-safe contribution set.
+ *
+ * Exactness rules (#1469 F4):
+ * - A single contribution is emitted with its own authored path and rule.
+ * - Multiple normalized (polygon/bitmap) contributions are all non-negative, so
+ *   a `nonzero` clip is their union.
+ * - An authored Bézier contribution is exact on its own, but its winding could
+ *   cancel another contribution. It is kept only when its conservative exact
+ *   bounds are disjoint from every other kept contribution: then no point is
+ *   shared with anything else and the authored winding cannot combine.
+ * - Multiple authored `evenodd` contributions can share one `evenodd` clip when
+ *   they are pairwise disjoint (the clip parity is the XOR of disjoint sets,
+ *   i.e. their union); otherwise they are degraded locally.
+ * - Everything else is a typed `unsupported-curve-fill-rule` degradation; other
+ *   representable regions of the same mask still clip.
+ */
+function resolveCollection(collection: CoverageCollection): ResolvedCoverageCollection {
+  const issues = [...collection.issues];
+  let sawUnsupported = collection.sawUnsupported;
+  const drop = (contribution: CoverageContribution, detail: string): void => {
+    sawUnsupported = true;
+    issues.push({
+      code: 'unsupported-curve-fill-rule',
+      maskLayerId: collection.maskLayerId,
+      ...(contribution.nodePath ? { nodePath: contribution.nodePath } : {}),
+      ...(contribution.regionRef ? { regionRef: contribution.regionRef } : {}),
+      detail,
+    });
+  };
+
+  const contributions = collection.contributions;
+  let kept: CoverageContribution[];
+  let fillRule: CoverageMaskFillRule;
+  if (contributions.length === 0) {
+    kept = [];
+    fillRule = 'nonzero';
+  } else if (contributions.length === 1) {
+    kept = contributions;
+    fillRule = contributions[0]!.fillRule;
+  } else if (contributions.every((contribution) => contribution.fillRule === 'evenodd')) {
+    // Every polygon region was normalized to `nonzero`, so this branch is a set
+    // of authored Bézier evenodd regions. One evenodd clip is their exact XOR,
+    // which equals their union while their exact bounds stay disjoint.
+    kept = [];
+    for (const contribution of contributions) {
+      if (kept.some((other) => !coverageBoundsDisjoint(other.bounds, contribution.bounds))) {
+        drop(contribution, 'overlapping evenodd curve coverage cannot share one clip');
+      } else {
+        kept.push(contribution);
+      }
+    }
+    fillRule = 'evenodd';
+  } else {
+    // A single clip needs a homogeneous representation: authored evenodd curve
+    // regions cannot be converted into a `nonzero` union, and normalized regions
+    // cannot be re-rendered with `evenodd` without losing their overlaps.
+    const usable: CoverageContribution[] = [];
+    for (const contribution of contributions) {
+      if (contribution.fillRule === 'evenodd') {
+        drop(contribution, 'evenodd curve coverage cannot join a heterogeneous fill-rule clip');
+      } else {
+        usable.push(contribution);
+      }
+    }
+    kept = usable.filter((contribution) => contribution.normalized);
+    for (const contribution of usable) {
+      if (contribution.normalized) continue;
+      if (kept.some((other) => !coverageBoundsDisjoint(other.bounds, contribution.bounds))) {
+        drop(contribution, 'curve coverage overlaps another region and cannot be merged into one nonzero winding');
+      } else {
+        kept.push(contribution);
+      }
+    }
+    fillRule = 'nonzero';
+  }
+
+  const paths: CoverageMaskClipPath[] = kept.map((contribution) => ({ d: contribution.d }));
+  const status: CoverageMaskGeometryStatus =
+    paths.length > 0 ? 'resolved' : sawUnsupported ? 'unsupported' : 'empty';
+  return { status, paths, fillRule, issues };
 }
 
 /**
@@ -530,6 +741,7 @@ export function resolveCoverageMaskGeometry(input: {
     return {
       status: 'unsupported',
       paths: [],
+      fillRule: 'nonzero',
       issues: [{
         code: 'unknown-layer-bounds',
         maskLayerId,
@@ -546,10 +758,12 @@ export function resolveCoverageMaskGeometry(input: {
       imageSizes: input.imageSizes,
     });
     if (flaCollection) {
+      const resolved = resolveCollection(flaCollection);
       return {
-        status: collectionStatus(flaCollection),
-        paths: flaCollection.paths,
-        issues: flaCollection.issues,
+        status: resolved.status,
+        paths: resolved.paths,
+        fillRule: resolved.fillRule,
+        issues: resolved.issues,
       };
     }
     const bounds = visual.combinedLocalBounds;
@@ -559,6 +773,7 @@ export function resolveCoverageMaskGeometry(input: {
         paths: [{
           d: rectPathD(stageMatrix, bounds.x, bounds.y, bounds.width, bounds.height),
         }],
+        fillRule: 'nonzero',
         issues: [],
       };
     }
@@ -572,6 +787,7 @@ export function resolveCoverageMaskGeometry(input: {
     return {
       status: 'unsupported',
       paths: [],
+      fillRule: 'nonzero',
       issues: [{
         code: 'unknown-layer-bounds',
         maskLayerId,
@@ -584,6 +800,7 @@ export function resolveCoverageMaskGeometry(input: {
     paths: [{
       d: rectPathD(stageMatrix, -width / 2, -height / 2, width, height),
     }],
+    fillRule: 'nonzero',
     issues: [],
   };
 }
@@ -625,6 +842,7 @@ export function buildCoverageMaskClips(
     const clip: CoverageMaskClip = {
       maskLayerId: maskLayer.evaluated.id,
       paths: geometry.paths,
+      fillRule: geometry.fillRule,
       empty: geometry.status === 'empty',
       issues: geometry.issues,
     };

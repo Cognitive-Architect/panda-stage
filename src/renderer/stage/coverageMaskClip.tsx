@@ -6,12 +6,14 @@ import type { CoverageMaskClip } from '../../domain';
  * Clips Stage/Canvas children to an author-level coverage mask (#1454).
  *
  * The geometry is precomputed in `src/domain/selectors/coverageMaskGeometry.ts`
- * in stage coordinates and every region is already converted to a single
- * non-negative `nonzero` winding (`coverageMaskFillRule.ts`), so this wrapper
- * must not add a transform of its own. Renderers place it at the identity
- * (camera-world) root, directly wrapping the target Layer's existing
- * `StageLayerSpace` so the clip and the drawn content share the exact same
- * coordinate space.
+ * in stage coordinates and the clip fill rule is resolved there: polygon regions
+ * are normalized to a single non-negative `nonzero` winding
+ * (`coverageMaskFillRule.ts`), while a mask consisting only of authored Bézier
+ * regions keeps its authored `evenodd`/`nonzero` rule instead of a converted
+ * approximation (#1469 F4). This wrapper must not add a transform of its own.
+ * Renderers place it at the identity (camera-world) root, directly wrapping the
+ * target Layer's existing `StageLayerSpace` so the clip and the drawn content
+ * share the exact same coordinate space.
  *
  * An empty-but-valid coverage compiles to an empty `Path2D` clip, which hides
  * the target (the same result as the FLA `destination-in` mask with no painted
@@ -47,10 +49,9 @@ export function createCoverageMaskClipFunc(
 ): CoverageMaskClipFunc | null {
   const path = compileCoveragePath(clip);
   if (!path) return null;
-  // A single Konva clip accepts one fill rule; the domain guarantees a
-  // homogeneous `nonzero` winding for every region, so no per-path rule is
-  // needed here.
-  return () => [path, 'nonzero'];
+  // Konva applies a single clip for the group, so the domain resolves one
+  // homogeneous rule for every path in the clip (see coverageMaskGeometry.ts).
+  return () => [path, clip.fillRule];
 }
 
 export function CoverageMaskClipGroup({

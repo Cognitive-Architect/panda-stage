@@ -371,9 +371,25 @@ describe('author-level coverage mask composite (#1454)', () => {
     expect(createCoverageMaskClipFunc({
       maskLayerId: 'mask-layer',
       paths: [{ d: 'M 0 0 L 10 0 L 10 10 Z' }],
+      fillRule: 'nonzero',
       empty: false,
       issues: [],
     })).toBeNull();
+  });
+
+  it('applies the resolved fill rule to the single Konva clip', () => {
+    vi.stubGlobal('Path2D', FakePath2D);
+    const clipFunc = createCoverageMaskClipFunc({
+      maskLayerId: 'mask-layer',
+      paths: [{ d: 'M 0 0 L 10 0 L 10 10 Z' }],
+      fillRule: 'evenodd',
+      empty: false,
+      issues: [],
+    });
+    expect(clipFunc).not.toBeNull();
+    // #1469 F4: an authored curve mask keeps its exact authored rule instead of
+    // a sampled nonzero conversion.
+    expect(clipFunc!()[1]).toBe('evenodd');
   });
 });
 
