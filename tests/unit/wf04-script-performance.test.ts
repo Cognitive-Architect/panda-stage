@@ -159,6 +159,7 @@ describe('WF-04 shared script & performance planner and applier', () => {
     expect(bounded.blocks[0]!.finalDurationMs).toBe(1_500);
     const plan = planScriptPerformance(project, script, { extendShotForPerformance: true });
     expect(plan.performances[0]).toMatchObject({ status: 'ready', startMs: 0, endMs: 2_000 });
+    expect(plan.performances[0]!.motionKeyTimes?.length).toBeGreaterThan(0);
     const applied = applyScriptPerformancePlan(project, plan, { allowPartialConfirm: false });
     expect(applied.ok).toBe(true);
     if (!applied.ok) throw new Error(applied.message);

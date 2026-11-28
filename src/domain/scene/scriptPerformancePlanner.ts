@@ -34,6 +34,7 @@ import {
 } from '../camera-motion-presets';
 import { upsertCharacterActionEvent } from '../services/CharacterActionEventService';
 import { DialogueService } from '../services/DialogueService';
+import { layerCompositeKeyTimes } from '../services/LayerMotionService';
 import { ShotService } from '../services/ShotService';
 import { snapToFrame } from '../timeline/frame-grid';
 import { userMotionPresetRange } from '../user-motion-presets';
@@ -171,6 +172,8 @@ export interface PlannedPerformanceRow {
   /** Real camera key times written by a camera-motion directive (not TimelineEvents). */
   readonly cameraKeyTimes?: readonly number[];
   readonly cameraPreset?: string;
+  /** Real root-motion key times written by a recipe motion step. */
+  readonly motionKeyTimes?: readonly number[];
   readonly issueCode: PlannedPerformanceIssueCode | null;
   readonly issueMessage: string | null;
 }
@@ -1282,6 +1285,19 @@ export function planScriptPerformance(
         const createdIds = afterShot.timelineEvents
           .filter((e) => !beforeIds.has(e.id))
           .map((e) => e.id);
+        const beforeLayer = beforeShot.layers.find((entry) => entry.id === layerId);
+        const afterLayer = afterShot.layers.find((entry) => entry.id === layerId);
+        const beforeKeyTimes = new Set(
+          beforeLayer ? layerCompositeKeyTimes(beforeLayer) : [],
+        );
+        const motionKeyTimes = afterLayer
+          ? layerCompositeKeyTimes(afterLayer).filter(
+              (timeMs) =>
+                !beforeKeyTimes.has(timeMs) &&
+                timeMs >= rangeStartMs &&
+                timeMs <= endMs,
+            )
+          : [];
         plannedPerformances.push({
           directiveId: directive.directiveId,
           blockIndex: directive.blockIndex,
@@ -1303,6 +1319,7 @@ export function planScriptPerformance(
           requiredShotDurationMs: null,
           status: 'ready',
           eventIds: createdIds,
+          ...(motionKeyTimes.length > 0 ? { motionKeyTimes } : {}),
           issueCode: null,
           issueMessage: null,
         });

@@ -263,6 +263,14 @@
   font-size: 0.82rem;
 }
 
+.batch-time-linked-performance {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ui-color-text-secondary);
+  font-size: 0.78rem;
+}
+
 .batch-time-gap-layers {
   display: flex;
   flex-wrap: wrap;

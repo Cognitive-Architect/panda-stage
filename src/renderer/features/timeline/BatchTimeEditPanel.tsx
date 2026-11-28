@@ -22,6 +22,7 @@ import { dialogueSelectionStore } from '../../stores/dialogueSelectionStore';
 import { dialogueStore } from '../../stores/dialogueStore';
 import { timelineBatchStore } from '../../stores/timelineBatchStore';
 import { dialogueSpeakerName } from '../dialogue/dialogueSpeaker';
+import { dialoguePerformanceLinkStore } from '../../stores/dialoguePerformanceLinkStore';
 import { useTimelineUi } from './timelineUiStore';
 
 export interface BatchTimeEditPanelProps {
@@ -110,6 +111,34 @@ function parseSecondsToMs(raw: string): number | null {
   const value = Number(trimmed);
   if (!Number.isFinite(value)) return null;
   return Math.round(value * 1_000);
+}
+
+function mergeMotionSpans(
+  spans: readonly BatchLayerMotionSpanRef[],
+): BatchLayerMotionSpanRef[] {
+  const timesByLayer = new Map<string, Set<number>>();
+  const passthrough: BatchLayerMotionSpanRef[] = [];
+  for (const span of spans) {
+    if (!span.keyTimesMs) {
+      // Legacy range-only spans cannot be merged precisely; preserve them.
+      passthrough.push(span);
+      continue;
+    }
+    const times = timesByLayer.get(span.layerId) ?? new Set<number>();
+    for (const timeMs of span.keyTimesMs) times.add(timeMs);
+    timesByLayer.set(span.layerId, times);
+  }
+  const merged = [...timesByLayer.entries()].map(([layerId, times]) => {
+    const sorted = [...times].sort((left, right) => left - right);
+    return {
+      id: `merged:${layerId}:${sorted.join(':')}`,
+      layerId,
+      startMs: sorted[0]!,
+      endMs: sorted[sorted.length - 1]!,
+      keyTimesMs: sorted,
+    };
+  });
+  return [...passthrough, ...merged];
 }
 
 function listTimedDialogues(shot: Shot): Dialogue[] {
@@ -210,6 +239,8 @@ export function BatchTimeEditPanel({
   const [durationInput, setDurationInput] = useState('1.00');
   const [sharedClipPolicy, setSharedClipPolicy] =
     useState<SharedAudioClipPolicy>('split');
+  const [includeLinkedPerformance, setIncludeLinkedPerformance] =
+    useState(false);
   const [commitError, setCommitError] = useState<string | null>(null);
   const [gapDurationInput, setGapDurationInput] = useState('0.50');
   const [confirmedGapExtensionToMs, setConfirmedGapExtensionToMs] = useState<
@@ -306,6 +337,29 @@ export function BatchTimeEditPanel({
     );
   }, [selectedActionIds, actionById]);
 
+  const availablePerformanceLinks = useMemo(
+    () =>
+      activeDialogueIds.length > 0
+        ? dialoguePerformanceLinkStore.resolve(shot, activeDialogueIds)
+        : { eventIds: [], layerMotionSpans: [], missingCount: 0 },
+    [activeDialogueIds, shot],
+  );
+  const linkedPerformance = includeLinkedPerformance
+    ? availablePerformanceLinks
+    : { eventIds: [], layerMotionSpans: [], missingCount: 0 };
+  const effectiveEventIds = useMemo(
+    () => [...new Set([...selectedEventIds, ...linkedPerformance.eventIds])],
+    [linkedPerformance.eventIds, selectedEventIds],
+  );
+  const effectiveMotionSpans = useMemo(
+    () =>
+      mergeMotionSpans([
+        ...selectedMotionSpans,
+        ...linkedPerformance.layerMotionSpans,
+      ]),
+    [linkedPerformance.layerMotionSpans, selectedMotionSpans],
+  );
+
   const hasSharedClipWithUnselected = useMemo(() => {
     if (activeDialogueIds.length === 0) return false;
     const selectedSet = new Set(activeDialogueIds);
@@ -326,7 +380,7 @@ export function BatchTimeEditPanel({
   const preview: PreviewResult | null = useMemo(() => {
     const hasDialogues = activeDialogueIds.length > 0;
     const hasActions =
-      selectedEventIds.length > 0 || selectedMotionSpans.length > 0;
+      effectiveEventIds.length > 0 || effectiveMotionSpans.length > 0;
 
     if (mode === 'insert-gap') {
       if (parsedGapDurationMs === null || parsedGapDurationMs < 1) {
@@ -360,8 +414,8 @@ export function BatchTimeEditPanel({
         if (hasDialogues && hasActions) {
           const crossTypePlan = timelineBatchStore.planCrossTypeShift({
             dialogueIds: activeDialogueIds,
-            eventIds: selectedEventIds,
-            layerMotionSpans: selectedMotionSpans,
+            eventIds: effectiveEventIds,
+            layerMotionSpans: effectiveMotionSpans,
             deltaMs: parsedDeltaMs,
             sharedClipPolicy,
           });
@@ -411,8 +465,8 @@ export function BatchTimeEditPanel({
           };
         }
         const actionPlan = timelineBatchStore.plan({
-          eventIds: selectedEventIds,
-          layerMotionSpans: selectedMotionSpans,
+          eventIds: effectiveEventIds,
+          layerMotionSpans: effectiveMotionSpans,
           edit: { action: 'shift', deltaMs: parsedDeltaMs },
         });
         return {
@@ -476,6 +530,8 @@ export function BatchTimeEditPanel({
     activeDialogueIds,
     selectedEventIds,
     selectedMotionSpans,
+    effectiveEventIds,
+    effectiveMotionSpans,
     mode,
     parsedDeltaMs,
     parsedDurationMs,
@@ -534,8 +590,8 @@ export function BatchTimeEditPanel({
         if (preview.crossTypePlan) {
           timelineBatchStore.applyCrossTypeShift({
             dialogueIds: activeDialogueIds,
-            eventIds: selectedEventIds,
-            layerMotionSpans: selectedMotionSpans,
+            eventIds: effectiveEventIds,
+            layerMotionSpans: effectiveMotionSpans,
             deltaMs: parsedDeltaMs!,
             sharedClipPolicy,
           });
@@ -545,8 +601,8 @@ export function BatchTimeEditPanel({
           });
         } else if (preview.actionPlan) {
           timelineBatchStore.apply({
-            eventIds: selectedEventIds,
-            layerMotionSpans: selectedMotionSpans,
+            eventIds: effectiveEventIds,
+            layerMotionSpans: effectiveMotionSpans,
             edit: { action: 'shift', deltaMs: parsedDeltaMs! },
           });
         }
@@ -745,6 +801,42 @@ export function BatchTimeEditPanel({
             联选共享对白一起平移
           </label>
         </div>
+      ) : null}
+
+      {mode === 'shift' &&
+      activeDialogueIds.length > 0 &&
+      (availablePerformanceLinks.eventIds.length > 0 ||
+        availablePerformanceLinks.layerMotionSpans.length > 0) ? (
+        <>
+          <label
+            className="batch-time-linked-performance"
+            data-testid="batch-time-linked-performance"
+          >
+            <input
+              type="checkbox"
+              checked={includeLinkedPerformance}
+              onChange={(event) => {
+                setIncludeLinkedPerformance(event.target.checked);
+                setCommitError(null);
+              }}
+            />
+            <span>
+              {`连同剧本关联表演移动（${
+                availablePerformanceLinks.eventIds.length +
+                availablePerformanceLinks.layerMotionSpans.reduce(
+                  (sum, span) => sum + (span.keyTimesMs?.length ?? 0),
+                  0,
+                )
+              } 项）`}
+            </span>
+          </label>
+          {includeLinkedPerformance &&
+          availablePerformanceLinks.missingCount > 0 ? (
+            <div className="batch-time-note" role="status">
+              {`${availablePerformanceLinks.missingCount} 项关联表演已被修改或删除，本次不会移动。`}
+            </div>
+          ) : null}
+        </>
       ) : null}
 
       {mode === 'insert-gap' ? (
