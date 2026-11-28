@@ -263,6 +263,14 @@
   font-size: 0.82rem;
 }
 
+.batch-time-gap-layers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  max-height: 120px;
+  overflow: auto;
+}
+
 .batch-time-edit-actions {
   display: flex;
   justify-content: flex-end;

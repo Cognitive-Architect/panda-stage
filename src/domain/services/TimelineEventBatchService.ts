@@ -26,6 +26,7 @@ import {
   type SharedAudioClipPolicy,
 } from './DialogueService';
 import { LayerMotionService, layerCompositeKeyTimes } from './LayerMotionService';
+import { ShotService } from './ShotService';
 
 /**
  * Official independently editable TimelineEvent interval types supported by
@@ -248,6 +249,7 @@ export type BatchTimelineSkippedReasonCode =
   | 'EVENT_NOT_TIMED'
   | 'POINT_EVENT_DURATION_UNSUPPORTED'
   | 'POINT_EVENT_CONFLICT'
+  | 'CROSSES_INSERT_POINT'
   | 'LAYER_MISSING'
   | 'LAYER_LOCKED'
   | 'PROTECTED_BASE_KEY'
@@ -255,7 +257,7 @@ export type BatchTimelineSkippedReasonCode =
 
 export interface BatchTimelineSkippedEntry {
   readonly itemId: string;
-  readonly kind: 'timeline-event' | 'layer-motion-span';
+  readonly kind: 'dialogue' | 'timeline-event' | 'layer-motion-span';
   readonly layerId?: string;
   readonly layerName?: string;
   readonly label: string;
@@ -310,6 +312,45 @@ export interface CrossTypeBatchShiftPlan {
   readonly dialoguePlan: DialogueBatchMovePlan | null;
   readonly actionPlan: BatchTimelineEditPlan | null;
   readonly skipped: readonly BatchTimelineSkippedEntry[];
+  readonly earliestStartMs: number;
+  readonly latestEndMs: number;
+  readonly changedCount: number;
+}
+
+export interface InsertTimeGapInput {
+  readonly shotId: string;
+  readonly atMs: number;
+  readonly durationMs: number;
+  /** Editable layers whose events/keyframes participate; defaults to all unlocked layers. */
+  readonly layerIds?: readonly string[];
+  readonly sharedClipPolicy?: SharedAudioClipPolicy;
+}
+
+export interface InsertGapUnsupportedEntry {
+  readonly kind:
+    | 'standalone-audio'
+    | 'camera-key'
+    | 'camera-override'
+    | 'depth-key'
+    | 'parent-key'
+    | 'graphic-frame';
+  readonly layerId?: string;
+  readonly label: string;
+  readonly reason: string;
+}
+
+export interface InsertTimeGapPlan {
+  readonly shotId: string;
+  readonly atMs: number;
+  readonly durationMs: number;
+  readonly dialogueIds: readonly string[];
+  readonly eventIds: readonly string[];
+  readonly layerMotionSpans: readonly BatchLayerMotionSpanRef[];
+  readonly crossTypePlan: CrossTypeBatchShiftPlan | null;
+  readonly skipped: readonly BatchTimelineSkippedEntry[];
+  readonly unsupported: readonly InsertGapUnsupportedEntry[];
+  readonly needsShotExtension: boolean;
+  readonly extensionToMs: number | null;
   readonly earliestStartMs: number;
   readonly latestEndMs: number;
   readonly changedCount: number;
@@ -553,18 +594,21 @@ export class TimelineEventBatchService {
   private readonly now: () => Date;
   private readonly layerMotionService: LayerMotionService;
   private readonly dialogueService: DialogueService;
+  private readonly shotService: ShotService;
 
   constructor(
     options: {
       now?: () => Date;
       layerMotionService?: LayerMotionService;
       dialogueService?: DialogueService;
+      shotService?: ShotService;
     } = {},
   ) {
     this.now = options.now ?? (() => new Date());
     this.layerMotionService =
       options.layerMotionService ?? new LayerMotionService();
     this.dialogueService = options.dialogueService ?? new DialogueService({ now: this.now });
+    this.shotService = options.shotService ?? new ShotService({ now: this.now });
   }
 
   /**
@@ -1242,6 +1286,299 @@ export class TimelineEventBatchService {
         boundaryMode: 'reject',
       });
     }
+    return candidate;
+  }
+
+  /**
+   * Plans the first Spacer slice: insert positive blank time at the playhead and
+   * shift only officially supported content at/after that point. Crossing
+   * intervals, locked layers and unsupported timing objects are reported
+   * locally rather than silently cut, skipped without notice, or claimed as a
+   * full-track ripple.
+   */
+  planInsertGap(
+    project: Project,
+    input: InsertTimeGapInput,
+  ): InsertTimeGapPlan {
+    const shot = this.shot(project, input.shotId);
+    if (
+      !Number.isSafeInteger(input.atMs) ||
+      input.atMs < 0 ||
+      input.atMs > shot.durationMs
+    ) {
+      throw new TimelineEventBatchError(
+        'TIMELINE_EVENT_BATCH_OUT_OF_RANGE',
+        '插入位置必须位于当前镜头范围内。',
+      );
+    }
+    if (!Number.isSafeInteger(input.durationMs) || input.durationMs < 1) {
+      throw new TimelineEventBatchError(
+        'INVALID_TIMELINE_EDIT_AMOUNT',
+        '插入空白时长必须是大于 0 的整数毫秒。',
+      );
+    }
+
+    const atMs = input.atMs;
+    const durationMs = input.durationMs;
+    const layerFilter = input.layerIds ? new Set(input.layerIds) : null;
+    const includesLayer = (layerId: string): boolean =>
+      layerFilter === null || layerFilter.has(layerId);
+    const layersById = new Map(shot.layers.map((layer) => [layer.id, layer]));
+    const dialogueIds: string[] = [];
+    const eventIds: string[] = [];
+    const layerMotionSpans: BatchLayerMotionSpanRef[] = [];
+    const skipped: BatchTimelineSkippedEntry[] = [];
+    const unsupported: InsertGapUnsupportedEntry[] = [];
+
+    for (const dialogue of shot.dialogues) {
+      if (dialogue.endMs <= dialogue.startMs) continue;
+      if (dialogue.startMs >= atMs) {
+        dialogueIds.push(dialogue.id);
+      } else if (dialogue.endMs > atMs) {
+        skipped.push({
+          itemId: dialogue.id,
+          kind: 'dialogue',
+          label: '对白',
+          reasonCode: 'CROSSES_INSERT_POINT',
+          reason: `有一条对白跨越插入点（${formatSeconds(dialogue.startMs)}–${formatSeconds(dialogue.endMs)}s），请先调整或拆开，已跳过。`,
+        });
+      }
+    }
+
+    for (const event of shot.timelineEvents) {
+      if (!includesLayer(event.layerId)) continue;
+      const layer = layersById.get(event.layerId);
+      const layerName = layer?.name ?? '该对象';
+      const typeLabel = ANY_EVENT_TYPE_LABEL[event.type];
+      if (event.type === 'mouth-pose' || event.type === 'mouth-cue') continue;
+      if (event.type === 'graphic-frame') {
+        if (event.startMs >= atMs) {
+          unsupported.push({
+            kind: 'graphic-frame',
+            layerId: event.layerId,
+            label: `${layerName} · ${typeLabel}`,
+            reason: `「${layerName}」的${typeLabel}尚未纳入 Spacer，已保留原位。`,
+          });
+        }
+        continue;
+      }
+      if (!layer) {
+        skipped.push({
+          itemId: event.id,
+          kind: 'timeline-event',
+          layerId: event.layerId,
+          label: typeLabel,
+          reasonCode: 'LAYER_MISSING',
+          reason: '所选动作所属的对象已不在当前镜头里，已跳过。',
+        });
+        continue;
+      }
+      if (layer.locked) {
+        skipped.push({
+          itemId: event.id,
+          kind: 'timeline-event',
+          layerId: layer.id,
+          layerName: layer.name,
+          label: `${layer.name} · ${typeLabel}`,
+          reasonCode: 'LAYER_LOCKED',
+          reason: `「${layer.name}」已锁定，未纳入本次插入，已跳过。`,
+        });
+        continue;
+      }
+      if (event.startMs >= atMs) {
+        eventIds.push(event.id);
+      } else if (event.endMs > atMs) {
+        skipped.push({
+          itemId: event.id,
+          kind: 'timeline-event',
+          layerId: layer.id,
+          layerName: layer.name,
+          label: `${layer.name} · ${typeLabel}`,
+          reasonCode: 'CROSSES_INSERT_POINT',
+          reason: `「${layer.name}」的${typeLabel}跨越插入点，首版不自动截断，已跳过。`,
+        });
+      }
+    }
+
+    for (const layer of shot.layers) {
+      if (layer.id === shot.backgroundLayerId || !includesLayer(layer.id)) {
+        continue;
+      }
+      const times = layerCompositeKeyTimes(layer).filter(
+        (timeMs) => timeMs > 0 && timeMs >= atMs,
+      );
+      if (layer.locked) {
+        if (times.length > 0) {
+          skipped.push({
+            itemId: `layer-motion:${layer.id}`,
+            kind: 'layer-motion-span',
+            layerId: layer.id,
+            layerName: layer.name,
+            label: `${layer.name} · 关键帧`,
+            reasonCode: 'LAYER_LOCKED',
+            reason: `「${layer.name}」已锁定，关键帧未纳入本次插入，已跳过。`,
+          });
+        }
+      } else if (times.length > 0) {
+        layerMotionSpans.push({
+          id: `spacer:${layer.id}`,
+          layerId: layer.id,
+          startMs: times[0]!,
+          endMs: times[times.length - 1]!,
+          keyTimesMs: times,
+        });
+      }
+
+      if (layer.depthKeys?.some((key) => key.timeMs >= atMs)) {
+        unsupported.push({
+          kind: 'depth-key',
+          layerId: layer.id,
+          label: `${layer.name} · 深度键`,
+          reason: `「${layer.name}」的深度键尚未纳入 Spacer，已保留原位。`,
+        });
+      }
+      if (layer.parentKeys?.some((key) => key.timeMs >= atMs)) {
+        unsupported.push({
+          kind: 'parent-key',
+          layerId: layer.id,
+          label: `${layer.name} · 父级交接`,
+          reason: `「${layer.name}」的父级交接尚未纳入 Spacer，已保留原位。`,
+        });
+      }
+    }
+
+    const referencedClipIds = new Set(
+      shot.dialogues
+        .map((dialogue) => dialogue.audioClipId)
+        .filter((clipId): clipId is string => clipId !== undefined),
+    );
+    for (const clip of shot.audioClips) {
+      if (referencedClipIds.has(clip.id)) continue;
+      if (clip.startMs >= atMs || (clip.startMs < atMs && clip.endMs > atMs)) {
+        unsupported.push({
+          kind: 'standalone-audio',
+          label: `独立音频 · ${clip.name}`,
+          reason: `独立音频「${clip.name}」尚未纳入 Spacer，已保留原位。`,
+        });
+      }
+    }
+
+    for (const key of shot.camera?.keys ?? []) {
+      if (key.timeMs >= atMs) {
+        unsupported.push({
+          kind: 'camera-key',
+          label: '镜头相机键',
+          reason: '镜头相机键尚未纳入 Spacer，已保留原位。',
+        });
+        break;
+      }
+    }
+    for (const override of shot.camera?.overrides ?? []) {
+      if (override.startMs >= atMs || (override.startMs < atMs && override.endMs > atMs)) {
+        unsupported.push({
+          kind: 'camera-override',
+          label: '镜头相机接管',
+          reason: '镜头相机接管尚未纳入 Spacer，已保留原位。',
+        });
+        break;
+      }
+    }
+
+    const hasSupported =
+      dialogueIds.length > 0 ||
+      eventIds.length > 0 ||
+      layerMotionSpans.length > 0;
+    let maxEndMs = atMs;
+    if (hasSupported) {
+      for (const dialogueId of dialogueIds) {
+        const dialogue = shot.dialogues.find(
+          (candidate) => candidate.id === dialogueId,
+        );
+        if (dialogue) maxEndMs = Math.max(maxEndMs, dialogue.endMs);
+      }
+      for (const eventId of eventIds) {
+        const event = shot.timelineEvents.find(
+          (candidate) => candidate.id === eventId,
+        );
+        if (event) maxEndMs = Math.max(maxEndMs, event.endMs);
+      }
+      for (const span of layerMotionSpans) {
+        maxEndMs = Math.max(maxEndMs, span.endMs);
+      }
+    }
+    const requiredEndMs = maxEndMs + durationMs;
+    const needsShotExtension = hasSupported && requiredEndMs > shot.durationMs;
+    const extensionToMs = needsShotExtension ? requiredEndMs : null;
+    const planningProject = needsShotExtension
+      ? this.shotService.setDuration(project, shot.id, requiredEndMs)
+      : project;
+
+    let crossTypePlan: CrossTypeBatchShiftPlan | null = null;
+    if (hasSupported) {
+      try {
+        crossTypePlan = this.planCrossTypeShift(planningProject, {
+          shotId: shot.id,
+          dialogueIds,
+          eventIds,
+          layerMotionSpans,
+          deltaMs: durationMs,
+          ...(input.sharedClipPolicy
+            ? { sharedClipPolicy: input.sharedClipPolicy }
+            : {}),
+        });
+      } catch (error) {
+        if (
+          error instanceof TimelineEventBatchError &&
+          (error.code === 'TIMELINE_EVENT_UNSUPPORTED' ||
+            error.code === 'TIMELINE_EVENT_BATCH_TOO_SMALL')
+        ) {
+          crossTypePlan = null;
+        } else {
+          throw error;
+        }
+      }
+    }
+
+    const allSkipped = [...skipped, ...(crossTypePlan?.skipped ?? [])];
+    const changedCount = crossTypePlan?.changedCount ?? 0;
+    return {
+      shotId: shot.id,
+      atMs,
+      durationMs,
+      dialogueIds,
+      eventIds,
+      layerMotionSpans,
+      crossTypePlan,
+      skipped: allSkipped,
+      unsupported,
+      needsShotExtension,
+      extensionToMs,
+      earliestStartMs: crossTypePlan?.earliestStartMs ?? atMs,
+      latestEndMs: crossTypePlan?.latestEndMs ?? atMs,
+      changedCount,
+    };
+  }
+
+  /**
+   * Applies the planned Spacer as one candidate Project. Shot extension and
+   * cross-type shift are composed before the renderer's single History commit.
+   */
+  applyInsertGap(project: Project, input: InsertTimeGapInput): Project {
+    const plan = this.planInsertGap(project, input);
+    if (plan.changedCount === 0) return project;
+    let candidate = plan.needsShotExtension && plan.extensionToMs !== null
+      ? this.shotService.setDuration(project, plan.shotId, plan.extensionToMs)
+      : project;
+    candidate = this.applyCrossTypeShift(candidate, {
+      shotId: plan.shotId,
+      dialogueIds: plan.dialogueIds,
+      eventIds: plan.eventIds,
+      layerMotionSpans: plan.layerMotionSpans,
+      deltaMs: plan.durationMs,
+      ...(input.sharedClipPolicy
+        ? { sharedClipPolicy: input.sharedClipPolicy }
+        : {}),
+    });
     return candidate;
   }
 
