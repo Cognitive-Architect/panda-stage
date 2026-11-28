@@ -660,7 +660,7 @@ export function StageRenderer({
             displayCamera,
             imageSizes,
           )
-        : { clips: new Map(), unresolvedMaskLayerIds: new Set<string>() },
+        : { clips: new Map(), unresolvedMaskLayerIds: new Set<string>(), emptyMaskLayerIds: new Set<string>(), issues: [] },
     [displayCamera, displayModel, imageSizes],
   );
 

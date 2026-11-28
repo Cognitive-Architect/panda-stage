@@ -14,7 +14,7 @@ import {
   FlaGraphicDefinitionSchema,
   buildCoverageMaskClips,
   evaluateFlaGraphicVisual,
-  resolveCoverageMaskClipPaths,
+  resolveCoverageMaskGeometry,
   type LayerVisualParts,
 } from '../../src/domain';
 import { renderFlaGraphicCanvas } from '../../src/renderer/features/canvas/flaGraphicCanvasRenderer';
@@ -321,9 +321,11 @@ function vectorMaskRenderLayer() {
 describe('author-level coverage mask composite (#1454)', () => {
   it('converts vector shape coverage into stage-space clip paths', () => {
     const layer = vectorMaskRenderLayer();
-    expect(resolveCoverageMaskClipPaths({ layer, width: 1_920, height: 1_080 })).toEqual([
-      { d: 'M 2 3 L 12 3 L 12 13 Z', fillRule: 'nonzero' },
-    ]);
+    expect(resolveCoverageMaskGeometry({ layer, width: 1_920, height: 1_080 })).toMatchObject({
+      status: 'resolved',
+      paths: [{ d: 'M 2 3 L 12 3 L 12 13 Z' }],
+      issues: [],
+    });
   });
 
   it('compiles one shared Path2D clip for every target of the same mask', () => {
@@ -368,7 +370,9 @@ describe('author-level coverage mask composite (#1454)', () => {
     vi.stubGlobal('Path2D', undefined);
     expect(createCoverageMaskClipFunc({
       maskLayerId: 'mask-layer',
-      paths: [{ d: 'M 0 0 L 10 0 L 10 10 Z', fillRule: 'nonzero' }],
+      paths: [{ d: 'M 0 0 L 10 0 L 10 10 Z' }],
+      empty: false,
+      issues: [],
     })).toBeNull();
   });
 });

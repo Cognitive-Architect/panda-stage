@@ -9,7 +9,7 @@ import {
   buildEditorStageRenderModel,
   evaluateShotAtTime,
   isDrawableStageLayer,
-  resolveCoverageMaskClipPaths,
+  resolveCoverageMaskGeometry,
   resolveShotCoverageMasks,
   validCoverageMaskTargets,
   type Project,
@@ -105,11 +105,11 @@ function layerClipPaths(project: Project, timeMs: number, layerId: string): stri
   const mask = model.layers.find((entry) => entry.layer.id === layerId);
   if (!mask) throw new Error(`Missing render layer ${layerId}`);
   return (
-    resolveCoverageMaskClipPaths({
+    resolveCoverageMaskGeometry({
       layer: { evaluated: mask.evaluated, visual: mask.visual, render: mask.render },
       width: model.width,
       height: model.height,
-    })?.map((path) => path.d) ?? []
+    }).paths.map((path) => path.d)
   );
 }
 
