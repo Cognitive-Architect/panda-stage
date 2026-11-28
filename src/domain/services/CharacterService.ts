@@ -38,6 +38,7 @@ import {
   type Project,
 } from '../models';
 import { computeAdaptiveFaceAnchorRect } from '../geometry/characterPartLayout';
+import { pruneCharacterVectorSkins } from '../character-vector-skin';
 import { NameSchema } from '../models/common';
 import { hasFlaGraphicTemporalPlayback } from '../evaluate-shot-at-time';
 import { isTalkingAnimationPlaybackInRange } from '../selectors/animationSourceTimeline';
@@ -494,10 +495,18 @@ export class CharacterService {
       (character.bones ?? [])
         .flatMap((bone) => bone.partId !== undefined && !nextPartIds.has(bone.partId) ? [bone.partId] : []),
     );
+    // #1459: removing a Part must not leave a dangling two-Bone vector skin.
+    const prunedVectorSkins = pruneCharacterVectorSkins(character, {
+      partIds: nextPartIds,
+      boneIds: new Set((character.bones ?? []).map((bone) => bone.id)),
+    });
     const draftCandidate: AdaptivePartsCharacter = {
       ...character,
       sourceRootTransform: definition.sourceRootTransform,
       parts: [...definition.parts],
+      ...(prunedVectorSkins.changed
+        ? { vectorSkins: prunedVectorSkins.skins.length > 0 ? prunedVectorSkins.skins : undefined }
+        : {}),
       // Removing a Part locally drops only its Bone binding; the Bone stays.
       ...(missingBonePartIds.size > 0
         ? {
@@ -528,12 +537,14 @@ export class CharacterService {
         parts: character.parts,
         faceBinding: character.faceBinding ?? null,
         headMotionBinding: character.headMotionBinding ?? null,
+        vectorSkins: character.vectorSkins ?? null,
       }) ===
       JSON.stringify({
         sourceRootTransform: next.sourceRootTransform,
         parts: next.parts,
         faceBinding: next.faceBinding ?? null,
         headMotionBinding: next.headMotionBinding ?? null,
+        vectorSkins: next.vectorSkins ?? null,
       })
     ) {
       return project;

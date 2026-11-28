@@ -1307,6 +1307,12 @@ export function buildImportedProjectCandidate(options: {
         ...bone,
         ...(bone.partId ? { partId: remapPartId(bone.partId) } : {}),
       }));
+      // #1459: a vector skin's Bone ids are Character-local like `parentBoneId`,
+      // while its Part identity must reuse the same Part remap as the Parts.
+      const vectorSkins = character.vectorSkins?.map((skin) => ({
+        ...skin,
+        partId: remapPartId(skin.partId),
+      }));
       // Preserve motionMappings only when the referenced source character, its
       // source action, every rule's sourcePartId, the generatedActionId, and
       // every defined targetPartId are all completely remapped in this batch.
@@ -1431,6 +1437,7 @@ export function buildImportedProjectCandidate(options: {
         ...(armChain ? { armChain } : {}),
         ...(armChains ? { armChains } : {}),
         ...(bones ? { bones } : {}),
+        ...(vectorSkins ? { vectorSkins } : {}),
         ...(motionMappings && motionMappings.length > 0
           ? { motionMappings }
           : { motionMappings: undefined }),

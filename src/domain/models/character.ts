@@ -1134,6 +1134,121 @@ function validateCharacterBoneTree(
   }
 }
 
+/** Most two-Bone vector skins one Character may carry (#1459 小样 scope). */
+export const CHARACTER_VECTOR_SKIN_MAX_COUNT = 16 as const;
+/** Most hand-authored anchor weight overrides per skin. */
+export const CHARACTER_VECTOR_SKIN_MAX_ANCHOR_OVERRIDES = 512 as const;
+/** Max influences per anchor in the first LBS slice; the skin itself has exactly two Bones. */
+export const CHARACTER_VECTOR_SKIN_MAX_INFLUENCES = 2 as const;
+
+const CharacterVectorSkinWeightSchema = z
+  .object({
+    boneId: IdSchema,
+    weight: FiniteNumberSchema.min(0).max(1),
+  })
+  .strict();
+
+/**
+ * Lazy per-anchor override. `anchorKey` is produced by the pure skinning module
+ * (`regionIndex:contourIndex:anchorIndex`) so the persisted data never carries a
+ * copy of the rest geometry.
+ */
+export const CharacterVectorSkinAnchorWeightsSchema = z
+  .object({
+    anchorKey: z.string().trim().min(1).max(160),
+    weights: z.array(CharacterVectorSkinWeightSchema).min(1).max(CHARACTER_VECTOR_SKIN_MAX_INFLUENCES),
+  })
+  .strict()
+  .refine(({ weights }) => new Set(weights.map(({ boneId }) => boneId)).size === weights.length,
+    'Anchor overrides must not repeat a Bone.')
+  .refine(({ weights }) => {
+    const sum = weights.reduce((total, entry) => total + entry.weight, 0);
+    return Math.abs(sum - 1) <= 1e-6;
+  }, 'Anchor override weights must sum to 1.');
+
+/**
+ * Two-Bone vector path skin (#1459). Rest geometry lives in the FLA Graphic
+ * Definition and the Bone tree rest; only the binding is persisted here.
+ */
+export const CharacterVectorSkinSchema = z
+  .object({
+    id: IdSchema,
+    partId: IdSchema,
+    boneIds: z.tuple([IdSchema, IdSchema]),
+    anchorWeights: z.array(CharacterVectorSkinAnchorWeightsSchema)
+      .max(CHARACTER_VECTOR_SKIN_MAX_ANCHOR_OVERRIDES)
+      .optional(),
+  })
+  .strict()
+  .refine(({ boneIds }) => boneIds[0] !== boneIds[1], 'A vector skin requires two distinct Bones.');
+
+const CharacterVectorSkinsSchema = z
+  .array(CharacterVectorSkinSchema)
+  .max(CHARACTER_VECTOR_SKIN_MAX_COUNT)
+  .refine((skins) => new Set(skins.map(({ id }) => id)).size === skins.length,
+    'Vector skin ids must be unique.')
+  .refine((skins) => new Set(skins.map(({ partId }) => partId)).size === skins.length,
+    'Each Part may carry at most one vector skin.')
+  .optional();
+
+/**
+ * Real reference check against the Character's own Part and Bone identities.
+ * Vector content is verified again at evaluation time, where the Definition is
+ * available; here a missing/absent Part or Bone is a hard schema error.
+ */
+function validateCharacterVectorSkins(
+  character: {
+    parts?: readonly {
+      partId: string;
+      visualSource?: { kind: string; animationId?: string; nodePath?: readonly string[]; regionRef?: string; regionVector?: unknown };
+      assetId?: string;
+    }[];
+    bones?: readonly z.infer<typeof CharacterBoneSchema>[];
+    vectorSkins?: readonly z.infer<typeof CharacterVectorSkinSchema>[];
+  },
+  context: z.RefinementCtx,
+): void {
+  const skins = character.vectorSkins ?? [];
+  if (skins.length === 0) return;
+  const bonesById = new Set((character.bones ?? []).map(({ id }) => id));
+  skins.forEach((skin, index) => {
+    const part = character.parts?.find(({ partId }) => partId === skin.partId);
+    if (!part) {
+      context.addIssue({
+        code: 'custom',
+        path: ['vectorSkins', index, 'partId'],
+        message: `Vector skin references unknown Part identity: ${skin.partId}`,
+      });
+    } else if (part.visualSource?.kind !== 'fla-graphic') {
+      context.addIssue({
+        code: 'custom',
+        path: ['vectorSkins', index, 'partId'],
+        message: 'Vector skins require an FLA Graphic vector Part.',
+      });
+    }
+    skin.boneIds.forEach((boneId, boneIndex) => {
+      if (!bonesById.has(boneId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['vectorSkins', index, 'boneIds', boneIndex],
+          message: `Vector skin references unknown Bone identity: ${boneId}`,
+        });
+      }
+    });
+    skin.anchorWeights?.forEach((override, overrideIndex) => {
+      override.weights.forEach(({ boneId }, weightIndex) => {
+        if (!skin.boneIds.includes(boneId)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['vectorSkins', index, 'anchorWeights', overrideIndex, 'weights', weightIndex, 'boneId'],
+            message: `Anchor override references a Bone outside its skin: ${boneId}`,
+          });
+        }
+      });
+    });
+  });
+}
+
 export const CharacterMotionMappingRuleSchema = z.object({
   sourcePartId: IdSchema,
   targetPartId: IdSchema.optional(),
@@ -1222,7 +1337,10 @@ const AdaptivePartsCharacterCurrentSchema = AdaptivePartsCharacterV39Schema.safe
   bodyPoses: bodyPoseLibrary(CharacterBodyPoseSchema),
   armChains: CharacterArmChainsSchema.optional(),
   bones: CharacterBonesSchema,
-}).superRefine(validateCharacterBoneTree);
+  vectorSkins: CharacterVectorSkinsSchema,
+})
+  .superRefine(validateCharacterBoneTree)
+  .superRefine(validateCharacterVectorSkins);
 
 function validateExpressionTalkingSources(character: {
   expressionTalkingSources?: Record<string, ExpressionTalkingSource>;
@@ -1280,6 +1398,8 @@ export type CharacterBodyPose = z.infer<typeof CharacterBodyPoseSchema>;
 export type CharacterArmChain = z.infer<typeof CharacterArmChainSchema>;
 export type CharacterBone = z.infer<typeof CharacterBoneSchema>;
 export type CharacterBoneRestLocal = z.infer<typeof CharacterBoneRestLocalSchema>;
+export type CharacterVectorSkin = z.infer<typeof CharacterVectorSkinSchema>;
+export type CharacterVectorSkinAnchorWeights = z.infer<typeof CharacterVectorSkinAnchorWeightsSchema>;
 export type CharacterMotionMappingRule = z.infer<typeof CharacterMotionMappingRuleSchema>;
 export type CharacterMotionMapping = z.infer<typeof CharacterMotionMappingSchema>;
 
