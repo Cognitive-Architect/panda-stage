@@ -633,6 +633,15 @@ export function canonicalizeFlaGraphicStructure(structure: FlaGraphicStructure):
             easing: track.easing,
             from: track.from,
             to: track.to,
+            ...(track.hints?.length
+              ? {
+                  hints: track.hints.map((hint) => ({
+                    hintId: hint.hintId,
+                    from: hint.from,
+                    to: hint.to,
+                  })),
+                }
+              : {}),
           })),
         }
       : {}),

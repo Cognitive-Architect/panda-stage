@@ -48,3 +48,5 @@
 .fla-shape-tween-row label { display: inline-flex; align-items: center; gap: 6px; }
 .fla-shape-tween-row input { width: 84px; min-height: 32px; box-sizing: border-box; border: 1px solid var(--ui-color-border); border-radius: var(--ui-radius-small); background: var(--ui-color-surface-work); color: var(--ui-color-text-primary); padding: 4px 8px; }
 .fla-shape-tween-row select { min-height: 32px; border: 1px solid var(--ui-color-border); border-radius: var(--ui-radius-small); background: var(--ui-color-surface-work); color: var(--ui-color-text-primary); padding: 4px 8px; }
+.fla-shape-tween-hints { display: flex; flex-direction: column; gap: 6px; flex-basis: 100%; }
+.fla-shape-tween-hints select { max-width: 200px; min-height: 32px; border: 1px solid var(--ui-color-border); border-radius: var(--ui-radius-small); background: var(--ui-color-surface-work); color: var(--ui-color-text-primary); padding: 4px 8px; }

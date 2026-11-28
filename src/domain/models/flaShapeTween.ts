@@ -7,14 +7,17 @@ import {
 } from '../fla-shape-vector';
 import {
   interpolateShapeMorphPair,
+  listShapeMorphContourAnchors,
   prepareShapeMorphPair,
+  type ShapeMorphContourAnchor,
   type ShapeMorphFailureCode,
   type ShapeMorphPrepareResult,
 } from '../geometry/shapeMorph';
 import type { FlaGraphicStructure } from './flaGraphicStructure';
 
 /**
- * Author-created native Shape Tween track (issue #1457 F02).
+ * Author-created native Shape Tween track (issue #1457 F02; hints and
+ * multi-contour pairing added by #1458 F02).
  *
  * Stored on the FLA Graphic Structure as an additive optional collection, so a
  * tween survives Project save/reopen, is shared by every instance of the
@@ -24,13 +27,54 @@ import type { FlaGraphicStructure } from './flaGraphicStructure';
  * clock: two authored closed-contour poses plus start/end internal time and an
  * easing. Evaluation lerps prepared geometry; the source structure's stored
  * region geometry is never mutated.
+ *
+ * Multi-contour / hole boundary (#1458): a region may have one outer contour
+ * plus direct holes, or several disjoint outer contours each with direct holes.
+ * Holes are paired by descending area inside the paired outer and are collapsed
+ * into the paired outer centre when only one pose has that hole, so the exact
+ * endpoints can never show a hole outside the outer. Nested holes (a contour
+ * inside a hole), a hole not strictly inside its outer, and overlapping outer
+ * containment are typed failures that stay inert (the authored region renders
+ * unchanged). Area/containment ordering is a heuristic, not Adobe's private
+ * Shape Hint matching.
+ *
+ * Style interpolation boundary (#1458): fills and strokes must be identical
+ * between the two authored poses (`sameFlaShapeTweenStyle`); creation and pose
+ * updates refuse mismatches. The rendered style always comes from the authored
+ * region that owns the tween; gradient references, opacity, stroke width/join
+ * and other paint parameters are never interpolated. Setting up a gradient
+ * tween is therefore out of scope rather than silently wrong.
  */
 
 export const FLA_SHAPE_TWEEN_MAX_TRACKS = 512;
 export const FLA_SHAPE_TWEEN_MAX_OWNER_PATH_DEPTH = 64;
+/** Authored point-correspondence hints per track (#1458). */
+export const FLA_SHAPE_TWEEN_MAX_HINTS = 32;
 
 export const FlaShapeTweenEasingSchema = z.enum(['linear', 'ease', 'hold']);
 export type FlaShapeTweenEasing = z.infer<typeof FlaShapeTweenEasingSchema>;
+
+/** One normalized contour location used by an author shape hint (#1458). */
+export const FlaShapeTweenHintLocationSchema = z
+  .object({
+    contourIndex: z.number().int().nonnegative().max(511),
+    segmentIndex: z.number().int().nonnegative().max(4_095),
+    t: z.number().finite().min(0).max(1),
+  })
+  .strict();
+
+export type FlaShapeTweenHintLocation = z.infer<typeof FlaShapeTweenHintLocationSchema>;
+
+/** A stable-id hint pair; ids let the UI edit or delete one hint (#1458). */
+export const FlaShapeTweenHintSchema = z
+  .object({
+    hintId: z.string().trim().min(1).max(128),
+    from: FlaShapeTweenHintLocationSchema,
+    to: FlaShapeTweenHintLocationSchema,
+  })
+  .strict();
+
+export type FlaShapeTweenHint = z.infer<typeof FlaShapeTweenHintSchema>;
 
 const FlaShapeTweenOwnerPathSegmentSchema = z.string().trim().min(1).max(1_000);
 
@@ -84,6 +128,11 @@ const FlaShapeTweenTrackV1Schema = z
     easing: FlaShapeTweenEasingSchema.default('linear'),
     from: FlaEditableShapeRegionSchema,
     to: FlaEditableShapeRegionSchema,
+    /**
+     * Additive #1458 field: absent on every #1457 tween and never written with
+     * an empty array, so unhinted tweens stay byte-identical.
+     */
+    hints: z.array(FlaShapeTweenHintSchema).max(FLA_SHAPE_TWEEN_MAX_HINTS).optional(),
   })
   .strict()
   .superRefine((track, context) => {
@@ -93,6 +142,31 @@ const FlaShapeTweenTrackV1Schema = z
         path: ['endTimeMs'],
         message: 'A shape tween must end after it starts.',
       });
+    }
+    const seenHintIds = new Set<string>();
+    for (const [hintIndex, hint] of (track.hints ?? []).entries()) {
+      if (seenHintIds.has(hint.hintId)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['hints', hintIndex, 'hintId'],
+          message: 'Shape hint ids must be unique within one tween.',
+        });
+      }
+      seenHintIds.add(hint.hintId);
+      if (hint.from.contourIndex >= track.from.contours.length) {
+        context.addIssue({
+          code: 'custom',
+          path: ['hints', hintIndex, 'from', 'contourIndex'],
+          message: 'A shape hint references a missing from-pose contour.',
+        });
+      }
+      if (hint.to.contourIndex >= track.to.contours.length) {
+        context.addIssue({
+          code: 'custom',
+          path: ['hints', hintIndex, 'to', 'contourIndex'],
+          message: 'A shape hint references a missing to-pose contour.',
+        });
+      }
     }
   });
 
@@ -127,7 +201,12 @@ export function findFlaShapeTweenTrackById(
   return tracks?.find((track) => track.tweenId === tweenId) ?? null;
 }
 
-/** Same authored fill and stroke style (style interpolation is out of scope). */
+/**
+ * Same authored fill and stroke style. Style interpolation is out of scope: the
+ * tween renders the fill/strokes of the authored region that owns it, so the two
+ * poses must match exactly (including gradient paint references and stroke
+ * width/join); gradient or width interpolation is never attempted.
+ */
 export function sameFlaShapeTweenStyle(
   left: FlaEditableShapeRegion,
   right: FlaEditableShapeRegion,
@@ -180,25 +259,110 @@ export function resolveFlaShapeTweenPoseEdit(
 
 export interface FlaShapeTweenPreparedCacheEntry {
   readonly result: ShapeMorphPrepareResult;
+  /** Hints array identity part of the cache key (#1458). */
+  readonly hintsRef: readonly FlaShapeTweenHint[] | undefined;
 }
 
 const preparedPairCache = new WeakMap<object, FlaShapeTweenPreparedCacheEntry>();
 
 /**
  * Cached normalization for one immutable track object. Project snapshots are
- * immutable, so the track instance is a stable cache key on every frame.
+ * immutable, so the track instance is a stable cache key on every frame. The
+ * authored hint array identity is part of the key, so editing a hint always
+ * invalidates the prepared pair even if a caller reuses the track object.
  */
 export function prepareFlaShapeTweenTrack(
   track: FlaShapeTweenTrack,
 ): ShapeMorphPrepareResult {
   const cached = preparedPairCache.get(track);
-  if (cached) return cached.result;
+  if (cached && cached.hintsRef === track.hints) return cached.result;
   const result = prepareShapeMorphPair(
     { contours: track.from.contours },
     { contours: track.to.contours },
+    {
+      allowMultipleContours: true,
+      ...(track.hints ? { hints: track.hints } : {}),
+    },
   );
-  preparedPairCache.set(track, { result });
+  preparedPairCache.set(track, { result, hintsRef: track.hints });
   return result;
+}
+
+/** Lists the author-pickable hint anchors of a tween pose, per contour. */
+export function listFlaShapeTweenHintAnchors(
+  region: FlaEditableShapeRegion,
+): readonly (ShapeMorphContourAnchor & { readonly contourIndex: number })[] {
+  const anchors: (ShapeMorphContourAnchor & { readonly contourIndex: number })[] = [];
+  region.contours.forEach((contour, contourIndex) => {
+    for (const anchor of listShapeMorphContourAnchors(contour)) {
+      anchors.push({ ...anchor, contourIndex });
+    }
+  });
+  return anchors;
+}
+
+/** Normalizes a hint location for storage / comparison (keeps schema shape). */
+export function toFlaShapeTweenHintLocation(
+  location: FlaShapeTweenHintLocation,
+): FlaShapeTweenHintLocation {
+  return {
+    contourIndex: location.contourIndex,
+    segmentIndex: location.segmentIndex,
+    t: location.t,
+  };
+}
+
+/** The same authored hint anchored at a different contour location. */
+export function withFlaShapeTweenHintLocations(
+  hint: FlaShapeTweenHint,
+  update: {
+    readonly from?: FlaShapeTweenHintLocation;
+    readonly to?: FlaShapeTweenHintLocation;
+  },
+): FlaShapeTweenHint {
+  return {
+    hintId: hint.hintId,
+    from: toFlaShapeTweenHintLocation(update.from ?? hint.from),
+    to: toFlaShapeTweenHintLocation(update.to ?? hint.to),
+  };
+}
+
+/** Replaces the hint set of one track (drops the field when it becomes empty). */
+export function withFlaShapeTweenHints(
+  track: FlaShapeTweenTrack,
+  hints: readonly FlaShapeTweenHint[],
+): FlaShapeTweenTrack {
+  if (hints.length === 0) {
+    const { hints: _removed, ...rest } = track;
+    void _removed;
+    return rest;
+  }
+  return { ...track, hints: hints.map((hint) => ({ ...hint })) };
+}
+
+/** Stable, deterministic hint id derived from the authored correspondence. */
+export function stableFlaShapeTweenHintId(
+  hint: Pick<FlaShapeTweenHint, 'from' | 'to'>,
+  isTaken: (hintId: string) => boolean,
+): string {
+  const text = JSON.stringify([
+    hint.from.contourIndex,
+    hint.from.segmentIndex,
+    hint.from.t,
+    hint.to.contourIndex,
+    hint.to.segmentIndex,
+    hint.to.t,
+  ]);
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = Math.imul(hash ^ text.charCodeAt(index), 0x01000193);
+  }
+  const base = `shape-hint-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+  let candidate = base;
+  for (let suffix = 2; isTaken(candidate); suffix += 1) {
+    candidate = `${base}-${suffix}`;
+  }
+  return candidate;
 }
 
 export type FlaShapeTweenEvaluation =

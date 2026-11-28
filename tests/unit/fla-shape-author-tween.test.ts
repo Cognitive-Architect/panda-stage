@@ -3,15 +3,21 @@ import {
   FlaGraphicDefinitionSchema,
   LayerService,
   ProjectSchema,
+  computeFlaShapeRegionBounds,
   decomposeSvgToEditableShapeRegions,
   evaluateFlaGraphicVisual,
   evaluateShotAtTime,
   findFlaShapeTweenTrackById,
+  interpolateShapeMorphPair,
+  prepareFlaShapeTweenTrack,
+  prepareShapeMorphPair,
   resolveLayerVisualParts,
+  withFlaShapeTweenContours,
   type EvaluatedFlaGraphicNode,
   type FlaEditableShapeRegion,
   type FlaGraphicDefinition,
   type FlaGraphicStructure,
+  type FlaVectorContour,
   type Project,
 } from '../../src/domain';
 import { EditorProjectStore } from '../../src/renderer/stores/EditorProjectStore';
@@ -35,6 +41,103 @@ const HOLE_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" width="240" height="200">' +
   '<path d="M 40 40 L 200 40 L 200 160 L 40 160 Z M 90 90 L 90 120 L 150 120 L 150 90 Z" fill="#ff5533" fill-opacity="1" stroke="none" fill-rule="nonzero"/>' +
   '</svg>';
+
+const TWO_REGION_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" width="240" height="200">' +
+  '<path d="M 40 60 L 120 20 L 200 60 L 120 100 Z" fill="#ff5533" fill-opacity="1" stroke="none" fill-rule="nonzero"/>' +
+  '<path d="M 40 140 L 120 100 L 200 140 L 120 180 Z" fill="#ff5533" fill-opacity="1" stroke="none" fill-rule="nonzero"/>' +
+  '</svg>';
+
+function closedPolygon(points: readonly { readonly x: number; readonly y: number }[]): FlaVectorContour {
+  return {
+    closed: true,
+    commands: [
+      { type: 'M', x: points[0]!.x, y: points[0]!.y },
+      ...points.slice(1).map((point) => ({ type: 'L' as const, x: point.x, y: point.y })),
+      { type: 'Z' },
+    ],
+  };
+}
+
+function ellipseContour(
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+): FlaVectorContour {
+  const k = 0.5522847498307936;
+  return {
+    closed: true,
+    commands: [
+      { type: 'M', x: cx + rx, y: cy },
+      { type: 'C', c1x: cx + rx, c1y: cy + k * ry, c2x: cx + k * rx, c2y: cy + ry, x: cx, y: cy + ry },
+      { type: 'C', c1x: cx - k * rx, c1y: cy + ry, c2x: cx - rx, c2y: cy + k * ry, x: cx - rx, y: cy },
+      { type: 'C', c1x: cx - rx, c1y: cy - k * ry, c2x: cx - k * rx, c2y: cy - ry, x: cx, y: cy - ry },
+      { type: 'C', c1x: cx + k * rx, c1y: cy - ry, c2x: cx + rx, c2y: cy - k * ry, x: cx + rx, y: cy },
+      { type: 'Z' },
+    ],
+  };
+}
+
+function flattenContourPoints(contour: FlaVectorContour): { x: number; y: number }[] {
+  const points: { x: number; y: number }[] = [];
+  let cursor = { x: 0, y: 0 };
+  const steps = 12;
+  for (const command of contour.commands) {
+    if (command.type === 'M' || command.type === 'L') {
+      points.push({ x: command.x, y: command.y });
+      cursor = { x: command.x, y: command.y };
+    } else if (command.type === 'Q') {
+      for (let step = 1; step <= steps; step += 1) {
+        const t = step / steps;
+        const u = 1 - t;
+        points.push({
+          x: u * u * cursor.x + 2 * u * t * command.cx + t * t * command.x,
+          y: u * u * cursor.y + 2 * u * t * command.cy + t * t * command.y,
+        });
+      }
+      cursor = { x: command.x, y: command.y };
+    } else if (command.type === 'C') {
+      for (let step = 1; step <= steps; step += 1) {
+        const t = step / steps;
+        const u = 1 - t;
+        points.push({
+          x:
+            u * u * u * cursor.x +
+            3 * u * u * t * command.c1x +
+            3 * u * t * t * command.c2x +
+            t * t * t * command.x,
+          y:
+            u * u * u * cursor.y +
+            3 * u * u * t * command.c1y +
+            3 * u * t * t * command.c2y +
+            t * t * t * command.y,
+        });
+      }
+      cursor = { x: command.x, y: command.y };
+    }
+  }
+  return points;
+}
+
+function pointInRing(
+  point: { readonly x: number; readonly y: number },
+  ring: readonly { readonly x: number; readonly y: number }[],
+): number {
+  let winding = 0;
+  for (let index = 0; index < ring.length; index += 1) {
+    const a = ring[index]!;
+    const b = ring[(index + 1) % ring.length]!;
+    if (a.y <= point.y) {
+      if (b.y > point.y && (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y) > 0) {
+        winding += 1;
+      }
+    } else if (b.y <= point.y && (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y) < 0) {
+      winding -= 1;
+    }
+  }
+  return winding;
+}
 
 function shapeStructure(): FlaGraphicStructure {
   return {
@@ -166,10 +269,10 @@ function findNode(
   return null;
 }
 
-function evaluateRegion(
+function evaluateNodeRegions(
   project: Project,
   internalTimeMs: number,
-): FlaEditableShapeRegion | null {
+): readonly FlaEditableShapeRegion[] {
   const definition = findDefinition(project);
   const layer = project.shots[0]!.layers.find((candidate) => candidate.id === TWEEN_LAYER_ID)!;
   const visual = evaluateFlaGraphicVisual({
@@ -182,7 +285,57 @@ function evaluateRegion(
   });
   const nodes = visual?.layers?.flatMap((entry) => entry.nodes) ?? [];
   const node = findNode(nodes, SHAPE_PATH);
-  return node?.vectorVisual?.regions[0] ?? null;
+  return node?.vectorVisual?.regions ?? [];
+}
+
+function evaluateRegion(
+  project: Project,
+  internalTimeMs: number,
+): FlaEditableShapeRegion | null {
+  return evaluateNodeRegions(project, internalTimeMs)[0] ?? null;
+}
+
+function findTweenForRegion(project: Project, regionRef: string) {
+  return (
+    findDefinition(project).structure?.shapeTweenTracks?.find(
+      (track) => track.target.regionRef === regionRef,
+    ) ?? null
+  );
+}
+
+/** Same project with every author Shape Tween track removed (baseline geometry). */
+function withoutShapeTweenTracks(project: Project): Project {
+  return ProjectSchema.parse({
+    ...project,
+    animations: project.animations.map((candidate) =>
+      candidate.id !== GRAPHIC_ID
+        ? candidate
+        : {
+            ...(candidate as FlaGraphicDefinition),
+            structure: {
+              ...(candidate as FlaGraphicDefinition).structure!,
+              shapeTweenTracks: undefined,
+            },
+          },
+    ),
+  });
+}
+
+/** Replaces the `to` pose of one tween with new single-contour geometry. */
+function authorToPose(
+  fixture: ReturnType<typeof buildTweenProject>,
+  project: Project,
+  tweenId: string,
+  contours: readonly FlaVectorContour[],
+): Project {
+  const track = findTween(project, tweenId)!;
+  return new LayerService().updateFlaGraphicShapeTween(project, {
+    shotId: fixture.shotId,
+    layerId: fixture.layerId,
+    tweenId,
+    pose: 'to',
+    region: withFlaShapeTweenContours(track.from, contours),
+  });
 }
 
 function withTween(
@@ -399,7 +552,7 @@ describe('native author Shape Tween (#1457 F02)', () => {
     ).toHaveLength(1);
   });
 
-  it('rejects unsupported hole / multi-contour geometry with a clear Chinese error', () => {
+  it('supports an outer + hole region tween and rejects unsupported nested topology', () => {
     const fixture = buildTweenProject();
     const service = new LayerService();
     const definition = findDefinition(fixture.project);
@@ -408,35 +561,72 @@ describe('native author Shape Tween (#1457 F02)', () => {
     expect(holeRegion.contours.length).toBe(2);
     const frameKey = '0';
     const pathKey = JSON.stringify(SHAPE_PATH);
-    const seeded = FlaGraphicDefinitionSchema.parse({
-      ...definition,
-      flaGraphicSharedShapeOverrides: {
-        [frameKey]: {
-          [pathKey]: {
-            baseViewBox: decomposed.viewBox,
-            regions: decomposed.regions,
-            excludedRegionRefs: [],
-            extractedRegions: [],
+    const withSeededRegions = (
+      regions: readonly FlaEditableShapeRegion[],
+    ): Project => {
+      const seeded = FlaGraphicDefinitionSchema.parse({
+        ...definition,
+        flaGraphicSharedShapeOverrides: {
+          [frameKey]: {
+            [pathKey]: {
+              baseViewBox: decomposed.viewBox,
+              regions: [...regions],
+              excludedRegionRefs: [],
+              extractedRegions: [],
+            },
           },
         },
-      },
+      });
+      return ProjectSchema.parse({
+        ...fixture.project,
+        animations: [seeded],
+      });
+    };
+
+    // Outer + direct hole is now inside the documented multi-contour boundary.
+    const withHole = withSeededRegions(decomposed.regions);
+    const created = service.createFlaGraphicShapeTween(withHole, {
+      shotId: fixture.shotId,
+      layerId: fixture.layerId,
+      frameOrdinal: 0,
+      nodePath: [...SHAPE_PATH],
+      regionRef: holeRegion.regionRef,
+      mode: 'definition',
+      startTimeMs: 0,
+      durationMs: 1_000,
     });
-    const project = ProjectSchema.parse({
-      ...fixture.project,
-      animations: [seeded],
-    });
+    const holeTrack = findDefinition(created).structure!.shapeTweenTracks![0]!;
+    expect(holeTrack.from.contours).toHaveLength(2);
+    expect(holeTrack.to.contours).toHaveLength(2);
+
+    // A contour nested inside the hole is outside the boundary.
+    const island = closedPolygon([
+      { x: 110, y: 100 },
+      { x: 110, y: 112 },
+      { x: 130, y: 112 },
+      { x: 130, y: 100 },
+    ]);
+    const nestedRegion: FlaEditableShapeRegion = {
+      ...holeRegion,
+      contours: [...holeRegion.contours, island],
+      bounds: computeFlaShapeRegionBounds({
+        contours: [...holeRegion.contours, island],
+        strokes: holeRegion.strokes,
+      }),
+    };
+    const withNested = withSeededRegions([nestedRegion]);
     expect(() =>
-      service.createFlaGraphicShapeTween(project, {
+      service.createFlaGraphicShapeTween(withNested, {
         shotId: fixture.shotId,
         layerId: fixture.layerId,
         frameOrdinal: 0,
         nodePath: [...SHAPE_PATH],
-        regionRef: holeRegion.regionRef,
+        regionRef: nestedRegion.regionRef,
         mode: 'definition',
         startTimeMs: 0,
         durationMs: 1_000,
       }),
-    ).toThrow(/孔洞或多轮廓/u);
+    ).toThrow(/暂不支持该多轮廓/u);
   });
 
   it('degrades locally when the target region is deleted from the authored override', () => {
@@ -619,5 +809,395 @@ describe('native author Shape Tween (#1457 F02)', () => {
       mode: 'definition',
     });
     expect(JSON.stringify(withInertTween)).toBe(JSON.stringify(baseline));
+  });
+
+  it('changes the morph with an authored hint and restores the unhinted evaluation exactly when removed', () => {
+    const fixture = buildTweenProject();
+    const { project, tweenId } = withTween(fixture);
+    const service = new LayerService();
+    const triangle = closedPolygon([
+      { x: 40, y: 100 },
+      { x: 200, y: 100 },
+      { x: 120, y: 190 },
+    ]);
+    const withPose = authorToPose(fixture, project, tweenId, [triangle]);
+    const times = [150, 400, 650, 900];
+    const before = times.map((time) => JSON.stringify(evaluateRegion(withPose, time)));
+    const hinted = service.addFlaGraphicShapeTweenHint(withPose, {
+      shotId: fixture.shotId,
+      layerId: fixture.layerId,
+      tweenId,
+      from: { contourIndex: 0, segmentIndex: 0, t: 0.5 },
+      to: { contourIndex: 0, segmentIndex: 1, t: 0.5 },
+    });
+    const hintedTrack = findTween(hinted, tweenId)!;
+    expect(hintedTrack.hints).toHaveLength(1);
+    expect(hintedTrack.hints![0]!.hintId).toMatch(/^shape-hint-/u);
+    const after = times.map((time) => JSON.stringify(evaluateRegion(hinted, time)));
+    expect(after).not.toEqual(before);
+    // Endpoints stay exact with hints present.
+    expect(evaluateRegion(hinted, TWEEN_START_MS)!.contours).toEqual(hintedTrack.from.contours);
+    expect(evaluateRegion(hinted, TWEEN_END_MS)!.contours).toEqual(hintedTrack.to.contours);
+
+    // Moving the hint changes the morph again (dragging a hint is authoritative).
+    const moved = service.updateFlaGraphicShapeTweenHint(hinted, {
+      shotId: fixture.shotId,
+      layerId: fixture.layerId,
+      tweenId,
+      hintId: hintedTrack.hints![0]!.hintId,
+      to: { contourIndex: 0, segmentIndex: 2, t: 0.5 },
+    });
+    expect(JSON.stringify(evaluateRegion(moved, 400))).not.toBe(after[1]);
+
+    const withoutHint = service.removeFlaGraphicShapeTweenHint(hinted, {
+      shotId: fixture.shotId,
+      layerId: fixture.layerId,
+      tweenId,
+      hintId: hintedTrack.hints![0]!.hintId,
+    });
+    expect(findTween(withoutHint, tweenId)!.hints).toBeUndefined();
+    expect(times.map((time) => JSON.stringify(evaluateRegion(withoutHint, time)))).toEqual(before);
+  });
+
+  it('commits each hint action as one undo entry through the store', () => {
+    const fixture = buildTweenProject();
+    const editorStore = new EditorProjectStore();
+    editorStore.open('C:\\dummy\\hint-project', fixture.project);
+    const layerStore = new LayerStore(
+      editorStore,
+      { getCurrentShotId: () => fixture.shotId },
+      new LayerService(),
+    );
+    const created = layerStore.createFlaGraphicShapeTween({
+      layerId: fixture.layerId,
+      frameOrdinal: 0,
+      nodePath: [...SHAPE_PATH],
+      regionRef: fixture.regionRef,
+      mode: 'definition',
+      svgText: SHAPE_SVG,
+      startTimeMs: 0,
+      durationMs: 1_000,
+    });
+    const tweenId = findDefinition(created).structure!.shapeTweenTracks![0]!.tweenId;
+    const hinted = layerStore.addFlaGraphicShapeTweenHint({
+      layerId: fixture.layerId,
+      tweenId,
+      from: { contourIndex: 0, segmentIndex: 0, t: 0.5 },
+      to: { contourIndex: 0, segmentIndex: 0, t: 0.5 },
+    });
+    expect(findTween(hinted, tweenId)!.hints).toHaveLength(1);
+    expect(editorStore.undo()).toBe(true);
+    expect(findDefinition(editorStore.getSnapshot()!.project).structure!.shapeTweenTracks![0]!.hints)
+      .toBeUndefined();
+    expect(editorStore.redo()).toBe(true);
+    const redoTrack = findDefinition(
+      editorStore.getSnapshot()!.project,
+    ).structure!.shapeTweenTracks![0]!;
+    expect(redoTrack.hints).toHaveLength(1);
+    const removed = layerStore.removeFlaGraphicShapeTweenHint({
+      layerId: fixture.layerId,
+      tweenId,
+      hintId: redoTrack.hints![0]!.hintId,
+    });
+    expect(findTween(removed, tweenId)!.hints).toBeUndefined();
+    expect(editorStore.undo()).toBe(true);
+    expect(findDefinition(editorStore.getSnapshot()!.project).structure!.shapeTweenTracks![0]!.hints)
+      .toHaveLength(1);
+  });
+
+  it('round-trips hints through ProjectSchema and evaluates identically after save/reopen', () => {
+    const fixture = buildTweenProject();
+    const { project, tweenId } = withTween(fixture);
+    const service = new LayerService();
+    const triangle = closedPolygon([
+      { x: 40, y: 100 },
+      { x: 200, y: 100 },
+      { x: 120, y: 190 },
+    ]);
+    const withPose = authorToPose(fixture, project, tweenId, [triangle]);
+    const hinted = service.addFlaGraphicShapeTweenHint(withPose, {
+      shotId: fixture.shotId,
+      layerId: fixture.layerId,
+      tweenId,
+      from: { contourIndex: 0, segmentIndex: 1, t: 0.25 },
+      to: { contourIndex: 0, segmentIndex: 2, t: 0.5 },
+    });
+    const reopened = ProjectSchema.parse(JSON.parse(JSON.stringify(hinted)));
+    expect(findTween(reopened, tweenId)!.hints).toEqual(findTween(hinted, tweenId)!.hints);
+    for (const time of [0, 250, 500, 750, 1_000]) {
+      expect(JSON.stringify(evaluateRegion(reopened, time))).toBe(
+        JSON.stringify(evaluateRegion(hinted, time)),
+      );
+    }
+  });
+
+  it('rejects crossing and out-of-range hints with clear Chinese errors and keeps the persisted hints', () => {
+    const fixture = buildTweenProject();
+    const { project, tweenId } = withTween(fixture);
+    const service = new LayerService();
+    const triangle = closedPolygon([
+      { x: 40, y: 100 },
+      { x: 200, y: 100 },
+      { x: 120, y: 190 },
+    ]);
+    const withPose = authorToPose(fixture, project, tweenId, [triangle]);
+    const first = service.addFlaGraphicShapeTweenHint(withPose, {
+      shotId: fixture.shotId,
+      layerId: fixture.layerId,
+      tweenId,
+      from: { contourIndex: 0, segmentIndex: 0, t: 0.25 },
+      to: { contourIndex: 0, segmentIndex: 0, t: 0.75 },
+    });
+    const second = service.addFlaGraphicShapeTweenHint(first, {
+      shotId: fixture.shotId,
+      layerId: fixture.layerId,
+      tweenId,
+      from: { contourIndex: 0, segmentIndex: 0, t: 0.5 },
+      to: { contourIndex: 0, segmentIndex: 0, t: 0.9 },
+    });
+    const secondHintId = findTween(second, tweenId)!.hints![1]!.hintId;
+    expect(() =>
+      service.updateFlaGraphicShapeTweenHint(second, {
+        shotId: fixture.shotId,
+        layerId: fixture.layerId,
+        tweenId,
+        hintId: secondHintId,
+        to: { contourIndex: 0, segmentIndex: 0, t: 0.2 },
+      }),
+    ).toThrow(/顺序交叉/u);
+    expect(() =>
+      service.addFlaGraphicShapeTweenHint(second, {
+        shotId: fixture.shotId,
+        layerId: fixture.layerId,
+        tweenId,
+        from: { contourIndex: 0, segmentIndex: 9, t: 0.5 },
+        to: { contourIndex: 0, segmentIndex: 0, t: 0.5 },
+      }),
+    ).toThrow(/提示点位置无效/u);
+    expect(findTween(second, tweenId)!.hints).toHaveLength(2);
+  });
+
+  it('keeps a tween without hints byte-identical to the #1457 prepared pair and interpolation', () => {
+    const fixture = buildTweenProject();
+    const { project, tweenId } = withAuthoredSecondPose(fixture);
+    const track = findTween(project, tweenId)!;
+    expect(track.hints).toBeUndefined();
+    const expected = prepareShapeMorphPair(
+      { contours: track.from.contours },
+      { contours: track.to.contours },
+    );
+    expect(expected.ok).toBe(true);
+    if (!expected.ok) return;
+    expect(JSON.stringify(prepareFlaShapeTweenTrack(track))).toBe(JSON.stringify(expected));
+    for (const progress of [0.13, 0.5, 0.87]) {
+      const manual = interpolateShapeMorphPair(expected.pair, progress)!;
+      const time = track.startTimeMs + (track.endTimeMs - track.startTimeMs) * progress;
+      expect(JSON.stringify(evaluateRegion(project, time)!.contours)).toBe(
+        JSON.stringify(manual.contours),
+      );
+    }
+  });
+
+  it('degrades one unsupported tween locally while another tween stays healthy', () => {
+    const fixture = buildTweenProject();
+    const service = new LayerService();
+    const definition = findDefinition(fixture.project);
+    const decomposed = decomposeSvgToEditableShapeRegions(TWO_REGION_SVG);
+    expect(decomposed.regions).toHaveLength(2);
+    const pathKey = JSON.stringify(SHAPE_PATH);
+    const seededDefinition = FlaGraphicDefinitionSchema.parse({
+      ...definition,
+      flaGraphicSharedShapeOverrides: {
+        '0': {
+          [pathKey]: {
+            baseViewBox: decomposed.viewBox,
+            regions: decomposed.regions,
+            excludedRegionRefs: [],
+            extractedRegions: [],
+          },
+        },
+      },
+    });
+    const base = ProjectSchema.parse({
+      ...fixture.project,
+      animations: [seededDefinition],
+    });
+    const create = (target: Project, regionRef: string): Project =>
+      service.createFlaGraphicShapeTween(target, {
+        shotId: fixture.shotId,
+        layerId: fixture.layerId,
+        frameOrdinal: 0,
+        nodePath: [...SHAPE_PATH],
+        regionRef,
+        mode: 'definition',
+        startTimeMs: 0,
+        durationMs: 1_000,
+      });
+    const withFirst = create(base, decomposed.regions[0]!.regionRef);
+    const withBoth = create(withFirst, decomposed.regions[1]!.regionRef);
+    const firstTrack = findTweenForRegion(withBoth, decomposed.regions[0]!.regionRef)!;
+    const secondTrack = findTweenForRegion(withBoth, decomposed.regions[1]!.regionRef)!;
+    expect(firstTrack).toBeTruthy();
+    expect(secondTrack).toBeTruthy();
+    const firstAuthored = authorToPose(fixture, withBoth, firstTrack.tweenId, [
+      closedPolygon([
+        { x: 40, y: 60 },
+        { x: 200, y: 60 },
+        { x: 120, y: 180 },
+      ]),
+    ]);
+    const bothAuthored = authorToPose(fixture, firstAuthored, secondTrack.tweenId, [
+      closedPolygon([
+        { x: 40, y: 140 },
+        { x: 200, y: 140 },
+        { x: 120, y: 40 },
+      ]),
+    ]);
+    const baseline = evaluateNodeRegions(bothAuthored, 500);
+    expect(baseline).toHaveLength(2);
+    expect(baseline[0]!.contours).not.toEqual(findTween(bothAuthored, firstTrack.tweenId)!.from.contours);
+    expect(baseline[1]!.contours).not.toEqual(findTween(bothAuthored, secondTrack.tweenId)!.from.contours);
+
+    // Persist an out-of-boundary topology on the first tween only.
+    const opened = JSON.parse(JSON.stringify(bothAuthored)) as Record<string, unknown>;
+    const animations = opened.animations as Array<Record<string, unknown>>;
+    const openedDefinition = animations.find((candidate) => candidate.id === GRAPHIC_ID)!;
+    const openedStructure = openedDefinition.structure as {
+      shapeTweenTracks: Array<{ tweenId: string; from: { contours: FlaVectorContour[] } }>;
+    };
+    const brokenTrack = openedStructure.shapeTweenTracks.find(
+      (track) => track.tweenId === firstTrack.tweenId,
+    )!;
+    brokenTrack.from.contours = [
+      closedPolygon([
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 },
+      ]),
+      closedPolygon([
+        { x: 25, y: 25 },
+        { x: 25, y: 75 },
+        { x: 75, y: 75 },
+        { x: 75, y: 25 },
+      ]),
+      closedPolygon([
+        { x: 40, y: 40 },
+        { x: 40, y: 60 },
+        { x: 60, y: 60 },
+        { x: 60, y: 40 },
+      ]),
+    ];
+    const broken = ProjectSchema.parse(opened);
+    const brokenRegions = evaluateNodeRegions(broken, 500);
+    expect(JSON.stringify(brokenRegions[1])).toBe(JSON.stringify(baseline[1]));
+    // The broken region falls back to the same geometry as having no track at all.
+    const withoutFirst = ProjectSchema.parse({
+      ...broken,
+      animations: broken.animations.map((candidate) =>
+        candidate.id !== GRAPHIC_ID
+          ? candidate
+          : {
+              ...(candidate as FlaGraphicDefinition),
+              structure: {
+                ...(candidate as FlaGraphicDefinition).structure!,
+                shapeTweenTracks: (
+                  candidate as FlaGraphicDefinition
+                ).structure!.shapeTweenTracks!.filter(
+                  (track) => track.tweenId !== firstTrack.tweenId,
+                ),
+              },
+            },
+      ),
+    });
+    expect(JSON.stringify(brokenRegions[0])).toBe(
+      JSON.stringify(evaluateNodeRegions(withoutFirst, 500)[0]),
+    );
+  });
+
+  it('keeps authored geometry when persisted hints cross, without touching other tweens', () => {
+    const fixture = buildTweenProject();
+    const { project, tweenId } = withAuthoredSecondPose(fixture);
+    const opened = JSON.parse(JSON.stringify(project)) as Record<string, unknown>;
+    const animations = opened.animations as Array<Record<string, unknown>>;
+    const definition = animations.find((candidate) => candidate.id === GRAPHIC_ID)!;
+    const structure = definition.structure as {
+      shapeTweenTracks: Array<{ tweenId: string; hints?: unknown[] }>;
+    };
+    structure.shapeTweenTracks[0]!.hints = [
+      {
+        hintId: 'stored-hint-a',
+        from: { contourIndex: 0, segmentIndex: 0, t: 0.25 },
+        to: { contourIndex: 0, segmentIndex: 0, t: 0.75 },
+      },
+      {
+        hintId: 'stored-hint-b',
+        from: { contourIndex: 0, segmentIndex: 0, t: 0.5 },
+        to: { contourIndex: 0, segmentIndex: 0, t: 0.25 },
+      },
+    ];
+    const conflicting = ProjectSchema.parse(opened);
+    expect(findTween(conflicting, tweenId)!.hints).toHaveLength(2);
+    const evaluated = evaluateRegion(conflicting, 500);
+    expect(evaluated).not.toBeNull();
+    // Crossing hints degrade to the authored override geometry (as if no tween existed).
+    expect(JSON.stringify(evaluated)).toBe(
+      JSON.stringify(evaluateRegion(withoutShapeTweenTracks(conflicting), 500)),
+    );
+  });
+
+  it('evaluates a hole pose through the same path with exact endpoints and a contained hole', () => {
+    const fixture = buildTweenProject();
+    const service = new LayerService();
+    const definition = findDefinition(fixture.project);
+    const decomposed = decomposeSvgToEditableShapeRegions(HOLE_SVG);
+    const holeRegion = decomposed.regions[0]!;
+    expect(holeRegion.contours).toHaveLength(2);
+    const pathKey = JSON.stringify(SHAPE_PATH);
+    const seededDefinition = FlaGraphicDefinitionSchema.parse({
+      ...definition,
+      flaGraphicSharedShapeOverrides: {
+        '0': {
+          [pathKey]: {
+            baseViewBox: decomposed.viewBox,
+            regions: decomposed.regions,
+            excludedRegionRefs: [],
+            extractedRegions: [],
+          },
+        },
+      },
+    });
+    const base = ProjectSchema.parse({
+      ...fixture.project,
+      animations: [seededDefinition],
+    });
+    const created = service.createFlaGraphicShapeTween(base, {
+      shotId: fixture.shotId,
+      layerId: fixture.layerId,
+      frameOrdinal: 0,
+      nodePath: [...SHAPE_PATH],
+      regionRef: holeRegion.regionRef,
+      mode: 'definition',
+      startTimeMs: 0,
+      durationMs: 1_000,
+    });
+    const tweenId = findDefinition(created).structure!.shapeTweenTracks![0]!.tweenId;
+    const withEllipse = authorToPose(fixture, created, tweenId, [
+      ellipseContour(120, 110, 80, 60),
+    ]);
+    const reopened = ProjectSchema.parse(JSON.parse(JSON.stringify(withEllipse)));
+    const track = findTween(reopened, tweenId)!;
+    const start = evaluateRegion(reopened, TWEEN_START_MS)!;
+    const end = evaluateRegion(reopened, TWEEN_END_MS)!;
+    const middle = evaluateRegion(reopened, 500)!;
+    expect(start.contours).toEqual(track.from.contours);
+    expect(end.contours).toEqual(track.to.contours);
+    expect(start.contours).toHaveLength(2);
+    expect(end.contours).toHaveLength(1);
+    expect(middle.contours).toHaveLength(2);
+    const outer = flattenContourPoints(middle.contours[0]!);
+    const hole = flattenContourPoints(middle.contours[1]!);
+    expect(hole.length).toBeGreaterThan(0);
+    expect(hole.every((point) => pointInRing(point, outer) !== 0)).toBe(true);
   });
 });

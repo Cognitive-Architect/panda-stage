@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { interpolateShapeMorphPair, prepareShapeMorphPair } from '../../../src/domain/geometry/shapeMorph';
+import {
+  interpolateShapeMorphPair,
+  prepareShapeMorphPair,
+  sampleShapeMorphContourLocation,
+  type ShapeMorphHint,
+} from '../../../src/domain/geometry/shapeMorph';
 import type {
   FlaVectorContour,
   FlaVectorPathCommand,
@@ -80,6 +85,83 @@ function flatMouthContour(): FlaVectorContour {
       { type: 'Z' },
     ],
   };
+}
+
+/** Axis-aligned square centered at (cx, cy); other winding than `circleContour`. */
+function squareContour(cx: number, cy: number, halfSize: number): FlaVectorContour {
+  const s = halfSize;
+  return polygonContour([
+    { x: cx - s, y: cy - s },
+    { x: cx + s, y: cy - s },
+    { x: cx + s, y: cy + s },
+    { x: cx - s, y: cy + s },
+  ]);
+}
+
+/** Ellipse as four cubic arcs, same winding as `circleContour`. */
+function ellipseContour(
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+): FlaVectorContour {
+  const k = 0.5522847498307936;
+  return {
+    closed: true,
+    commands: [
+      { type: 'M', x: cx + rx, y: cy },
+      { type: 'C', c1x: cx + rx, c1y: cy + k * ry, c2x: cx + k * rx, c2y: cy + ry, x: cx, y: cy + ry },
+      { type: 'C', c1x: cx - k * rx, c1y: cy + ry, c2x: cx - rx, c2y: cy + k * ry, x: cx - rx, y: cy },
+      { type: 'C', c1x: cx - rx, c1y: cy - k * ry, c2x: cx - k * rx, c2y: cy - ry, x: cx, y: cy - ry },
+      { type: 'C', c1x: cx + k * rx, c1y: cy - ry, c2x: cx + rx, c2y: cy - k * ry, x: cx + rx, y: cy },
+      { type: 'Z' },
+    ],
+  };
+}
+
+/** Outer circle with an opposite-winding square hole (a donut). */
+function donutContours(
+  cx: number,
+  cy: number,
+  outerRadius: number,
+  holeHalf: number,
+): readonly FlaVectorContour[] {
+  const s = holeHalf;
+  return [
+    circleContour(cx, cy, outerRadius),
+    polygonContour([
+      { x: cx - s, y: cy - s },
+      { x: cx - s, y: cy + s },
+      { x: cx + s, y: cy + s },
+      { x: cx + s, y: cy - s },
+    ]),
+  ];
+}
+
+function averagePoint(points: readonly Point[]): Point {
+  let x = 0;
+  let y = 0;
+  for (const point of points) {
+    x += point.x;
+    y += point.y;
+  }
+  return { x: x / points.length, y: y / points.length };
+}
+
+function pointInRing(point: Point, ring: readonly Point[]): number {
+  let winding = 0;
+  for (let index = 0; index < ring.length; index += 1) {
+    const a = ring[index]!;
+    const b = ring[(index + 1) % ring.length]!;
+    if (a.y <= point.y) {
+      if (b.y > point.y && (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y) > 0) {
+        winding += 1;
+      }
+    } else if (b.y <= point.y && (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y) < 0) {
+      winding -= 1;
+    }
+  }
+  return winding;
 }
 
 /** Outer square + enclosed hole: first-ticket unsupported topology. */
@@ -334,5 +416,315 @@ describe('shapeMorph geometry', () => {
     const start = interpolateShapeMorphPair(multi.pair, 0);
     expect(start!.contours).toHaveLength(2);
     expect(Math.abs(signedArea(flattenContour(start!.contours[1]!)))).toBeLessThan(1e-3);
+  });
+});
+
+describe('shapeMorph hints (#1458)', () => {
+  it('changes correspondence for mismatched segment counts and restores the unhinted morph exactly', () => {
+    const from = circleContour(0, 0, 50);
+    const to = flatMouthContour();
+    const unhinted = prepareShapeMorphPair({ contours: [from] }, { contours: [to] });
+    expect(unhinted.ok).toBe(true);
+    if (!unhinted.ok) return;
+    const unhintedMiddle = interpolateShapeMorphPair(unhinted.pair, 0.5)!;
+    const hints = [
+      {
+        from: { contourIndex: 0, segmentIndex: 1, t: 0.5 },
+        to: { contourIndex: 0, segmentIndex: 2, t: 0.5 },
+      },
+    ];
+    const hinted = prepareShapeMorphPair(
+      { contours: [from] },
+      { contours: [to] },
+      { hints },
+    );
+    expect(hinted.ok).toBe(true);
+    if (!hinted.ok) return;
+    expect(hinted.pair.from[0]!.segments.length).toBe(hinted.pair.to[0]!.segments.length);
+    const hintedMiddle = interpolateShapeMorphPair(hinted.pair, 0.5)!;
+    expect(JSON.stringify(hintedMiddle)).not.toBe(JSON.stringify(unhintedMiddle));
+    // The hinted pair is still a plausible closed curve, not a degenerate collapse.
+    const hintedPoints = flattenContour(hintedMiddle.contours[0]!);
+    expect(hintedPoints.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y))).toBe(true);
+    expect(Math.abs(signedArea(hintedPoints))).toBeGreaterThan(100);
+
+    // Removing the hint (i.e. preparing without it) is byte-identical to #1457 behavior.
+    const restored = prepareShapeMorphPair({ contours: [from] }, { contours: [to] });
+    expect(restored.ok).toBe(true);
+    if (!restored.ok) return;
+    expect(JSON.stringify(restored.pair)).toBe(JSON.stringify(unhinted.pair));
+    for (const progress of [0, 0.25, 0.5, 0.75, 1]) {
+      expect(JSON.stringify(interpolateShapeMorphPair(restored.pair, progress))).toBe(
+        JSON.stringify(interpolateShapeMorphPair(unhinted.pair, progress)),
+      );
+    }
+  });
+
+  it('splits exactly at hinted locations so hint points map to hint points at every progress', () => {
+    const triangle = polygonContour([
+      { x: 0, y: 0 },
+      { x: 120, y: 0 },
+      { x: 60, y: 100 },
+    ]);
+    const square = polygonContour([
+      { x: -10, y: -10 },
+      { x: 150, y: -10 },
+      { x: 150, y: 90 },
+      { x: -10, y: 90 },
+    ]);
+    const fromLocation = { contourIndex: 0, segmentIndex: 1, t: 0.25 };
+    const toLocation = { contourIndex: 0, segmentIndex: 2, t: 0.5 };
+    const fromPoint = sampleShapeMorphContourLocation(triangle, fromLocation)!;
+    const toPoint = sampleShapeMorphContourLocation(square, toLocation)!;
+    expect(fromPoint).not.toBeNull();
+    expect(toPoint).not.toBeNull();
+
+    const prepared = prepareShapeMorphPair(
+      { contours: [triangle] },
+      { contours: [square] },
+      { hints: [{ from: fromLocation, to: toLocation }] },
+    );
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.pair.from[0]!.start.x).toBeCloseTo(fromPoint.x, 9);
+    expect(prepared.pair.from[0]!.start.y).toBeCloseTo(fromPoint.y, 9);
+    expect(prepared.pair.to[0]!.start.x).toBeCloseTo(toPoint.x, 9);
+    expect(prepared.pair.to[0]!.start.y).toBeCloseTo(toPoint.y, 9);
+    expect(prepared.pair.from[0]!.segments.length).toBe(prepared.pair.to[0]!.segments.length);
+
+    for (const progress of [0, 0.2, 0.5, 0.8, 1]) {
+      const frame = interpolateShapeMorphPair(prepared.pair, progress)!;
+      const start = frame.contours[0]!.commands[0]!;
+      expect(start.type).toBe('M');
+      if (start.type !== 'M') return;
+      expect(start.x).toBeCloseTo(fromPoint.x + (toPoint.x - fromPoint.x) * progress, 9);
+      expect(start.y).toBeCloseTo(fromPoint.y + (toPoint.y - fromPoint.y) * progress, 9);
+      // The closing anchor stays exact too.
+      const closing = frame.contours[0]!.commands
+        .filter((command) => command.type === 'C')
+        .at(-1)!;
+      if (closing.type !== 'C') return;
+      expect(closing.x).toBeCloseTo(start.x, 9);
+      expect(closing.y).toBeCloseTo(start.y, 9);
+    }
+  });
+
+  it('rejects crossing, duplicate and out-of-range hints with typed failures', () => {
+    const from = squareContour(0, 0, 100);
+    const to = squareContour(10, 10, 80);
+    const run = (hints: readonly ShapeMorphHint[]) =>
+      prepareShapeMorphPair({ contours: [from] }, { contours: [to] }, { hints });
+    const codeOf = (result: ReturnType<typeof prepareShapeMorphPair>): string =>
+      result.ok ? 'ok' : result.code;
+
+    expect(
+      codeOf(run([
+        {
+          from: { contourIndex: 0, segmentIndex: 0, t: 0.25 },
+          to: { contourIndex: 0, segmentIndex: 0, t: 0.75 },
+        },
+        {
+          from: { contourIndex: 0, segmentIndex: 0, t: 0.5 },
+          to: { contourIndex: 0, segmentIndex: 0, t: 0.25 },
+        },
+      ])),
+    ).toBe('crossing-hints');
+
+    expect(
+      codeOf(run([
+        {
+          from: { contourIndex: 0, segmentIndex: 0, t: 0.25 },
+          to: { contourIndex: 0, segmentIndex: 0, t: 0.25 },
+        },
+        {
+          from: { contourIndex: 0, segmentIndex: 0, t: 0.25 },
+          to: { contourIndex: 0, segmentIndex: 0, t: 0.75 },
+        },
+      ])),
+    ).toBe('ambiguous-hints');
+
+    expect(
+      codeOf(run([
+        {
+          from: { contourIndex: 0, segmentIndex: 0, t: 0.25 },
+          to: { contourIndex: 0, segmentIndex: 0, t: 0.25 },
+        },
+        {
+          from: { contourIndex: 0, segmentIndex: 0, t: 0.75 },
+          to: { contourIndex: 0, segmentIndex: 0, t: 0.25 },
+        },
+      ])),
+    ).toBe('ambiguous-hints');
+
+    expect(
+      codeOf(run([
+        {
+          from: { contourIndex: 0, segmentIndex: 9, t: 0.5 },
+          to: { contourIndex: 0, segmentIndex: 0, t: 0.5 },
+        },
+      ])),
+    ).toBe('invalid-hint');
+
+    expect(
+      codeOf(run([
+        {
+          from: { contourIndex: 0, segmentIndex: 0, t: 1.5 },
+          to: { contourIndex: 0, segmentIndex: 0, t: 0.5 },
+        },
+      ])),
+    ).toBe('invalid-hint');
+
+    expect(
+      codeOf(run([
+        {
+          from: { contourIndex: 2, segmentIndex: 0, t: 0.5 },
+          to: { contourIndex: 0, segmentIndex: 0, t: 0.5 },
+        },
+      ])),
+    ).toBe('invalid-hint');
+  });
+
+  it('is deterministic with hints', () => {
+    const from = circleContour(0, 0, 40);
+    const to = squareContour(5, 5, 60);
+    const hints = [
+      {
+        from: { contourIndex: 0, segmentIndex: 0, t: 0.25 },
+        to: { contourIndex: 0, segmentIndex: 1, t: 0.5 },
+      },
+      {
+        from: { contourIndex: 0, segmentIndex: 2, t: 0.75 },
+        to: { contourIndex: 0, segmentIndex: 3, t: 0.5 },
+      },
+    ];
+    const first = prepareShapeMorphPair({ contours: [from] }, { contours: [to] }, { hints });
+    const second = prepareShapeMorphPair({ contours: [from] }, { contours: [to] }, { hints });
+    expect(first.ok).toBe(true);
+    expect(JSON.stringify(first)).toBe(JSON.stringify(second));
+    if (!first.ok || !second.ok) return;
+    expect(JSON.stringify(interpolateShapeMorphPair(first.pair, 0.37))).toBe(
+      JSON.stringify(interpolateShapeMorphPair(second.pair, 0.37)),
+    );
+  });
+});
+
+describe('shapeMorph multi-contour / holes (#1458)', () => {
+  it('pairs a donut with a single ellipse and keeps the hole inside the outer at every progress', () => {
+    const donut = donutContours(0, 0, 100, 30);
+    const ellipse = ellipseContour(0, 0, 120, 80);
+    const prepared = prepareShapeMorphPair(
+      { contours: donut },
+      { contours: [ellipse] },
+      { allowMultipleContours: true },
+    );
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.pair.contourCount).toBe(2);
+    const fromHoleSign = Math.sign(signedArea(flattenContour(donut[1]!)));
+    expect(fromHoleSign).toBeLessThan(0);
+
+    for (const progress of [0, 0.25, 0.5, 0.75, 1]) {
+      const frame = interpolateShapeMorphPair(prepared.pair, progress)!;
+      expect(frame.contours).toHaveLength(2);
+      const outer = flattenContour(frame.contours[0]!);
+      const hole = flattenContour(frame.contours[1]!);
+      expect(Math.sign(signedArea(outer))).toBe(1);
+      if (progress < 1) {
+        // Winding never flips into a filled island while the hole shrinks.
+        expect(Math.sign(signedArea(hole))).toBe(-1);
+        expect(Math.abs(signedArea(hole))).toBeLessThan(Math.abs(signedArea(outer)));
+      } else {
+        // At the endpoint the hole has collapsed to its pinned interior point.
+        expect(Math.abs(signedArea(hole))).toBeLessThan(1e-6);
+      }
+      const holeInterior = averagePoint(hole);
+      expect(pointInRing(holeInterior, outer)).not.toBe(0);
+    }
+  });
+
+  it('pairs donut to donut holes by containment and keeps the hole winding stable', () => {
+    const fromDonut = donutContours(0, 0, 100, 30);
+    const toDonut = donutContours(20, 15, 120, 45);
+    const prepared = prepareShapeMorphPair(
+      { contours: fromDonut },
+      { contours: toDonut },
+      { allowMultipleContours: true },
+    );
+    expect(prepared.ok).toBe(true);
+    if (!prepared.ok) return;
+    expect(prepared.pair.contourCount).toBe(2);
+    for (const progress of [0, 0.2, 0.5, 0.8, 1]) {
+      const frame = interpolateShapeMorphPair(prepared.pair, progress)!;
+      const outer = flattenContour(frame.contours[0]!);
+      const hole = flattenContour(frame.contours[1]!);
+      expect(Math.sign(signedArea(outer))).toBe(1);
+      expect(Math.sign(signedArea(hole))).toBe(-1);
+      expect(pointInRing(averagePoint(hole), outer)).not.toBe(0);
+    }
+  });
+
+  it('reports nested holes and holes escaping their outer as unsupported topology', () => {
+    const outer = squareContour(0, 0, 100);
+    const hole = squareContour(0, 0, 40);
+    const island = squareContour(0, 0, 15);
+    const nested = prepareShapeMorphPair(
+      { contours: [outer, hole, island] },
+      { contours: [squareContour(0, 0, 90)] },
+      { allowMultipleContours: true },
+    );
+    expect(nested.ok).toBe(false);
+    if (!nested.ok) expect(nested.code).toBe('unsupported-topology');
+
+    // A "hole" whose sampled ring leaves the outer is rejected rather than flipped.
+    const crossingOuter = squareContour(0, 0, 100);
+    const crossingHole = polygonContour([
+      { x: 70, y: 70 },
+      { x: 70, y: 110 },
+      { x: 110, y: 110 },
+      { x: 110, y: 70 },
+    ]);
+    const escaping = prepareShapeMorphPair(
+      { contours: [crossingOuter, crossingHole] },
+      { contours: [squareContour(0, 0, 90)] },
+      { allowMultipleContours: true },
+    );
+    expect(escaping.ok).toBe(false);
+    if (!escaping.ok) expect(escaping.code).toBe('unsupported-topology');
+  });
+
+  it('applies hints per paired contour and rejects hints across pairings', () => {
+    const fromDonut = donutContours(0, 0, 100, 30);
+    const toDonut = donutContours(20, 15, 120, 45);
+    const outerHint = {
+      from: { contourIndex: 0, segmentIndex: 0, t: 0.5 },
+      to: { contourIndex: 0, segmentIndex: 2, t: 0.5 },
+    };
+    const hintedOuter = prepareShapeMorphPair(
+      { contours: fromDonut },
+      { contours: toDonut },
+      { allowMultipleContours: true, hints: [outerHint] },
+    );
+    expect(hintedOuter.ok).toBe(true);
+    if (hintedOuter.ok) {
+      expect(hintedOuter.pair.contourCount).toBe(2);
+      const unhinted = prepareShapeMorphPair(
+        { contours: fromDonut },
+        { contours: toDonut },
+        { allowMultipleContours: true },
+      );
+      expect(JSON.stringify(hintedOuter.pair)).not.toBe(JSON.stringify(unhinted));
+    }
+
+    const crossPairHint = {
+      from: { contourIndex: 0, segmentIndex: 0, t: 0.5 },
+      to: { contourIndex: 1, segmentIndex: 0, t: 0.5 },
+    };
+    const crossPair = prepareShapeMorphPair(
+      { contours: fromDonut },
+      { contours: toDonut },
+      { allowMultipleContours: true, hints: [crossPairHint] },
+    );
+    expect(crossPair.ok).toBe(false);
+    if (!crossPair.ok) expect(crossPair.code).toBe('ambiguous-hints');
   });
 });
