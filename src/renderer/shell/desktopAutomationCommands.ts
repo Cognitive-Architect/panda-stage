@@ -215,7 +215,11 @@ export function executeDesktopAutomation(request: DesktopAutomationRendererReque
         allowPartialConfirm: command.allowPartialConfirm ?? false,
       });
       if (!applied.ok) return fail('COMMAND_FAILED', applied.message);
-      dialoguePerformanceLinkStore.capture(plan.performances);
+      dialoguePerformanceLinkStore.capture(
+        applied.project.id,
+        applied.performances,
+        applied.project,
+      );
       const label = plan.parsed.hasDialogueOrPerformance
         ? `剧本表演生成（${applied.createdShotIds.length} 镜头 / ${applied.scheduledDialogueCount} 对白 / ${applied.readyPerformanceCount} 动作）`
         : `自动布景（${applied.createdShotIds.length} 个镜头）`;

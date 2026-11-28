@@ -15,6 +15,7 @@ import {
   retimeTargetKeySpanDuration,
   setTargetKeyEasing,
   targetCompositeKeyEasing,
+  targetTracks,
   upsertTargetKeyValues,
   type AnimationMotionValues,
   type TargetKeySpanDurationInput,
@@ -263,6 +264,27 @@ export function layerCompositeKeyTimes(layer: Layer): number[] {
   const clip = layerRootMotionClip(layer);
   if (!clip) return [];
   return compositeKeyTimesForTarget(clip.tracks, layerTargetRef(layer.id));
+}
+
+/**
+ * Properties that actually own a key at `timeMs`. Key identity on a layer is
+ * (property, time), so callers that must not re-bind a *different* key created
+ * at the same timestamp can compare this set.
+ */
+export function layerCompositeKeyPropertiesAtTime(
+  layer: Layer,
+  timeMs: number,
+): string[] {
+  const clip = layerRootMotionClip(layer);
+  if (!clip) return [];
+  const target = layerTargetRef(layer.id);
+  const properties = new Set<string>();
+  for (const track of targetTracks(clip.tracks, target)) {
+    if (track.keys.some((key) => key.timeMs === timeMs)) {
+      properties.add(track.property);
+    }
+  }
+  return [...properties];
 }
 
 /** True when the Layer Clip v2 has an outgoing interval at `timeMs`. */

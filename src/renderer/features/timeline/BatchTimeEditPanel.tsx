@@ -340,9 +340,13 @@ export function BatchTimeEditPanel({
   const availablePerformanceLinks = useMemo(
     () =>
       activeDialogueIds.length > 0
-        ? dialoguePerformanceLinkStore.resolve(shot, activeDialogueIds)
+        ? dialoguePerformanceLinkStore.resolve(
+            project.id,
+            shot,
+            activeDialogueIds,
+          )
         : { eventIds: [], layerMotionSpans: [], missingCount: 0 },
-    [activeDialogueIds, shot],
+    [activeDialogueIds, project.id, shot],
   );
   const linkedPerformance = includeLinkedPerformance
     ? availablePerformanceLinks
@@ -620,6 +624,24 @@ export function BatchTimeEditPanel({
             deltaMs: parsedDeltaMs!,
             sharedClipPolicy,
           });
+          if (includeLinkedPerformance) {
+            // The applied result moved these keys; without remapping the next
+            // resolve would look for keys that already left their old time.
+            const moves = (
+              preview.crossTypePlan.actionPlan?.motionSpanEntries ?? []
+            )
+              .map((entry) => ({
+                layerId: entry.layerId,
+                deltaMs: entry.nextStartMs - entry.startMs,
+              }))
+              .filter((move) => move.deltaMs !== 0);
+            dialoguePerformanceLinkStore.remapAfterMove(
+              project.id,
+              shot.id,
+              activeDialogueIds,
+              moves,
+            );
+          }
         } else if (preview.dialoguePlan) {
           dialogueStore.moveMany(activeDialogueIds, parsedDeltaMs!, {
             sharedClipPolicy,

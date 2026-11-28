@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   LayerMotionService,
   ProjectSchema,
+  layerCompositeKeyTimes,
   type MoveEvent,
   type PlannedPerformanceRow,
   type Project,
@@ -83,13 +84,22 @@ function row(overrides: Partial<PlannedPerformanceRow> = {}): PlannedPerformance
   };
 }
 
+function shiftKeys(project: Project, deltaMs: number): Project {
+  return new LayerMotionService().retimeKeys(project, {
+    shotId: IDS.shot,
+    layerId: LAYER_ID,
+    fromTimesMs: [500],
+    deltaFrames: Math.round((deltaMs * 24) / 1_000),
+  });
+}
+
 describe('WF-EXT D dialogue -> performance session links', () => {
   it('resolves generated event and root-motion key references for selected dialogues', () => {
     const project = buildLinkedProject();
     const store = new DialoguePerformanceLinkStore();
-    store.capture([row()]);
+    store.capture(project.id, [row()]);
 
-    const resolved = store.resolve(project.shots[0]!, [DIALOGUE_ID]);
+    const resolved = store.resolve(project.id, project.shots[0]!, [DIALOGUE_ID]);
     expect(resolved.eventIds).toEqual([EVENT_ID]);
     expect(resolved.layerMotionSpans).toHaveLength(1);
     expect(resolved.layerMotionSpans[0]).toMatchObject({
@@ -102,7 +112,7 @@ describe('WF-EXT D dialogue -> performance session links', () => {
   it('drops references that were edited/deleted instead of guessing nearby content', () => {
     const project = buildLinkedProject();
     const store = new DialoguePerformanceLinkStore();
-    store.capture([row()]);
+    store.capture(project.id, [row()]);
 
     const changed = ProjectSchema.parse({
       ...project,
@@ -118,7 +128,7 @@ describe('WF-EXT D dialogue -> performance session links', () => {
         },
       ],
     });
-    const resolved = store.resolve(changed.shots[0]!, [DIALOGUE_ID]);
+    const resolved = store.resolve(changed.id, changed.shots[0]!, [DIALOGUE_ID]);
     expect(resolved.eventIds).toEqual([]);
     expect(resolved.layerMotionSpans).toEqual([]);
     expect(resolved.missingCount).toBe(2);
@@ -127,27 +137,139 @@ describe('WF-EXT D dialogue -> performance session links', () => {
   it('does not link a different shot or an unrelated dialogue', () => {
     const project = buildLinkedProject();
     const store = new DialoguePerformanceLinkStore();
-    store.capture([row()]);
+    store.capture(project.id, [row()]);
 
     const otherShot = { ...project.shots[0]!, id: 'other-shot' };
-    expect(store.resolve(otherShot, [DIALOGUE_ID])).toMatchObject({
+    expect(
+      store.resolve(project.id, otherShot, [DIALOGUE_ID]),
+    ).toMatchObject({
       eventIds: [],
       layerMotionSpans: [],
     });
-    expect(store.resolve(project.shots[0]!, ['other-dialogue'])).toMatchObject({
+    expect(
+      store.resolve(project.id, project.shots[0]!, ['other-dialogue']),
+    ).toMatchObject({
       eventIds: [],
       layerMotionSpans: [],
     });
   });
 
-  it('capturing a new script replaces prior session links', () => {
+  it('keeps other shots when a second scene is generated and ignores scenery-only runs', () => {
     const project = buildLinkedProject();
     const store = new DialoguePerformanceLinkStore();
-    store.capture([row()]);
-    store.capture([]);
-    expect(store.resolve(project.shots[0]!, [DIALOGUE_ID])).toMatchObject({
-      eventIds: [],
-      layerMotionSpans: [],
+    store.capture(project.id, [row()]);
+
+    // Second scene in another shot: first shot's links must survive.
+    store.capture(project.id, [
+      row({
+        dialogueId: 'dialogue-second-scene',
+        shotId: 'shot-2',
+        eventIds: ['event-second-scene'],
+      }),
+    ]);
+    expect(
+      store.resolve(project.id, project.shots[0]!, [DIALOGUE_ID]).eventIds,
+    ).toEqual([EVENT_ID]);
+
+    // Pure scenery generation produces no performance rows.
+    store.capture(project.id, []);
+    expect(
+      store.resolve(project.id, project.shots[0]!, [DIALOGUE_ID]).eventIds,
+    ).toEqual([EVENT_ID]);
+  });
+
+  it('replaces the previous links of the same shot on regeneration', () => {
+    const project = buildLinkedProject();
+    const store = new DialoguePerformanceLinkStore();
+    store.capture(project.id, [row()]);
+    store.capture(project.id, [
+      row({ dialogueId: 'regenerated-dialogue', eventIds: ['regenerated-event'] }),
+    ]);
+
+    expect(
+      store.resolve(project.id, project.shots[0]!, [DIALOGUE_ID]).missingCount,
+    ).toBe(0);
+    expect(
+      store.resolve(project.id, project.shots[0]!, [DIALOGUE_ID]).eventIds,
+    ).toEqual([]);
+  });
+
+  it('does not treat a brand-new key on another property at the same time as linked', () => {
+    const project = buildLinkedProject();
+    const store = new DialoguePerformanceLinkStore();
+    store.capture(project.id, [row()], project);
+
+    // Drop the authored keys, then author a *different* property at 500ms.
+    const stripped = ProjectSchema.parse({
+      ...project,
+      shots: [
+        {
+          ...project.shots[0]!,
+          layers: project.shots[0]!.layers.map((layer) =>
+            layer.id === LAYER_ID
+              ? { ...layer, layerMotionTracks: undefined, animationClip: undefined }
+              : layer,
+          ),
+        },
+      ],
     });
+    const regenerated = new LayerMotionService().applyTransform(
+      stripped,
+      { shotId: IDS.shot, layerId: LAYER_ID, timeMs: 500, autoKey: true },
+      { scaleX: 1.5 },
+    );
+    // Guard: the timestamp exists again, but only for another property.
+    expect(
+      layerCompositeKeyTimes(
+        regenerated.shots[0]!.layers.find((layer) => layer.id === LAYER_ID)!,
+      ),
+    ).toContain(500);
+
+    const resolved = store.resolve(regenerated.id, regenerated.shots[0]!, [
+      DIALOGUE_ID,
+    ]);
+    expect(resolved.layerMotionSpans).toEqual([]);
+    expect(resolved.missingCount).toBe(1);
+  });
+
+  it('clears session links when the project switches', () => {
+    const project = buildLinkedProject();
+    const store = new DialoguePerformanceLinkStore();
+    store.capture(project.id, [row()]);
+
+    const resolved = store.resolve(
+      '10000000-0000-4000-8000-0000000000ff',
+      project.shots[0]!,
+      [DIALOGUE_ID],
+    );
+    expect(resolved.eventIds).toEqual([]);
+    expect(resolved.layerMotionSpans).toEqual([]);
+  });
+
+  it('follows the moved keys so a second linked move still resolves', () => {
+    const project = buildLinkedProject();
+    const store = new DialoguePerformanceLinkStore();
+    store.capture(project.id, [row()]);
+
+    const deltaMs = 250;
+    store.remapAfterMove(project.id, IDS.shot, [DIALOGUE_ID], [
+      { layerId: LAYER_ID, deltaMs },
+    ]);
+    const movedProject = shiftKeys(project, deltaMs);
+    const resolved = store.resolve(movedProject.id, movedProject.shots[0]!, [
+      DIALOGUE_ID,
+    ]);
+
+    expect(resolved.layerMotionSpans[0]!.keyTimesMs).toEqual([750]);
+    expect(resolved.missingCount).toBe(0);
+
+    // Undo (keys back at the old time) must degrade to a miss, never a guess.
+    const undone = store.resolve(
+      project.id,
+      project.shots[0]!,
+      [DIALOGUE_ID],
+    );
+    expect(undone.layerMotionSpans).toEqual([]);
+    expect(undone.missingCount).toBe(1);
   });
 });
