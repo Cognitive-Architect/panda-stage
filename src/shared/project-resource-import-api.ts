@@ -181,7 +181,6 @@ export const ProjectResourceImportPreviewRequestSchema = z
     reuseIdenticalAssets: z.boolean().optional(),
     reuseDefinitions: z
       .array(ProjectResourceImportReuseChoiceSchema)
-      .max(200)
       .optional(),
   })
   .strict();
@@ -203,14 +202,12 @@ export const ProjectResourceImportPreviewResponseSchema = z.union([
       reusedAnimationCount: NonNegativeIntSchema.optional(),
       reusableDefinitions: z
         .array(ProjectResourceImportReusableDefinitionSchema)
-        .max(200)
         .optional(),
       reuseDiagnostics: z
         .array(ProjectResourceImportReuseDiagnosticSchema)
-        .max(200)
         .optional(),
       nameConflicts: z.array(ProjectResourceImportNameConflictSchema).max(500),
-      issues: z.array(z.string().trim().min(1).max(500)).max(200),
+      issues: z.array(z.string().trim().min(1).max(500)),
     })
     .strict(),
   z
@@ -235,7 +232,6 @@ export const ProjectResourceImportApplyRequestSchema = z
     reuseIdenticalAssets: z.boolean().optional(),
     reuseDefinitions: z
       .array(ProjectResourceImportReuseChoiceSchema)
-      .max(200)
       .optional(),
   })
   .strict();
