@@ -1,8 +1,10 @@
 import type { CurveMotionStageDraft } from '../features/canvas/CurveMotionStageOverlay';
 import {
+  useCallback,
   useEffect,
   useImperativeHandle,
   type Ref,
+  type ReactNode,
   useRef,
   useState,
 } from 'react';
@@ -41,10 +43,12 @@ export function getNextRightActivity(
 
 export interface RightWorkspaceHandle {
   openPropertiesIfIdle(): void;
+  closeForPropertyFocus(): void;
 }
 
 export interface RightWorkspaceProps {
   ref?: Ref<RightWorkspaceHandle>;
+  children?: ReactNode;
   autoCameraEnabled: boolean;
   docked?: boolean;
   onAutoCameraChange(enabled: boolean): void;
@@ -54,23 +58,35 @@ export interface RightWorkspaceProps {
 
 export function RightWorkspace({
   ref,
+  children,
   autoCameraEnabled,
-  docked = false,  onAutoCameraChange,
+  docked = false,
+  onAutoCameraChange,
   onPreviewDraft,
   onCurveMotionDraft,
 }: RightWorkspaceProps): React.JSX.Element {
   const pendingPlacement = usePendingDialoguePlacement();
+  const { cancelDrag } = pendingPlacement;
   const [activeActivity, setActiveActivity] =
     useState<RightActivity | null>(null);
   const triggerRefs = useRef<Partial<Record<RightActivity, HTMLButtonElement>>>({});
   const surfaceRef = useRef<HTMLDivElement>(null);
   const previousActivityRef = useRef<RightActivity | null>(null);
+  const skipTriggerFocus = useRef(false);
+
+  const closeSurface = useCallback((): void => {
+    cancelDrag(false);
+    setActiveActivity(null);
+  }, [cancelDrag]);
 
   useImperativeHandle(ref, () => ({
     openPropertiesIfIdle: () => setActiveActivity((current) => current ?? 'properties'),
-  }), []);
-
-  const closeSurface = (): void => setActiveActivity(null);
+    closeForPropertyFocus() {
+      if (!activeActivity) return;
+      skipTriggerFocus.current = true;
+      closeSurface();
+    },
+  }), [activeActivity, closeSurface]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -82,23 +98,25 @@ export function RightWorkspace({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activeActivity]);
+  }, [activeActivity, closeSurface]);
 
   useEffect(() => {
     const previousActivity = previousActivityRef.current;
     if (activeActivity) {
       surfaceRef.current?.focus();
-    } else if (previousActivity) {
+    } else if (previousActivity && !skipTriggerFocus.current) {
       triggerRefs.current[previousActivity]?.focus();
     }
+    skipTriggerFocus.current = false;
     previousActivityRef.current = activeActivity;
   }, [activeActivity]);
 
   const selectActivity = (activity: RightActivity): void => {
+    cancelDrag(false);
     setActiveActivity((current) => getNextRightActivity(current, activity));
   };
 
-  return (
+  const workspace = (
     <aside
       aria-label="右侧工作区"
       className="right-workspace"
@@ -188,5 +206,14 @@ export function RightWorkspace({
         </div>
       </div>
     </aside>
+  );
+
+  return (
+    <>
+      {workspace}
+      {children ? <div className="workbench-inspector-slot" inert={activeActivity !== null}>
+        {children}
+      </div> : null}
+    </>
   );
 }

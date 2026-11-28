@@ -25,6 +25,7 @@ export type PendingDropState = 'outside' | 'invalid' | 'valid';
 interface PendingDialogueSource {
   dialogueId: string;
   projectRoot: string;
+  projectInstanceId: number | null;
   shotId: string;
   characterName: string;
   text: string;
@@ -36,6 +37,7 @@ interface PendingTrayPointerState extends PendingDialogueSource {
   startX: number;
   startY: number;
   phase: 'pending' | 'swiping' | 'dragging';
+  sourceTray: HTMLUListElement;
   captureTarget: HTMLUListElement | null;
 }
 
@@ -71,6 +73,7 @@ interface PendingDialoguePlacementContextValue {
   drag: PendingDialogueDragState | null;
   interaction: PendingTrayInteractionController;
   notice: string | null;
+  cancelDrag(restoreFocus?: boolean): void;
   registerDropTarget(target: PendingDialogueDropTarget | null): void;
 }
 
@@ -86,13 +89,16 @@ function isCloudTouchLandscapeElement(element: HTMLElement): boolean {
 
 export function PendingDialoguePlacementProvider({
   children,
+  desktopWorkbench = false,
 }: {
   children: React.ReactNode;
+  desktopWorkbench?: boolean;
 }): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
   );
+  const projectInstanceId = editorProjectStore.getProjectInstanceId();
   const currentShotId = useSyncExternalStore(
     shotStore.subscribe,
     shotStore.getCurrentShotId,
@@ -147,6 +153,7 @@ export function PendingDialoguePlacementProvider({
     const pointer = pointerRef.current;
     const active = dragRef.current;
     const captureTarget = pointer?.captureTarget;
+    pointerRef.current = null;
     if (
       captureTarget &&
       pointer &&
@@ -154,7 +161,6 @@ export function PendingDialoguePlacementProvider({
     ) {
       captureTarget.releasePointerCapture(pointer.pointerId);
     }
-    pointerRef.current = null;
     publishDrag(null);
     if (restoreFocus) {
       (active?.sourceElement ?? pointer?.sourceElement)?.focus();
@@ -179,6 +185,7 @@ export function PendingDialoguePlacementProvider({
       return {
         dialogueId,
         projectRoot: currentSnapshot.projectRoot,
+        projectInstanceId: editorProjectStore.getProjectInstanceId(),
         shotId: shot.id,
         characterName: dialogueSpeakerName(
           dialogue,
@@ -211,7 +218,8 @@ export function PendingDialoguePlacementProvider({
         };
       }
       const rect = target.element.getBoundingClientRect();
-      if (!isPointInsidePendingDropTarget(clientX, clientY, rect)) {
+      const hit = target.element.ownerDocument.elementFromPoint(clientX, clientY);
+      if (!isPointInsidePendingDropTarget(clientX, clientY, rect) || !target.element.contains(hit)) {
         return {
           ...base,
           dropState: 'outside',
@@ -256,7 +264,7 @@ export function PendingDialoguePlacementProvider({
 
   const interaction = useMemo<PendingTrayInteractionController>(() => ({
     onPointerDown(event, dialogueId) {
-      if (!isCloudTouchLandscapeElement(event.currentTarget)) return;
+      if (!desktopWorkbench && !isCloudTouchLandscapeElement(event.currentTarget)) return;
       if (pointerRef.current) return;
       if (event.pointerType === 'mouse' && event.button !== 0) return;
       if (!dialogueId) return;
@@ -274,11 +282,11 @@ export function PendingDialoguePlacementProvider({
         startX: event.clientX,
         startY: event.clientY,
         phase: 'pending',
+        sourceTray: event.currentTarget,
         captureTarget: null,
       };
     },
     onPointerMove(event) {
-      if (!isCloudTouchLandscapeElement(event.currentTarget)) return;
       const pointer = pointerRef.current;
       if (!pointer || pointer.pointerId !== event.pointerId) return;
       if (pointer.phase === 'dragging') {
@@ -353,7 +361,6 @@ export function PendingDialoguePlacementProvider({
       );
     },
     onPointerUp(event) {
-      if (!isCloudTouchLandscapeElement(event.currentTarget)) return;
       const pointer = pointerRef.current;
       if (!pointer || pointer.pointerId !== event.pointerId) return;
       if (pointer.phase === 'pending') {
@@ -367,7 +374,9 @@ export function PendingDialoguePlacementProvider({
       }
       event.preventDefault();
       event.stopPropagation();
-      const active = dragRef.current;
+      const active = pointer.sourceTray.getClientRects().length && !pointer.sourceTray.closest('[inert], [hidden]')
+        ? resolveDrag(pointer, pointer.pointerId, event.clientX, event.clientY)
+        : null;
       const validDrop =
         active?.dropState === 'valid' && active.mappedStartMs !== null;
       clearDrag(!validDrop);
@@ -380,6 +389,7 @@ export function PendingDialoguePlacementProvider({
       if (
         !currentSource ||
         currentSource.projectRoot !== active.projectRoot ||
+        currentSource.projectInstanceId !== active.projectInstanceId ||
         currentSource.shotId !== active.shotId
       ) {
         showNotice('字幕来源已变化，未提交拖拽');
@@ -396,7 +406,6 @@ export function PendingDialoguePlacementProvider({
       }
     },
     onPointerCancel(event) {
-      if (!isCloudTouchLandscapeElement(event.currentTarget)) return;
       const pointer = pointerRef.current;
       if (!pointer || pointer.pointerId !== event.pointerId) return;
       if (pointer.phase === 'dragging' || pointer.phase === 'swiping') {
@@ -407,7 +416,6 @@ export function PendingDialoguePlacementProvider({
       clearDrag(true);
     },
     onClickCapture(event) {
-      if (!isCloudTouchLandscapeElement(event.currentTarget)) return;
       if (!suppressClickRef.current) return;
       event.preventDefault();
       event.stopPropagation();
@@ -419,6 +427,7 @@ export function PendingDialoguePlacementProvider({
     },
   }), [
     clearDrag,
+    desktopWorkbench,
     publishDrag,
     readSource,
     resolveDrag,
@@ -426,13 +435,13 @@ export function PendingDialoguePlacementProvider({
     suppressClick,
   ]);
 
-  const cancelDrag = useCallback((): void => {
+  const cancelDrag = useCallback((restoreFocus = true): void => {
     const pointer = pointerRef.current;
     if (!pointer) return;
     if (pointer.phase === 'dragging' || pointer.phase === 'swiping') {
       suppressClick();
     }
-    clearDrag(true);
+    clearDrag(restoreFocus);
   }, [clearDrag, suppressClick]);
 
   useEffect(() => {
@@ -440,9 +449,10 @@ export function PendingDialoguePlacementProvider({
     if (!active) return;
     if (
       active.projectRoot !== (snapshot?.projectRoot ?? '') ||
+      active.projectInstanceId !== projectInstanceId ||
       active.shotId !== currentShotId
     ) cancelDrag();
-  }, [cancelDrag, currentShotId, snapshot?.projectRoot]);
+  }, [cancelDrag, currentShotId, projectInstanceId, snapshot?.projectRoot]);
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent): void => {
@@ -471,8 +481,8 @@ export function PendingDialoguePlacementProvider({
   );
 
   const value = useMemo(
-    () => ({ drag, interaction, notice, registerDropTarget }),
-    [drag, interaction, notice, registerDropTarget],
+    () => ({ drag, interaction, notice, cancelDrag, registerDropTarget }),
+    [drag, interaction, notice, cancelDrag, registerDropTarget],
   );
 
   return (

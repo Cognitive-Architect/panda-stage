@@ -218,13 +218,13 @@ export function TimelineDock({
 
   useLayoutEffect(() => {
     const element = subtitleLaneContentRef.current;
-    if (presentation !== 'landscape' || !hasShot || !element) {
+    if (presentation === 'portrait' || !ui.expanded || productPreviewOpen || !hasShot || !element) {
       registerDropTarget(null);
       return;
     }
     registerDropTarget({ element, durationMs, pixelsPerMs });
     return () => registerDropTarget(null);
-  }, [durationMs, hasShot, pixelsPerMs, presentation, registerDropTarget]);
+  }, [durationMs, hasShot, pixelsPerMs, presentation, productPreviewOpen, registerDropTarget, ui.expanded]);
 
   const seekFromClientX = (clientX: number): void => {
     const track = trackRef.current;

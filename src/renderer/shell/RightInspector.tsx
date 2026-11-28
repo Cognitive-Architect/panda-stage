@@ -378,9 +378,14 @@ export function getRightInspectorSelection(
 
 export function focusLayerParentBinding(): void {
   const target = document.getElementById('layer-parent-control-anchor');
-  if (!target) return;
-  target.scrollIntoView({ block: 'nearest' });
-  target.querySelector('select')?.focus();
+  const control = target?.querySelector<HTMLSelectElement>('select[aria-label="父级图层"]:enabled');
+  if (!control || control.closest('[inert], [hidden]')) return;
+  for (let section = control.closest<HTMLDetailsElement>('details:not([open])'); section;
+    section = section.parentElement?.closest<HTMLDetailsElement>('details:not([open])') ?? null) {
+    section.open = true;
+  }
+  control.scrollIntoView({ block: 'nearest' });
+  control.focus();
 }
 
 export interface RightInspectorProps {

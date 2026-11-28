@@ -103,7 +103,8 @@ import { ProductPreviewOverlay } from './ProductPreviewOverlay';
 import { ProjectCenterScreen } from './ProjectCenterScreen';
 import { RecoveryCandidateBanner } from './RecoveryCandidateBanner';
 import { RightInspector, focusLayerParentBinding } from './RightInspector';
-import { RightWorkspace } from './RightWorkspace';
+import { RightWorkspace, type RightWorkspaceHandle } from './RightWorkspace';
+import type { WorkbenchPanel } from './editorWorkbenchLayout';
 import { EditorWorkbench, type WorkbenchControls } from './EditorWorkbench';
 import { ShotLayerListPanel } from '../features/properties/ShotLayerListPanel';
 import { TimelineDock } from '../features/timeline/TimelineDock';
@@ -511,6 +512,11 @@ export function EditorShell({
   const [characterFloatTarget, setCharacterFloatTarget] = useState<HTMLElement | null>(null);
   const [characterFloatMode, setCharacterFloatMode] = useState<FloatingCharacterMode | null>(null);
   const workbench = useRef<WorkbenchControls>(null);
+  const rightWorkspace = useRef<RightWorkspaceHandle>(null);
+  const [panelVisibility, setPanelVisibility] = useState<Partial<Record<WorkbenchPanel, boolean>>>({});
+  const updatePanelVisibility = useCallback((panel: WorkbenchPanel, visible: boolean) => {
+    setPanelVisibility(current => current[panel] === visible ? current : { ...current, [panel]: visible });
+  }, []);
   const projectSnapshot = useSyncExternalStore(
     editorProjectStore.subscribe,
     editorProjectStore.getSnapshot,
@@ -683,6 +689,7 @@ export function EditorShell({
   const [curveMotionStageDraft, setCurveMotionStageDraft] = useState<CurveMotionStageDraft | null>(null);
   const [layerEffectPreview, setLayerEffectPreview] = useState<LayerEffectPreview | null>(null);
   const [animationCurveDraft, setAnimationCurveDraft] = useState<AnimationCurveDraft | null>(null);
+  const [dockedCurveDraft, setDockedCurveDraft] = useState<AnimationCurveDraft | null>(null);
   const productPreviewOpenRef = useRef(false);
   const productPreviewSessionRef = useRef(0);
   const productPreviewFocusRestoreFrameRef = useRef<number | null>(null);
@@ -2905,10 +2912,10 @@ export function EditorShell({
               task={exportTask}
             />
           </div>
-          <PendingDialoguePlacementProvider>
+          <PendingDialoguePlacementProvider desktopWorkbench>
             <GraphicFrameTargetProvider>
               <div className="workbench-body" data-testid="editor-body" inert={productPreviewOpen || undefined}>
-                <EditorWorkbench
+                <EditorWorkbench onPanelVisibilityChange={updatePanelVisibility}
                   controls={workbench}
                   canHide={(panel) => {
                     if (panel === 'assets') return !assemblyActive && !characterFloatMode && !flaCharacterCommitActiveRef.current;
@@ -2980,9 +2987,12 @@ export function EditorShell({
                       </CharacterFloatHost.Provider>
                     ),
                     layers: <div className="workbench-scroll" inert={assemblyActive || Boolean(characterFloatMode) || undefined}>
-                      <ShotLayerListPanel onFocusParentBinding={() => {
+                      <ShotLayerListPanel onFocusParentBinding={(layerId) => {
                         workbench.current?.show('props');
-                        requestAnimationFrame(focusLayerParentBinding);
+                        rightWorkspace.current?.closeForPropertyFocus();
+                        requestAnimationFrame(() => {
+                          if (selectionStore.getSelectedLayerId() === layerId) focusLayerParentBinding();
+                        });
                       }} />
                     </div>,
                     stage: <div className="workbench-stage editor-workspace-slot-canvas"
@@ -2993,7 +3003,8 @@ export function EditorShell({
                         inert={Boolean(characterFloatMode) || assemblyActive || undefined}>
                         <CanvasWorkspace showHeading={false} dialogueSilence={dialogueSilence}
                           onCharacterPartSelected={() => workbench.current?.show('props')}
-                          curveDraft={animationCurveDraft} curveMotionDraft={curveMotionStageDraft} />
+                          curveDraft={animationCurveDraft ?? (panelVisibility.curve ? dockedCurveDraft : null)}
+                          curveMotionDraft={panelVisibility.props ? curveMotionStageDraft : null} />
                       </div>
                       <div className="character-float-host" ref={setCharacterFloatTarget} />
                       {activeAssemblySession && characterFloatMode !== 'composite' ? (
@@ -3004,14 +3015,15 @@ export function EditorShell({
                       ) : null}
                     </div>,
                     props: <div className="workbench-properties" inert={assemblyActive || Boolean(characterFloatMode) || undefined}>
-                      <RightWorkspace docked autoCameraEnabled={autoCameraEnabled}
+                      <RightWorkspace ref={rightWorkspace} docked autoCameraEnabled={autoCameraEnabled}
                         key={projectSnapshot.projectRoot}
                         onAutoCameraChange={setAutoCameraEnabled} onPreviewDraft={openDraftPreview}
-                        onCurveMotionDraft={setCurveMotionStageDraft} />
-                      <RightInspector drawerOpen embedded layerListDocked shellMode="landscape" />
+                        onCurveMotionDraft={setCurveMotionStageDraft}>
+                        <RightInspector drawerOpen embedded layerListDocked shellMode="landscape" />
+                      </RightWorkspace>
                     </div>,
                     curve: <div className="workbench-scroll" inert={assemblyActive || Boolean(characterFloatMode) || undefined}>
-                      <DockedAnimationCurve />
+                      <DockedAnimationCurve onDraft={setDockedCurveDraft} />
                     </div>,
                     timeline: <div className="workbench-timeline" inert={assemblyActive || Boolean(characterFloatMode) || undefined}>
                       <TimelineDock docked presentation="desktop" productPreviewOpen={productPreviewOpen}

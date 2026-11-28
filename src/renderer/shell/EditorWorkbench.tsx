@@ -25,6 +25,7 @@ interface PanelMounts {
   nodes: Record<WorkbenchPanel, HTMLElement>;
   parking: HTMLElement | null;
   canHide(panel: WorkbenchPanel): boolean;
+  reportVisibility(panel: WorkbenchPanel, visible: boolean): void;
   close(panel: WorkbenchPanel): void;
 }
 
@@ -35,16 +36,24 @@ const COMPACT_PANELS: readonly WorkbenchPanel[] = ['assets', 'layers', 'timeline
 function PanelSlot({ api, params }: IDockviewPanelProps<FoldState>) {
   const mounts = useContext(PanelContext)!;
   const slot = useRef<HTMLDivElement>(null);
-  const content = mounts.nodes[api.id as WorkbenchPanel];
+  const id = api.id as WorkbenchPanel;
+  const content = mounts.nodes[id];
   useLayoutEffect(() => {
     const host = slot.current;
     host?.appendChild(content);
     return () => {
       if (content.parentNode !== host) return;
+      mounts.reportVisibility(id, false);
       if (mounts.parking) mounts.parking.appendChild(content);
       else content.remove();
     };
-  }, [content, mounts]);
+  }, [content, id, mounts]);
+  useLayoutEffect(() => {
+    const report = () => mounts.reportVisibility(id, api.isVisible && params.folded !== true);
+    report();
+    const subscription = api.onDidVisibilityChange(report);
+    return () => subscription.dispose();
+  }, [api, id, mounts, params.folded]);
   return <div className="workbench-panel-slot" ref={slot} hidden={params.folded === true} />;
 }
 
@@ -94,11 +103,12 @@ const panelComponents = Object.fromEntries(WORKBENCH_PANELS.map((panel) => [pane
 interface EditorWorkbenchProps {
   controls: { current: WorkbenchControls | null };
   canHide(panel: WorkbenchPanel): boolean;
+  onPanelVisibilityChange(panel: WorkbenchPanel, visible: boolean): void;
   header: ReactNode;
   panels: Record<WorkbenchPanel, ReactNode>;
 }
 
-export function EditorWorkbench({ controls, canHide, header, panels }: EditorWorkbenchProps) {
+export function EditorWorkbench({ controls, canHide, onPanelVisibilityChange, header, panels }: EditorWorkbenchProps) {
   const [shown, setShown] = useState<WorkbenchPanel[]>([]);
   const [api, setApi] = useState<DockviewApi | null>(null);
   const dock = useRef<DockviewApi>(null);
@@ -120,6 +130,7 @@ export function EditorWorkbench({ controls, canHide, header, panels }: EditorWor
       nodes,
       parking: null,
       canHide: (panel) => hideGuard.current(panel),
+      reportVisibility: onPanelVisibilityChange,
       close: (panel) => {
         if (!hideGuard.current(panel)) return;
         dock.current?.getPanel(panel)?.api.close();

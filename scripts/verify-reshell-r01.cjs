@@ -1,4 +1,5 @@
 // Run against pnpm build output. Use the same profile for layout, restore, and corrupt in that order.
+// Focused regressions use dialogue-drop, curve-visibility, tools-visibility, and inspector-focus.
 /* global document, window */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -16,17 +17,54 @@ fs.mkdirSync(projectRoot, { recursive: true });
 fs.mkdirSync(profile, { recursive: true });
 app.setPath('userData', profile);
 process.env.VITE_DEV_SERVER_URL = '';
-const { migrateProject, ProjectSchema } = require(path.join(root, 'dist-electron/domain/index.js'));
+const { LayerMotionService, LayerService, migrateProject, ProjectSchema } = require(path.join(root, 'dist-electron/domain/index.js'));
 const example = migrateProject(require(path.join(root, 'demo-project/project-v1.example.json')));
-const project = ProjectSchema.parse({
+const regression = ['dialogue-drop', 'curve-visibility', 'tools-visibility', 'inspector-focus'].includes(phase);
+const pandaLayerId = '60000000-0000-4000-8000-000000000002';
+const pendingId = '80000000-0000-4000-8000-000000000002';
+let project = ProjectSchema.parse({
   ...example,
+  shots: regression ? example.shots.map((shot, i) => i === 0 ? {
+    ...shot,
+    layers: [...shot.layers, { ...shot.layers.find(layer => layer.id === pandaLayerId), id: '60000000-0000-4000-8000-000000000003', name: 'Parent candidate', zIndex: 2 }],
+    dialogues: [...shot.dialogues, { ...shot.dialogues[0], id: pendingId, startMs: 0, endMs: 0, audioClipId: undefined, text: 'R01 pending subtitle' }],
+  } : shot) : example.shots,
   assets: example.assets.map(asset => ({
     ...asset,
     sha256: createHash('sha256').update(fs.readFileSync(path.join(root, 'demo-project', asset.relativePath))).digest('hex'),
   })),
 });
+let curveLayerId;
+let curveFrameSvg;
+if (phase === 'curve-visibility' || phase === 'tools-visibility') {
+  const animationId = '91000000-0000-4000-8000-000000001429';
+  const frameId = '92000000-0000-4000-8000-000000001429';
+  const size = { width: 160, height: 120 };
+  curveFrameSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120"><rect width="160" height="120" fill="#54cdf3"/></svg>';
+  const sha256 = createHash('sha256').update(curveFrameSvg).digest('hex');
+  const origin = { x: 0, y: 0 };
+  const durationMs = 1000 / 24;
+  project = ProjectSchema.parse({
+    ...project,
+    assets: [...project.assets, { id: frameId, kind: 'image', name: 'Curve frame', relativePath: 'assets/r01-curve-frame.svg', mimeType: 'image/svg+xml', ...size, sha256, usage: 'character', keywords: [], flaGraphicFrame: { definitionId: animationId, ordinal: 0 } }],
+    animations: [...project.animations, {
+      id: animationId, name: 'R01 curve fixture', kind: 'fla-graphic', durationMs,
+      source: { basename: 'r01.fla', sha256, renderTargetId: 'r01', targetKind: 'graphic-symbol', targetName: 'r01', startFrameIndex: 0, endFrameIndex: 0, sourceFps: 24, canvas: size, anchor: origin, documentCanvas: { width: 1920, height: 1080 } },
+      frames: [{ ordinal: 0, sourceFrameIndex: 0, assetId: frameId, sha256, sourceViewport: { ...origin, ...size }, offset: origin, startMs: 0, durationMs, createdBySequenceImport: false }],
+    }],
+  });
+  const shotId = project.shots[0].id;
+  const placed = new LayerService().createFromAnimation(project, shotId, { animationId, position: { x: 500, y: 350 }, startTimeMs: 0 });
+  project = placed.project;
+  curveLayerId = placed.layer.id;
+  const motion = new LayerMotionService();
+  for (const [timeMs, offset] of [[0, 0], [1000, 400]]) {
+    project = motion.applyKeys(project, { shotId, layerId: curveLayerId, timeMs }, { 'transform.offsetX': offset });
+  }
+}
 fs.writeFileSync(path.join(projectRoot, 'project.json'), JSON.stringify(project));
 fs.cpSync(path.join(root, 'demo-project/assets'), path.join(projectRoot, 'assets'), { recursive: true });
+if (curveFrameSvg) fs.writeFileSync(path.join(projectRoot, 'assets/r01-curve-frame.svg'), curveFrameSvg);
 const chooserCalls = [];
 const showMessageBox = dialog.showMessageBox;
 dialog.showMessageBox = async (...args) => {
@@ -70,7 +108,23 @@ async function click(selector) {
   }
   await delay(220);
 }
-async function drag(x, y, targetX, targetY) {
+async function pressKey(keyCode) {
+  for (const type of ['keyDown', 'keyUp']) win.webContents.sendInputEvent({ type, keyCode });
+  await delay(100);
+}
+async function pointInside(selector, horizontal = 0.5) {
+  return waitFor((sel, ratio) => {
+    const el = document.querySelector(sel);
+    if (!el?.getClientRects().length) return false;
+    const timeline = el.closest('[data-testid="timeline-ruler-scroll"]');
+    const scrollLeft = timeline?.scrollLeft;
+    el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (timeline && scrollLeft !== undefined) timeline.scrollLeft = scrollLeft;
+    const box = el.getBoundingClientRect();
+    return { x: Math.round(box.left + box.width * ratio), y: Math.round(box.top + box.height / 2) };
+  }, selector, horizontal);
+}
+async function drag(x, y, targetX, targetY, beforeRelease) {
   const send = (type, px, py, modifiers = []) => win.webContents.sendInputEvent({
     type, x: Math.round(px), y: Math.round(py), button: 'left', clickCount: 1, modifiers,
   });
@@ -81,7 +135,11 @@ async function drag(x, y, targetX, targetY) {
     await delay(30);
   }
   await delay(180);
-  send('mouseUp', targetX, targetY);
+  try {
+    await beforeRelease?.();
+  } finally {
+    send('mouseUp', targetX, targetY);
+  }
   await delay(250);
 }
 async function dragDockTab(x, y, targetX, targetY) {
@@ -152,8 +210,13 @@ async function run() {
   }
   assert(win, 'Production window started');
   win.setSize(...(phase === 'storage-unavailable' ? [1280, 768] : [1440, 900]));
+  if (regression) {
+    win.show();
+    win.focus();
+    await delay(250);
+  }
   await waitFor(() => document.querySelector('[data-testid="open-project"]') !== null);
-  if (phase === 'layout' || phase === 'assembly') await js(pref => localStorage.removeItem(pref), key);
+  if (phase === 'layout' || phase === 'assembly' || regression) await js(pref => localStorage.removeItem(pref), key);
   if (phase === 'storage-unavailable') {
     await js(pref => {
       localStorage.setItem('panda-r01-sentinel', 'preserved');
@@ -179,6 +242,181 @@ async function run() {
   assert.equal(original, 'ready', 'production canvas preload reads the real background');
   const panels = await js(() => [...document.querySelectorAll('.dv-tab')].map(el => el.textContent.trim()));
   console.log('panels:', JSON.stringify(panels));
+  if (phase === 'dialogue-drop') {
+    await click('[data-testid="right-activity-rail-subtitles"]');
+    const source = '[data-testid="dialogue-untimed-select"]';
+    const target = '[data-testid="timeline-subtitle-track"] [data-pending-drop-surface]';
+    const before = await editingState();
+    const interval = () => js(id => {
+      const clip = document.querySelector('[data-testid="dialogue-track"] [data-dialogue-id="' + id + '"]');
+      return clip ? [Number(clip.dataset.startMs), Number(clip.dataset.endMs)] : null;
+    }, pendingId);
+    const dragState = () => js(() => document.querySelector('[data-testid="pending-dialogue-drag-ghost"]')?.dataset.dropState);
+    const end = await pointInside(target, 0.04);
+    const start = await pointInside(source);
+    assert(await js(({ x, y }, selector) => Boolean(document.elementFromPoint(x, y)?.closest(selector)), start, source), 'the drag starts on the pending card');
+    await drag(start.x, start.y, end.x, end.y, async () => {
+      const feedback = await dragState();
+      const hit = await js(({ x, y }) => ({
+        element: document.elementFromPoint(x, y)?.outerHTML.slice(0, 250),
+        message: document.querySelector('[data-testid="pending-dialogue-drop-status"]')?.textContent,
+        target: document.querySelector('[data-pending-drop-surface]')?.getBoundingClientRect().toJSON(),
+      }), end);
+      assert.equal(feedback, 'valid', 'pending card feedback at ' + JSON.stringify({ end, hit }));
+      assert(await js(() => document.querySelector('[data-testid="pending-dialogue-drop-preview"]')?.getBoundingClientRect().height > 0));
+    });
+    const arranged = await interval();
+    assert(arranged && arranged[1] > arranged[0], 'pending subtitle receives a real interval');
+    const edited = await editingState();
+    assert.equal(Number(edited.revision), Number(before.revision) + 1);
+    assert.equal(Number(edited.undo), Number(before.undo) + 1);
+    await click('[aria-label="撤销"]');
+    assert.deepEqual(await interval(), [0, 0]);
+    await click('[aria-label="重做"]');
+    assert.deepEqual(await interval(), arranged);
+    await click('[aria-label="撤销"]');
+    const undone = await editingState();
+    const attempt = async (endPoint, beforeRelease) => {
+      const origin = await pointInside(source);
+      await drag(origin.x, origin.y, endPoint.x, endPoint.y, beforeRelease);
+      assert.deepEqual(await interval(), [0, 0]);
+      assert.deepEqual(await editingState(), undone);
+    };
+    await attempt(await pointInside(target, 0.3), async () => assert.equal(await dragState(), 'invalid'));
+    await attempt(await pointInside(target, 0.04), async () => {
+      assert.equal(await dragState(), 'valid');
+      await pressKey('Escape');
+    });
+    await click('[aria-label="折叠时间轴"]');
+    await attempt(end, async () => assert.equal(await dragState(), 'outside'));
+    await click('[aria-label="展开时间轴"]');
+    await click(menu);
+    await click(pref('timeline'));
+    await attempt(end, async () => assert.equal(await dragState(), 'outside'));
+    console.log('desktop pending subtitle: feedback, one edit, Undo/Redo, overlap, Escape, and unavailable targets passed');
+    return;
+  }
+  if (phase === 'curve-visibility') {
+    await click('[data-testid="layer-list-row-' + curveLayerId + '"] > button');
+    const ruler = await pointInside('[data-testid="timeline-ruler"]', 0.09);
+    await drag(ruler.x, ruler.y, ruler.x, ruler.y);
+    await visibleTab('缓动曲线');
+    const stageX = () => js(id => JSON.parse(document.querySelector('[data-testid="project-canvas-stage"]').dataset.evaluatedLayerJson).find(layer => layer.id === id).x, curveLayerId);
+    const formal = await stageX();
+    await js(() => {
+      const field = document.querySelector('[data-testid="rich-easing-family"]');
+      field.value = 'bounce';
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await waitFor(() => document.querySelector('[data-testid="rich-easing-section"]')?.dataset.richEasingDraft === 'active');
+    assert.notEqual(await stageX(), formal, 'draft changes the rendered layer position');
+    const unchangedLayoutState = await editingState();
+    const draft = await stageX();
+    await visibleTab('属性检查器');
+    assert.equal(await stageX(), formal, 'inactive curve tab relinquishes the canvas');
+    await visibleTab('缓动曲线');
+    assert.equal(await stageX(), draft, 'the same draft resumes when its tab is shown');
+    await click('[aria-label="折叠缓动曲线"]');
+    assert.equal(await stageX(), formal);
+    const scrub = await pointInside('[data-testid="timeline-ruler"]', 0.12);
+    await drag(scrub.x, scrub.y, scrub.x, scrub.y);
+    assert.notEqual(await shotClock(), unchangedLayoutState.time);
+    const laterFormal = await stageX();
+    assert.notEqual(laterFormal, formal, 'hidden draft no longer pins the formal playhead');
+    await click('[aria-label="展开缓动曲线"]');
+    assert.equal(await stageX(), draft);
+    await visibleTab('属性检查器');
+    const curveTab = await tab('缓动曲线');
+    const inspector = await box('props');
+    await dragDockTab(curveTab.x + curveTab.width / 3, curveTab.y + curveTab.height / 2, inspector.x + inspector.width / 2, inspector.bottom - 27);
+    assert((await box('curve'))?.y > inspector.y + 35, 'curve tab docks independently');
+    await visibleTab('缓动曲线');
+    assert.equal(await stageX(), draft, 'dock move preserves the draft');
+    await click(menu);
+    await click(pref('curve'));
+    assert.equal(await stageX(), laterFormal);
+    await click(menu);
+    await click(pref('curve'));
+    assert.equal(await stageX(), draft);
+    await click(menu);
+    await click('[role="menuitem"]');
+    await visibleTab('缓动曲线');
+    assert.equal(await stageX(), draft, 'default-layout rebuild preserves the valid draft');
+    assert.deepEqual({ ...(await editingState()), time: unchangedLayoutState.time }, unchangedLayoutState);
+    await click('[data-testid="rich-easing-apply"]');
+    const applied = await editingState();
+    assert.equal(Number(applied.undo), Number(unchangedLayoutState.undo) + 1);
+    assert.equal(Number(applied.revision), Number(unchangedLayoutState.revision) + 1);
+    await click('[aria-label="撤销"]');
+    await js(() => {
+      const field = document.querySelector('[data-testid="rich-easing-family"]');
+      field.value = 'back';
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await waitFor(() => document.querySelector('[data-testid="rich-easing-section"]')?.dataset.richEasingDraft === 'active');
+    await visibleTab('属性检查器');
+    await click('[data-testid="right-inspector-layer-section"] > summary');
+    await click('[data-testid="layer-order-controls"] [role="switch"]');
+    await click('[aria-label="撤销"]');
+    await visibleTab('缓动曲线');
+    assert.equal(await stageX(), laterFormal, 'a hidden draft invalidated by a project revision cannot resume');
+    console.log('curve draft pauses on tab switch, fold and close, resumes through reset, and only Apply commits');
+    return;
+  }
+  if (phase === 'tools-visibility') {
+    await click('[data-testid="layer-list-row-' + curveLayerId + '"] > button');
+    await visibleTab('属性检查器');
+    const overlay = async () => {
+      const image = await js(() => Array.from(document.querySelectorAll('[data-testid="project-canvas-stage"] .konvajs-content canvas')).at(-1)?.toDataURL());
+      return image && createHash('sha256').update(image).digest('hex');
+    };
+    const before = await editingState();
+    const formal = await overlay();
+    assert(formal, 'the formal stage has an overlay canvas');
+    await click('[data-testid="right-activity-rail-tools"]');
+    await click('[data-testid="project-tools-curve-motion"]');
+    await waitFor(() => document.querySelector('[data-testid="curve-motion-submit"]:enabled'));
+    const draft = await overlay();
+    assert.notEqual(draft, formal, 'curve-motion draws into the overlay canvas');
+    await click('[aria-label="折叠属性检查器"]');
+    assert.equal(await overlay(), formal, 'folded tools relinquish the overlay canvas');
+    await click('[aria-label="展开属性检查器"]');
+    assert.equal(await overlay(), draft);
+    await click('[data-testid="curve-motion-cancel"]');
+    assert.equal(await overlay(), formal);
+    assert.deepEqual(await editingState(), before);
+    console.log('curve-motion overlay follows visibility and cancel without editing the project');
+    return;
+  }
+  if (phase === 'inspector-focus') {
+    await click('[data-testid="right-activity-rail-subtitles"]');
+    assert(await js(() => Boolean(document.querySelector('[data-testid="right-inspector"]').closest('[inert]'))), 'covered inspector is inert');
+    for (let i = 0; i < 8; i++) {
+      await pressKey('Tab');
+      assert.equal(await js(() => Boolean(document.activeElement?.closest('[data-testid="right-inspector"]'))), false);
+    }
+    await click('[data-testid="right-activity-rail-tools"]');
+    assert(await js(() => Boolean(document.querySelector('[data-testid="right-inspector"]').closest('[inert]'))), 'tools also cover the inspector');
+    await click('[data-testid="parent-chain-toggle"]');
+    await click('[data-testid="parent-chain-node-' + pandaLayerId + '"]');
+    await waitFor(() => document.activeElement?.getAttribute('aria-label') === '父级图层');
+    assert.equal(await js(() => document.querySelector('[data-testid="right-workspace"]').dataset.activeActivity), 'none');
+    assert.equal(await js(() => document.activeElement.closest('[data-testid="right-inspector"]').dataset.selectedLayerId), pandaLayerId);
+    assert.equal(await js(() => Boolean(document.activeElement.closest('[inert]'))), false);
+    const beforeBinding = await editingState();
+    await js(() => {
+      const select = document.activeElement;
+      select.value = Array.from(select.options).find(option => option.value && !option.disabled).value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await waitFor(count => Number(document.querySelector('[data-testid="history-controls"]').dataset.undoCount) === count, Number(beforeBinding.undo) + 1);
+    await click('[aria-label="撤销"]');
+    await click('[data-testid="right-activity-rail-subtitles"]');
+    await pressKey('Escape');
+    assert.equal(await js(() => document.activeElement.dataset.testid), 'right-activity-rail-subtitles');
+    console.log('covered inspector is excluded from Tab and parent-chain jump closes the activity and focuses the selected layer');
+    return;
+  }
   if (phase === 'restore') {
     const layout = await saved();
     assert(layout?.panels?.timeline?.params?.folded, 'timeline preference written');

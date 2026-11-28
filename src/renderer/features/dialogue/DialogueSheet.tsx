@@ -516,7 +516,6 @@ export function DialogueSheet({
   const handlePendingTrayPointerDown = (
     event: React.PointerEvent<HTMLUListElement>,
   ): void => {
-    if (!isCloudTouchLandscapeTray(event.currentTarget)) return;
     if (pendingTrayInteraction) {
       pendingTrayInteraction.onPointerDown(
         event,
@@ -524,6 +523,7 @@ export function DialogueSheet({
       );
       return;
     }
+    if (!isCloudTouchLandscapeTray(event.currentTarget)) return;
     if (event.pointerType === 'mouse' && event.button !== 0) {
       pendingTrayPointerRef.current = null;
       return;
@@ -539,11 +539,11 @@ export function DialogueSheet({
   const handlePendingTrayPointerMove = (
     event: React.PointerEvent<HTMLUListElement>,
   ): void => {
-    if (!isCloudTouchLandscapeTray(event.currentTarget)) return;
     if (pendingTrayInteraction) {
       pendingTrayInteraction.onPointerMove(event);
       return;
     }
+    if (!isCloudTouchLandscapeTray(event.currentTarget)) return;
     const gesture = pendingTrayPointerRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId || gesture.swiping) {
       return;
@@ -563,11 +563,11 @@ export function DialogueSheet({
   const handlePendingTrayPointerUp = (
     event: React.PointerEvent<HTMLUListElement>,
   ): void => {
-    if (!isCloudTouchLandscapeTray(event.currentTarget)) return;
     if (pendingTrayInteraction) {
       pendingTrayInteraction.onPointerUp(event);
       return;
     }
+    if (!isCloudTouchLandscapeTray(event.currentTarget)) return;
     const gesture = pendingTrayPointerRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     if (!gesture.swiping) {
@@ -588,11 +588,11 @@ export function DialogueSheet({
   const handlePendingTrayPointerCancel = (
     event: React.PointerEvent<HTMLUListElement>,
   ): void => {
-    if (!isCloudTouchLandscapeTray(event.currentTarget)) return;
     if (pendingTrayInteraction) {
       pendingTrayInteraction.onPointerCancel(event);
       return;
     }
+    if (!isCloudTouchLandscapeTray(event.currentTarget)) return;
     if (pendingTrayPointerRef.current?.pointerId === event.pointerId) {
       pendingTrayPointerRef.current = null;
     }
@@ -601,11 +601,11 @@ export function DialogueSheet({
   const handlePendingTrayClickCapture = (
     event: React.MouseEvent<HTMLUListElement>,
   ): void => {
-    if (!isCloudTouchLandscapeTray(event.currentTarget)) return;
     if (pendingTrayInteraction) {
       pendingTrayInteraction.onClickCapture(event);
       return;
     }
+    if (!isCloudTouchLandscapeTray(event.currentTarget)) return;
     if (!pendingTrayPointerRef.current?.swiping) return;
     event.preventDefault();
     event.stopPropagation();
@@ -1188,6 +1188,7 @@ export function DialogueSheet({
             className="dialogue-untimed-queue dialogue-pending-tray-list"
             data-testid="dialogue-pending-tray-list"
             onClickCapture={handlePendingTrayClickCapture}
+            onLostPointerCapture={handlePendingTrayPointerCancel}
             onPointerCancel={handlePendingTrayPointerCancel}
             onPointerDown={handlePendingTrayPointerDown}
             onPointerMove={handlePendingTrayPointerMove}

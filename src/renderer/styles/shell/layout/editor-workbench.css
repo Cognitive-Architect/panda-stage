@@ -205,6 +205,71 @@
   min-height: 0;
 }
 
+.workbench-inspector-slot { min-height: 0; }
+
+.editor-workbench .timeline-pending-drag-layer {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  pointer-events: none;
+}
+
+.editor-workbench .pending-dialogue-drag-ghost {
+  position: absolute;
+  display: grid;
+  max-width: 240px;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-overlay);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 30%);
+  transform: translate(12px, 12px);
+}
+
+.editor-workbench .pending-dialogue-drag-ghost-valid { border-color: var(--ui-color-selected-border); }
+.editor-workbench .pending-dialogue-drag-ghost-invalid { border-color: var(--ui-color-error-border); }
+.editor-workbench .pending-dialogue-drag-status { color: var(--ui-color-text-secondary); }
+
+.editor-workbench .timeline-pending-drop-notice {
+  position: fixed;
+  z-index: 101;
+  inset: auto 16px 16px auto;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 6px 8px;
+  border: 1px solid var(--ui-color-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-surface-overlay);
+  pointer-events: none;
+}
+
+.workbench-timeline .pending-drop-surface[data-pending-drop-target="valid"] {
+  background: var(--ui-color-selected-surface);
+}
+
+.workbench-timeline .pending-dialogue-drop-marker,
+.workbench-timeline .pending-dialogue-drop-preview {
+  position: absolute;
+  z-index: 6;
+  inset-block: 3px;
+  pointer-events: none;
+}
+
+.workbench-timeline .pending-dialogue-drop-marker {
+  width: 2px;
+  background: var(--ui-color-selected-border);
+}
+
+.workbench-timeline [data-pending-drop-target="invalid"] .pending-dialogue-drop-marker {
+  background: var(--ui-color-error-border);
+}
+
+.workbench-timeline .pending-dialogue-drop-preview {
+  border: 1px dashed var(--ui-color-selected-border);
+  border-radius: var(--ui-radius-small);
+  background: var(--ui-color-selected-surface);
+}
+
 .workbench-properties .right-rail-stack {
   display: flex;
   align-items: center;

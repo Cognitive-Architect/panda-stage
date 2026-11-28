@@ -14,8 +14,8 @@ describe('Issue #428 Right Subtitle Workspace R2', () => {
       'src/renderer/features/timeline/PendingDialoguePlacement.tsx',
     );
 
-    expect(shell.match(/<PendingDialoguePlacementProvider>/gu)).toHaveLength(1);
-    expect(shell.indexOf('<PendingDialoguePlacementProvider>')).toBeLessThan(
+    expect(shell.match(/<PendingDialoguePlacementProvider desktopWorkbench>/gu)).toHaveLength(1);
+    expect(shell.indexOf('<PendingDialoguePlacementProvider desktopWorkbench>')).toBeLessThan(
       shell.indexOf('<EditorWorkbench'),
     );
     expect(shell.indexOf('</PendingDialoguePlacementProvider>')).toBeGreaterThan(
