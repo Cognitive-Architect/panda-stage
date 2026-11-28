@@ -277,6 +277,14 @@ const FlaGraphicStructureFrameV1Schema = z
   .object({
     ordinal: z.number().int().nonnegative(),
     layers: z.array(FlaGraphicStructureLayerV1Schema).max(1_000),
+    /**
+     * Exposure hold marker (native Definition authoring only). When present this
+     * frame is a held exposure cell of the authored frame at that ordinal: it
+     * carries no layer content of its own and the evaluator resolves its
+     * content from the referenced authored frame. Additive optional data;
+     * source-backed structures never carry it, so imported timing is unchanged.
+     */
+    holdFromOrdinal: z.number().int().nonnegative().optional(),
   })
   .strict();
 
@@ -447,9 +455,36 @@ export const FlaGraphicStructureV1Schema = z
     for (const [defId, def] of Object.entries(structure.symbolDefinitions ?? {})) {
       walk(def.children, ['symbolDefinitions', defId, 'children'], 1);
     }
+    const authoredOrdinals = new Set(
+      structure.frames
+        .filter((frame) => frame.holdFromOrdinal === undefined)
+        .map((frame) => frame.ordinal),
+    );
     structure.frames.forEach((frame, frameIndex) => {
       if (frame.ordinal !== frameIndex) {
         context.addIssue({ code: 'custom', path: ['frames', frameIndex, 'ordinal'], message: 'Structure frame ordinals must be contiguous from zero.' });
+      }
+      if (frame.holdFromOrdinal !== undefined) {
+        if (frame.holdFromOrdinal >= frame.ordinal) {
+          context.addIssue({
+            code: 'custom',
+            path: ['frames', frameIndex, 'holdFromOrdinal'],
+            message: 'A held exposure frame must reference an earlier authored frame.',
+          });
+        } else if (!authoredOrdinals.has(frame.holdFromOrdinal)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['frames', frameIndex, 'holdFromOrdinal'],
+            message: 'A held exposure frame must reference an authored frame, not another hold.',
+          });
+        }
+        if (frame.layers.length > 0) {
+          context.addIssue({
+            code: 'custom',
+            path: ['frames', frameIndex, 'layers'],
+            message: 'A held exposure frame must not carry its own layer content.',
+          });
+        }
       }
       frame.layers.forEach((layer, layerIndex) =>
         walk(layer.nodes, ['frames', frameIndex, 'layers', layerIndex, 'nodes'], 1));
@@ -492,6 +527,48 @@ export function resolveFlaGraphicSymbolChildren(
 }
 
 /**
+ * The authored frame that supplies content for an exposure cell, plus its
+ * authored ordinal. A held exposure frame (native authoring only) resolves to
+ * the authored frame it references; every ordinary frame resolves to itself, so
+ * source-backed structures keep their exact previous ordinal semantics.
+ */
+export interface ResolvedFlaGraphicStructureFrame {
+  readonly frame: FlaGraphicStructureFrame;
+  readonly authoredOrdinal: number;
+}
+
+/**
+ * Resolve one Definition frame ordinal to the authored frame that owns its
+ * content. Exposure hold markers are only persisted by native Definition
+ * authoring; their target is validated by the structure schema to be an earlier
+ * authored frame, so resolution is deterministic and never loops.
+ */
+export function resolveFlaGraphicStructureFrame(
+  structure: Pick<FlaGraphicStructure, 'frames'>,
+  frameOrdinal: number,
+): ResolvedFlaGraphicStructureFrame | null {
+  if (!Number.isSafeInteger(frameOrdinal) || frameOrdinal < 0) return null;
+  const direct = structure.frames.find((candidate) => candidate.ordinal === frameOrdinal);
+  if (!direct) return null;
+  if (direct.holdFromOrdinal === undefined) {
+    return { frame: direct, authoredOrdinal: direct.ordinal };
+  }
+  const authored = structure.frames.find(
+    (candidate) => candidate.ordinal === direct.holdFromOrdinal,
+  );
+  if (!authored || authored.holdFromOrdinal !== undefined) return null;
+  return { frame: authored, authoredOrdinal: authored.ordinal };
+}
+
+/** Authored content ordinal for an exposure cell; `null` when unresolvable. */
+export function resolveFlaGraphicAuthoredFrameOrdinal(
+  structure: Pick<FlaGraphicStructure, 'frames'>,
+  frameOrdinal: number,
+): number | null {
+  return resolveFlaGraphicStructureFrame(structure, frameOrdinal)?.authoredOrdinal ?? null;
+}
+
+/**
  * Read a persisted structure back as a flat, ordered (pre-order, back-to-front)
  * list with world matrices recomposed from the stored parent-local matrices.
  */
@@ -499,7 +576,7 @@ export function reconstructFlaGraphicStructure(
   structure: FlaGraphicStructure,
   frameOrdinal = 0,
 ): ReconstructedFlaStructureNode[] {
-  const frame = structure.frames.find((candidate) => candidate.ordinal === frameOrdinal);
+  const frame = resolveFlaGraphicStructureFrame(structure, frameOrdinal)?.frame;
   if (!frame) return [];
   const result: ReconstructedFlaStructureNode[] = [];
   const identity: AffineMatrix2D = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
@@ -619,6 +696,9 @@ export function canonicalizeFlaGraphicStructure(structure: FlaGraphicStructure):
     ...(symbolDefinitions ? { symbolDefinitions } : {}),
     frames: structure.frames.map((frame) => ({
       ordinal: frame.ordinal,
+      ...(frame.holdFromOrdinal !== undefined
+        ? { holdFromOrdinal: frame.holdFromOrdinal }
+        : {}),
       layers: frame.layers.map((layer) => ({
         name: layer.name,
         nodes: layer.nodes.map(canonicalizeStructureNode),

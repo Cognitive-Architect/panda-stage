@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import {
+  resolveFlaGraphicStructureFrame,
   resolveFlaGraphicSymbolChildren,
   type FlaGraphicStructureNode,
 } from '../models/flaGraphicStructure';
@@ -137,9 +138,9 @@ export function validateProjectReferences(
     };
 
     animation.frames.forEach((frame, frameIndex) => {
-      const structureFrame = structure?.frames.find(
-        (candidate) => candidate.ordinal === frame.ordinal,
-      );
+      const structureFrame = structure
+        ? resolveFlaGraphicStructureFrame(structure, frame.ordinal)?.frame
+        : undefined;
       if (structureFrame) {
         structureFrame.layers.forEach((layer, layerIndex) => {
           validateStructureNodes(layer.nodes, [
