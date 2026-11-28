@@ -86,6 +86,8 @@ import {
   deleteFlaGraphicTimelineKeyframe as deleteTimelineKeyframePure,
   duplicateFlaGraphicTimelineKeyframe as duplicateTimelineKeyframePure,
   evaluateFlaGraphicTrackAtTime,
+  isAffineMatrixTimelineRepresentable,
+  isFlaGraphicTransformTrackInterpolationSafe,
   listFlaGraphicIdentityAliasAssignments,
   moveFlaGraphicTimelineKeyframe as moveTimelineKeyframePure,
   resolveFlaGraphicTimelineTarget,
@@ -1873,6 +1875,33 @@ export class LayerService {
     };
   }
 
+  /**
+   * Rejects internal transform-key authoring for a target that is locally
+   * read-only: opaque nodes, nodes without a stable identity, matrices that
+   * cannot be losslessly keyed (non-finite / near-singular / non-round-tripping),
+   * and tracks whose consecutive keys flip the determinant sign (interpolating
+   * them would pass through an almost degenerate, visually flipping frame).
+   */
+  private assertFlaGraphicTimelineAuthoringAllowed(
+    target: FlaGraphicTimelineTargetInfo,
+    action: string,
+  ): void {
+    switch (target.authoringCapability) {
+      case 'editable':
+        return;
+      case 'readonly-opaque':
+        throw new Error(`当前对象只读，无法${action}。`);
+      case 'readonly-identity':
+        throw new Error(`当前节点无稳定身份，无法${action}。`);
+      case 'readonly-trs-unsafe':
+        throw new Error(`当前节点变换无法无损分解为内部关键帧，暂不支持${action}。`);
+      case 'readonly-affine-unsafe':
+        throw new Error(
+          `相邻关键帧的缩放方向相反，补间会经过退化帧，暂不支持${action}。`,
+        );
+    }
+  }
+
   addFlaGraphicTimelineKeyframe(
     project: Project,
     shotId: string,
@@ -1889,11 +1918,7 @@ export class LayerService {
       frameOrdinal,
       nodePath,
       (target) => {
-        if (!target.trsSafe) {
-          throw new Error(
-            '当前节点包含倾斜或非标准缩放变换，内部时间轴暂不支持添加关键帧。',
-          );
-        }
+        this.assertFlaGraphicTimelineAuthoringAllowed(target, '添加关键帧');
         const existingTrack = target.timeline?.tracks.find(
           (t) => t.trackId === target.trackId,
         );
@@ -1901,13 +1926,27 @@ export class LayerService {
           (existingTrack
             ? evaluateFlaGraphicTrackAtTime(existingTrack, timeMs)
             : null) ?? target.targetNode.localTransform;
-        return addTimelineKeyframePure(
+        if (!isAffineMatrixTimelineRepresentable(initialMatrix)) {
+          throw new Error(
+            '当前节点变换无法无损分解为内部关键帧，暂不支持添加关键帧。',
+          );
+        }
+        const nextTimeline = addTimelineKeyframePure(
           target.timeline,
           target.trackId,
           timeMs,
           initialMatrix,
           easing,
         );
+        const nextTrack = nextTimeline.tracks.find(
+          (candidate) => candidate.trackId === target.trackId,
+        );
+        if (nextTrack && !isFlaGraphicTransformTrackInterpolationSafe(nextTrack)) {
+          throw new Error(
+            '新增关键帧会使相邻关键帧的缩放方向相反，暂不支持添加关键帧。',
+          );
+        }
+        return nextTimeline;
       },
     );
   }
@@ -1928,17 +1967,30 @@ export class LayerService {
       frameOrdinal,
       nodePath,
       (target) => {
-        if (!target.trsSafe) {
+        this.assertFlaGraphicTimelineAuthoringAllowed(target, '编辑关键帧');
+        if (!isAffineMatrixTimelineRepresentable(localTransform)) {
           throw new Error(
-            '当前节点包含倾斜或非标准缩放变换，内部时间轴暂不支持编辑关键帧。',
+            '该变换包含无法无损表示的分量（近奇异或非有限），暂不支持写入关键帧。',
           );
         }
-        return updateTimelineKeyframeTransformPure(
+        const nextTimeline = updateTimelineKeyframeTransformPure(
           target.timeline,
           target.trackId,
           timeMs,
           localTransform,
         );
+        const nextTrack = nextTimeline?.tracks.find(
+          (candidate) => candidate.trackId === target.trackId,
+        );
+        if (
+          nextTrack &&
+          !isFlaGraphicTransformTrackInterpolationSafe(nextTrack)
+        ) {
+          throw new Error(
+            '该变换会使相邻关键帧的缩放方向相反，补间会经过退化帧，暂不支持写入关键帧。',
+          );
+        }
+        return nextTimeline;
       },
     );
   }
