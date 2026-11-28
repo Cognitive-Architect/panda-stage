@@ -31,6 +31,8 @@ import {
 import { upsertCharacterActionEvent } from '../services/CharacterActionEventService';
 import { DialogueService } from '../services/DialogueService';
 import { ShotService } from '../services/ShotService';
+import { snapToFrame } from '../timeline/frame-grid';
+import { userMotionPresetRange } from '../user-motion-presets';
 import { validatePresetApplication } from '../validators';
 import {
   isAutoScenePlanStale,
@@ -184,6 +186,10 @@ export interface ScriptPerformanceStaleCheckToken {
     readonly id: string;
     readonly snapshotJson: string;
   }[];
+  readonly referencedMotionPresets: readonly {
+    readonly id: string;
+    readonly snapshotJson: string;
+  }[];
 }
 
 export interface ScriptPerformancePlan {
@@ -269,18 +275,45 @@ function inferCharacterActionDurationMs(
   return DEFAULT_CHARACTER_ACTION_DURATION_MS;
 }
 
-function getRecipeEndMs(
+function getRecipeRange(
+  project: Project,
   recipe: ActionRecipe,
   startMs: number,
   bindings: ActionRecipeBindings,
-): number {
-  let maxEnd = startMs;
-  for (const step of recipe.steps) {
+  shotDurationMs: number,
+): { startMs: number; requiredEndMs: number; endMs: number } {
+  let firstStart = Number.POSITIVE_INFINITY;
+  let requiredEndMs = startMs;
+  const restoreTimes: number[] = [];
+  for (const [index, step] of recipe.steps.entries()) {
     if (bindings[step.id] === null) continue;
-    const end = startMs + step.offsetMs + ('durationMs' in step ? step.durationMs : 0);
-    maxEnd = Math.max(maxEnd, end);
+    const stepStart = startMs + step.offsetMs;
+    if (step.kind !== 'motion') {
+      firstStart = Math.min(firstStart, stepStart);
+      requiredEndMs = Math.max(requiredEndMs, stepStart + step.durationMs);
+      continue;
+    }
+    const preset = project.userMotionPresets?.find((entry) => entry.id === step.presetId);
+    if (!preset) throw new Error(`第 ${index + 1} 步：找不到选择的运动预设。`);
+    const motionStart = snapToFrame(stepStart);
+    const { endMs, restoreAtMs } = userMotionPresetRange(preset, motionStart);
+    firstStart = Math.min(firstStart, motionStart);
+    requiredEndMs = Math.max(requiredEndMs, endMs);
+    if (restoreAtMs !== null) restoreTimes.push(restoreAtMs);
   }
-  return maxEnd;
+  // The eventual shot must fit the authored steps. A restore key is only
+  // written if it already fits in that duration.
+  const finalDurationMs = Math.max(shotDurationMs, requiredEndMs);
+  return {
+    startMs: Number.isFinite(firstStart) ? firstStart : startMs,
+    requiredEndMs,
+    endMs: Math.max(requiredEndMs, ...restoreTimes.filter((time) => time <= finalDurationMs)),
+  };
+}
+
+function motionPresetSnapshot(project: Project, id: string): string {
+  const preset = project.userMotionPresets?.find((entry) => entry.id === id);
+  return preset ? JSON.stringify([preset.durationFrames, preset.tracks]) : '';
 }
 
 function resolveRecipeBindings(
@@ -365,6 +398,15 @@ export function isScriptPerformancePlanStale(
       return {
         stale: true,
         reason: '引用的操作配方已变动或删除，请重新解析剧本计划。',
+      };
+    }
+  }
+
+  for (const ref of plan.staleToken.referencedMotionPresets) {
+    if (motionPresetSnapshot(currentProject, ref.id) !== ref.snapshotJson) {
+      return {
+        stale: true,
+        reason: '引用的运动预设已变动或删除，请重新解析剧本计划。',
       };
     }
   }
@@ -567,6 +609,7 @@ export function planScriptPerformance(
   const extendedForPerformanceByBlock = new Set<number>();
   const referencedAudioIds = new Set<string>();
   const referencedRecipeIds = new Set<string>();
+  const referencedMotionPresetIds = new Set<string>();
 
   // Step 4: Per-shot WF-01 dialogue + audio timing
   for (const parsedBlock of parsed.blocks) {
@@ -1047,13 +1090,30 @@ export function planScriptPerformance(
         matchedRecipe.id,
         overrides.recipeBindingsByDirectiveId?.[directive.directiveId],
       );
-      const endMs = getRecipeEndMs(matchedRecipe, startMs, bindings);
+      for (const step of matchedRecipe.steps) {
+        if (step.kind === 'motion' && bindings[step.id] !== null) {
+          referencedMotionPresetIds.add(step.presetId);
+        }
+      }
+
+      let range: ReturnType<typeof getRecipeRange>;
+      try {
+        range = getRecipeRange(candidate, matchedRecipe, startMs, bindings, shot.durationMs);
+      } catch (error) {
+        pushIssue(
+          'VALIDATION_FAILED',
+          error instanceof Error ? error.message : '无法读取配方运动时段。',
+          { layerId, property: 'action-recipe', startMs },
+        );
+        continue;
+      }
+      const { startMs: rangeStartMs, endMs, requiredEndMs } = range;
 
       if (directive.durationMs !== undefined) {
         pushIssue(
           'RECIPE_DURATION_OVERRIDE_UNSUPPORTED',
-          `配方「${matchedRecipe.name}」使用原时长 ${endMs - startMs}ms，请移除此行的「时长」参数后重试。`,
-          { layerId, property: 'action-recipe', startMs, endMs },
+          `配方「${matchedRecipe.name}」使用原时长 ${endMs - rangeStartMs}ms，请移除此行的「时长」参数后重试。`,
+          { layerId, property: 'action-recipe', startMs: rangeStartMs, endMs },
         );
         continue;
       }
@@ -1067,17 +1127,17 @@ export function planScriptPerformance(
         continue;
       }
 
-      const needsExtension = endMs > shot.durationMs;
+      const needsExtension = requiredEndMs > shot.durationMs;
       if (needsExtension && !extendShotForPerformance) {
         pushIssue(
           'OUT_OF_SHOT_BOUNDS',
-          `镜头「${shot.name}」时长 ${shot.durationMs}ms，第 ${directive.dialogueOrdinal} 句配方「${matchedRecipe.name}」（${startMs}–${endMs}ms）超出镜头边界；可确认延长镜头至 ${endMs}ms 或跳过此行。`,
+          `镜头「${shot.name}」时长 ${shot.durationMs}ms，第 ${directive.dialogueOrdinal} 句配方「${matchedRecipe.name}」（${rangeStartMs}–${endMs}ms）超出镜头边界；可确认延长镜头至 ${requiredEndMs}ms 或跳过此行。`,
           {
             layerId,
             property: 'action-recipe',
-            startMs,
+            startMs: rangeStartMs,
             endMs,
-            requiredShotDurationMs: endMs,
+            requiredShotDurationMs: requiredEndMs,
           },
         );
         continue;
@@ -1085,7 +1145,7 @@ export function planScriptPerformance(
 
       try {
         const recipeProject = needsExtension
-          ? shotService.setDuration(candidate, shot.id, endMs)
+          ? shotService.setDuration(candidate, shot.id, requiredEndMs)
           : candidate;
         const beforeShot = recipeProject.shots.find((s) => s.id === shot.id)!;
         const beforeIds = new Set(beforeShot.timelineEvents.map((e) => e.id));
@@ -1116,7 +1176,7 @@ export function planScriptPerformance(
           action: directive.action,
           actionLabel: `${PERFORMANCE_ACTION_LABELS[directive.action]}：${matchedRecipe.name}`,
           property: 'action-recipe',
-          startMs,
+          startMs: rangeStartMs,
           endMs,
           requiredShotDurationMs: null,
           status: 'ready',
@@ -1130,7 +1190,7 @@ export function planScriptPerformance(
           error instanceof Error
             ? `第 ${directive.dialogueOrdinal} 句配方「${matchedRecipe.name}」应用失败：${error.message}`
             : `第 ${directive.dialogueOrdinal} 句配方「${matchedRecipe.name}」应用失败。`,
-          { layerId, property: 'action-recipe', startMs, endMs },
+          { layerId, property: 'action-recipe', startMs: rangeStartMs, endMs },
         );
       }
       continue;
@@ -1364,6 +1424,10 @@ export function planScriptPerformance(
         snapshotJson: recipe ? JSON.stringify(recipe) : '',
       };
     }),
+    referencedMotionPresets: [...referencedMotionPresetIds].sort().map((id) => ({
+      id,
+      snapshotJson: motionPresetSnapshot(project, id),
+    })),
   };
 
   const hasIssues =

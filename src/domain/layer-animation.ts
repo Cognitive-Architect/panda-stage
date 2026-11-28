@@ -46,7 +46,7 @@ export function findLayerMotionGraphic(project: Project, layer: Layer) {
 }
 
 /** A centered working basis lets ordinary Layer roots reuse the existing track operations. */
-function centeredLayerMotionClip(layer: Layer): LayerAnimationClip {
+export function centeredLayerMotionClip(layer: Layer): LayerAnimationClip {
   const { id, x, y, scaleX, scaleY, rotationDeg } = layer;
   return {
     version: 2,

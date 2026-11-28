@@ -42,6 +42,7 @@ import {
 import {
   createLayerAnimationClip,
   canAuthorLayerRootMotion,
+  centeredLayerMotionClip,
   evaluateLayerRelativeMotionValues,
   findLayerMotionGraphic,
   layerRootMotionClip,
@@ -178,6 +179,7 @@ function resolveLayerContext(
   project: Project,
   shotId: string,
   layerId: string,
+  allowCharacterRoot = false,
 ): {
   readonly shot: Shot;
   readonly layer: Layer;
@@ -191,7 +193,8 @@ function resolveLayerContext(
     throw new Error('请选择有效的 FLA 图形动画图层。');
   }
   const animation = findLayerMotionGraphic(project, layer);
-  if (!animation && !canAuthorLayerRootMotion(layer)) {
+  if (!animation && !canAuthorLayerRootMotion(layer) &&
+    !(allowCharacterRoot && layer.source.kind === 'character')) {
     throw new Error('对象动作仅支持 FLA 图形（Graphic）图层。');
   }
   if (animation && layer.animationClip && layer.animationClip.version !== 2) {
@@ -204,8 +207,9 @@ function assertMutableLayerContext(
   project: Project,
   shotId: string,
   layerId: string,
+  allowCharacterRoot = false,
 ) {
-  const resolved = resolveLayerContext(project, shotId, layerId);
+  const resolved = resolveLayerContext(project, shotId, layerId, allowCharacterRoot);
   if (resolved.layer.locked) {
     throw new Error(`图层“${resolved.layer.name}”已锁定，请先解锁。`);
   }
@@ -314,12 +318,19 @@ export class LayerMotionService {
       : [...library, preset] });
   }
 
-  applyUserMotionPreset(project: Project, input: LayerKeyTimeInput, presetId: string): Project {
-    const { shot, layer } = assertMutableLayerContext(project, input.shotId, input.layerId);
+  applyUserMotionPreset(
+    project: Project,
+    input: LayerKeyTimeInput,
+    presetId: string,
+    options: { readonly allowCharacterRoot?: boolean } = {},
+  ): Project {
+    const { shot, layer } = assertMutableLayerContext(project, input.shotId, input.layerId, options.allowCharacterRoot);
     const preset = project.userMotionPresets?.find((entry) => entry.id === presetId);
     if (!preset) throw new Error('找不到选择的运动预设。');
     assertValidFrame(shot, input.timeMs);
-    const clip = layerRootMotionClip(layer) ?? createLayerAnimationClip(project, shot.id, layer.id);
+    const clip = layerRootMotionClip(layer) ?? (layer.source.kind === 'character'
+      ? centeredLayerMotionClip(layer)
+      : createLayerAnimationClip(project, shot.id, layer.id));
     const tracks = applyUserMotionPresetTracks(clip, layer.id, preset, input.timeMs, shot.durationMs);
     return this.commitLayerClip(project, shot.id, layer.id, { ...clip, tracks });
   }

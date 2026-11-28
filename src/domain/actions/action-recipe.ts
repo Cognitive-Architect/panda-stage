@@ -2,7 +2,7 @@ import { ActionRecipeSchema, type ActionRecipe, type ActionRecipeStep } from '..
 import { ProjectSchema, type Project } from '../models/project';
 import { upsertCharacterActionEvent } from '../services/CharacterActionEventService';
 import { LayerMotionService } from '../services/LayerMotionService';
-import { resolveTimelineFrameTime } from '../timeline/frame-grid';
+import { snapToFrame } from '../timeline/frame-grid';
 import { validatePresetApplication } from '../validators';
 import { ACTION_PRESET_BY_ID } from './ActionPreset';
 import { applyPresetEvents } from './applyPresetEvents';
@@ -74,7 +74,8 @@ export function applyActionRecipe(
       }
       if (step.kind === 'motion') {
         draft = motion.applyUserMotionPreset(draft,
-          { shotId: shot.id, layerId: layer.id, timeMs: resolveTimelineFrameTime(startMs, shot.durationMs) }, step.presetId);
+          { shotId: shot.id, layerId: layer.id, timeMs: snapToFrame(startMs) },
+          step.presetId, { allowCharacterRoot: true });
         return;
       }
       if ((step.kind === 'expression' || step.kind === 'action') &&

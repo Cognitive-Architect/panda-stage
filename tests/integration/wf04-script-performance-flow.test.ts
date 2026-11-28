@@ -13,6 +13,7 @@ import {
   applyPresetEvents,
   applyScriptPerformancePlan,
   createPresetEvents,
+  evaluateShotAtTime,
   planScriptPerformance,
   saveActionRecipe,
   type AudioAsset,
@@ -160,6 +161,58 @@ afterEach(() => {
 });
 
 describe('WF-04 integration: UI single-commit + post-apply editing + Undo/Redo + save/reopen + CLI equivalence', () => {
+  it('uses the shared motion recipe range for CLI preview and one undoable character-track commit', () => {
+    const base = buildIntegrationProject();
+    const presetId = crypto.randomUUID();
+    const project = saveActionRecipe(ProjectSchema.parse({
+      ...base,
+      userMotionPresets: [{
+        id: presetId, name: '位移', durationFrames: 48,
+        tracks: [{
+          property: 'transform.offsetX',
+          keys: [
+            { frameOffset: 0, value: 0, interpolationToNext: 'linear' },
+            { frameOffset: 48, value: 100, interpolationToNext: 'step' },
+          ],
+        }],
+      }],
+    }), {
+      name: '长位移',
+      steps: [{ id: crypto.randomUUID(), kind: 'motion', presetId, offsetMs: 0 }],
+    });
+    const script = '镜头：运动范围\n时长：3000ms\n出场：师兄\n对白：\n师兄：第一句。\n表演：\n1｜配方｜长位移';
+    editorProjectStore.open('C:/projects/wf04-motion-cli.pandastage', project);
+    const before = editorProjectStore.getSnapshot()!;
+    const session = {
+      sessionId: SESSION_ID, projectId: project.id,
+      instanceId: editorProjectStore.getProjectInstanceId()!,
+    };
+    const command = (name: 'script.plan' | 'script.apply') =>
+      executeDesktopAutomation(DesktopAutomationRendererRequestSchema.parse({
+        requestId: REQUEST_ID, sessionId: SESSION_ID, deadlineMs: Date.now() + 5_000, appVersion: '0.1.0',
+        command: { name, session, script },
+      }), () => true);
+    const preview = planScriptPerformance(before.project, script);
+    expect(command('script.plan')).toMatchObject({
+      ok: true, data: { performances: [{ status: 'ready', startMs: 0, endMs: 2042 }] },
+    });
+    expect(editorProjectStore.getSnapshot()).toBe(before);
+    expect(command('script.apply').ok).toBe(true);
+    const committed = editorProjectStore.getSnapshot()!.project;
+    const shot = committed.shots.at(-1)!;
+    const layer = shot.layers[0]!;
+    const keys = layer.layerMotionTracks?.[0]?.keys;
+    expect(keys).toEqual(preview.candidateProject!.shots.at(-1)!.layers[0]!.layerMotionTracks?.[0]?.keys);
+    expect(keys?.map((key) => key.timeMs)).toEqual([0, 2000, 2042]);
+    expect(evaluateShotAtTime(shot, 2000, committed).layers[0]!.x).toBe(layer.x + 100);
+    expect(evaluateShotAtTime(shot, 2042, committed).layers[0]!.x).toBe(layer.x);
+    expect(editorProjectStore.history.getSnapshot().undoCount).toBe(1);
+    expect(editorProjectStore.undo()).toBe(true);
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(before.project);
+    expect(editorProjectStore.redo()).toBe(true);
+    expect(editorProjectStore.getSnapshot()!.project).toEqual(committed);
+  });
+
   it('U3 shares the recipe duration diagnostic and partial-confirm contract with script.plan and script.apply', () => {
     const project = saveActionRecipe(buildIntegrationProject(), {
       name: '长淡入',

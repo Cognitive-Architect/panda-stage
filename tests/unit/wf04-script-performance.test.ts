@@ -121,7 +121,132 @@ function buildWf04Project(): Project {
   });
 }
 
+function buildMotionRecipeProject(): Project {
+  const base = buildWf04Project();
+  const presetId = crypto.randomUUID();
+  return saveActionRecipe(ProjectSchema.parse({
+    ...base,
+    assets: base.assets.map((asset) => asset.id === AUDIO_IDS.a1 ? { ...asset, durationMs: 800 } : asset),
+    userMotionPresets: [{
+      id: presetId, name: '长位移', durationFrames: 48,
+      tracks: [{
+        property: 'transform.offsetX',
+        keys: [
+          { frameOffset: 0, value: 0, interpolationToNext: 'linear' },
+          { frameOffset: 48, value: 100, interpolationToNext: 'step' },
+        ],
+      }],
+    }],
+  }), {
+    name: '移动配方',
+    steps: [{ id: crypto.randomUUID(), kind: 'motion', presetId, offsetMs: 0 }],
+  });
+}
+
+const MOTION_RECIPE_SCRIPT = [
+  '镜头：运动配方', '时长：1500ms', '出场：师兄', '对白：',
+  '师兄：第一句。', '表演：', '1｜配方｜移动配方',
+].join('\n');
+
 describe('WF-04 shared script & performance planner and applier', () => {
+  it('extends a 1500ms shot only to a 48-frame recipe motion end and persists the same preview keys', () => {
+    const project = buildMotionRecipeProject();
+    const script = MOTION_RECIPE_SCRIPT;
+    const bounded = planScriptPerformance(project, script);
+    expect(bounded.performances[0]).toMatchObject({
+      issueCode: 'OUT_OF_SHOT_BOUNDS', startMs: 0, endMs: 2_000, requiredShotDurationMs: 2_000,
+    });
+    expect(bounded.blocks[0]!.finalDurationMs).toBe(1_500);
+    const plan = planScriptPerformance(project, script, { extendShotForPerformance: true });
+    expect(plan.performances[0]).toMatchObject({ status: 'ready', startMs: 0, endMs: 2_000 });
+    const applied = applyScriptPerformancePlan(project, plan, { allowPartialConfirm: false });
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) throw new Error(applied.message);
+    const shot = applied.project.shots.at(-1)!;
+    expect(shot).toEqual(plan.candidateProject!.shots.at(-1));
+    expect(shot.durationMs).toBe(2_000);
+    expect(shot.layers[0]!.layerMotionTracks?.[0]?.keys.map((key) => key.timeMs)).toEqual([0, 2_000]);
+  });
+
+  it('reports actual offset and restore frames in motion-only and mixed recipes', () => {
+    const project = buildMotionRecipeProject();
+    const recipe = project.actionRecipes!.at(-1)!;
+    const motion = { ...recipe.steps[0]!, offsetMs: 100 };
+    const fade = {
+      id: crypto.randomUUID(), kind: 'preset', presetId: 'fade-in',
+      offsetMs: 300, durationMs: 500,
+    } as const;
+    const script = MOTION_RECIPE_SCRIPT.replace('1500ms', '3000ms') + '｜偏移=+60ms';
+    for (const steps of [[motion], [motion, fade]]) {
+      const library = saveActionRecipe(project, { name: recipe.name, steps }, recipe.id);
+      const plan = planScriptPerformance(library, script);
+      const shot = plan.candidateProject!.shots.at(-1)!;
+      const layer = shot.layers[0]!;
+      expect(shot.durationMs).toBe(3_000);
+      // 160ms rounds to frame 4; the 48-frame segment ends at frame 52.
+      expect(layer.layerMotionTracks?.[0]?.keys.map((key) => key.timeMs)).toEqual([0, 167, 2167, 2208]);
+      expect(plan.performances[0]).toMatchObject({ status: 'ready', startMs: 167, endMs: 2208 });
+      expect(shot.timelineEvents).toHaveLength(steps.length - 1);
+    }
+
+    const offsetRecipe = saveActionRecipe(project, {
+      name: recipe.name, steps: [{ ...motion, offsetMs: 1_600 }],
+    }, recipe.id);
+    const late = planScriptPerformance(offsetRecipe, MOTION_RECIPE_SCRIPT + '｜偏移=+60ms', {
+      extendShotForPerformance: true,
+    });
+    const shot = late.candidateProject!.shots.at(-1)!;
+    expect(late.performances[0]).toMatchObject({ status: 'ready', startMs: 1667, endMs: 3667 });
+    expect(shot.durationMs).toBe(3667);
+    expect(shot.layers[0]!.layerMotionTracks?.[0]?.keys.map((key) => key.timeMs)).toEqual([0, 1667, 3667]);
+  });
+
+  it('skips bound-out motion, rejects missing or overlapping steps atomically, and catches preset changes', () => {
+    const project = buildMotionRecipeProject();
+    const recipe = project.actionRecipes!.at(-1)!;
+    const motion = recipe.steps[0]!;
+    const script = MOTION_RECIPE_SCRIPT + '\n1｜抖动｜时长=300ms';
+    const plan = planScriptPerformance(project, script, { extendShotForPerformance: true });
+    const preset = project.userMotionPresets![0]!;
+    const updated = ProjectSchema.parse({
+      ...project,
+      userMotionPresets: [{
+        ...preset,
+        tracks: preset.tracks.map((track) => ({
+          ...track, keys: track.keys.map((key, index) => index === 1 ? { ...key, value: 120 } : key),
+        })),
+      }],
+    });
+    expect(applyScriptPerformancePlan(updated, plan)).toMatchObject({ ok: false, errorCode: 'STALE_PLAN' });
+
+    const skipped = planScriptPerformance(project, script, {
+      overrides: { recipeBindingsByDirectiveId: { [plan.performances[0]!.directiveId]: { [motion.id]: null } } },
+      extendShotForPerformance: true,
+    });
+    expect(skipped.performances[0]).toMatchObject({ status: 'ready', endMs: 0 });
+    expect(skipped.blocks[0]!.finalDurationMs).toBe(1_500);
+    expect(skipped.candidateProject!.shots.at(-1)!.layers[0]!.layerMotionTracks).toBeUndefined();
+    expect(isScriptPerformancePlanStale(updated, skipped).stale).toBe(false);
+
+    const conflict = saveActionRecipe(project, {
+      name: recipe.name, steps: [motion, { ...motion, id: crypto.randomUUID(), offsetMs: 100 }],
+    }, recipe.id);
+    const missing = ProjectSchema.parse({ ...project, userMotionPresets: [] });
+    for (const [input, message] of [[conflict, '重叠'], [missing, '找不到选择的运动预设']] as const) {
+      const rejected = planScriptPerformance(input, script, { extendShotForPerformance: true });
+      expect(rejected.performances[0]).toMatchObject({ issueCode: 'VALIDATION_FAILED', issueMessage: expect.stringContaining(message) });
+      expect(rejected.performances[1]!.status).toBe('ready');
+      expect(applyScriptPerformancePlan(input, rejected, { allowPartialConfirm: false }).ok).toBe(false);
+      const result = applyScriptPerformancePlan(input, rejected, { allowPartialConfirm: true });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error(result.message);
+      const shot = result.project.shots.at(-1)!;
+      expect(shot.durationMs).toBe(1_500);
+      expect(shot.layers[0]!.layerMotionTracks).toBeUndefined();
+      expect(shot.timelineEvents.map((event) => event.type)).toEqual(['shake']);
+    }
+  });
+
   it('U3 diagnoses recipe duration overrides and uses the authored range for extension and apply', () => {
     const project = saveActionRecipe(buildWf04Project(), {
       name: '长淡入',
