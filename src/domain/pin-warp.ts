@@ -94,6 +94,21 @@ export type EvaluatedPinWarp =
 
 const DUPLICATE_PIN_DISTANCE = 1e-6;
 const COLLAPSED_TRIANGLE_AREA = 1e-9;
+/**
+ * Net-zero pin drag tolerance in layer-local image pixels (#1471 R5). A drag
+ * that returns to the currently evaluated pin position is not an edit.
+ */
+const PIN_WARP_PIN_NOOP_EPSILON = 1e-6;
+
+function pinPointsWithinNoopEpsilon(
+  left: PinWarpPoint,
+  right: PinWarpPoint,
+): boolean {
+  return (
+    Math.abs(left.x - right.x) <= PIN_WARP_PIN_NOOP_EPSILON &&
+    Math.abs(left.y - right.y) <= PIN_WARP_PIN_NOOP_EPSILON
+  );
+}
 
 export function isFinitePinWarpPoint(point: unknown): point is PinWarpPoint {
   return Boolean(
@@ -520,7 +535,10 @@ function sortedPoses(poses: readonly PinWarp['poses'][number][]): PinWarp['poses
 /**
  * Writes one pin at `timeMs`. An existing exact-time pose is updated; otherwise
  * a new pose is inserted at that time from the currently evaluated pose (an
- * auto-key). One call = one authoring action.
+ * auto-key). One call = one authoring action. A net-zero drag (the requested
+ * point equals the evaluated pin at that time) returns the same `pinWarp`
+ * reference so no auto-key, project update, or History entry is created. The
+ * explicit `addPinWarpPoseAtTime` still records the current pose on demand.
  */
 export function setPinWarpPinAtTime(input: {
   readonly pinWarp: PinWarp;
@@ -535,6 +553,10 @@ export function setPinWarpPinAtTime(input: {
   const evaluated = resolvePinWarpPoseAtTime(pinWarp, timeMs);
   if (evaluated.status === 'invalid') {
     throw new Error('当前控制点姿态无效，无法记录。');
+  }
+  const evaluatedPin = evaluated.pins[pinIndex]!;
+  if (pinPointsWithinNoopEpsilon(evaluatedPin, point)) {
+    return pinWarp;
   }
   const existing = pinWarp.poses.find((pose) => pose.timeMs === timeMs);
   if (existing) {

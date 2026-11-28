@@ -580,4 +580,163 @@ describe('pin-warp editor store: independence, seek, persistence, undo', () => {
       input.layers.setPinWarpMeshDensity(layerId, { columns: 25, rows: 3 }),
     ).toThrow();
   });
+
+  it('treats an interpolated-frame net-zero drag as no project update, no pose, and no History (#1471 R5)', () => {
+    const input = harness();
+    const layerId = addBitmapLayer(input);
+    input.layers.bindPinWarp(layerId, 0);
+    input.layers.setPinWarpPin(layerId, 1_000, 1, { x: 0, y: 120 });
+    const projectBefore = snapshotProject(input);
+    const snapshotBefore = input.editor.getSnapshot()!;
+    const undoBefore = input.editor.history.getSnapshot().undoCount;
+    let notifications = 0;
+    const unsubscribe = input.editor.subscribe(() => {
+      notifications += 1;
+    });
+
+    // The Canvas commit path: the current time is snapped inside the service and
+    // the committed point is the evaluated pin the handle was drawn at (drag out
+    // and back to the same place).
+    const evaluated = evaluateShotAtTime(projectBefore.shots[0]!, 500, projectBefore)
+      .layers.find((layer) => layer.id === layerId)!;
+    let evaluatedPin: PinWarpPoint | undefined;
+    if (evaluated.pinWarp?.status === 'valid') evaluatedPin = evaluated.pinWarp.pins[1];
+    expect(evaluated.pinWarp?.status).toBe('valid');
+    if (!evaluatedPin) throw new Error('Expected an evaluated pin.');
+    input.layers.setPinWarpPin(layerId, 505, 1, evaluatedPin);
+
+    expect(notifications).toBe(0);
+    expect(input.editor.getSnapshot()!.revision).toBe(snapshotBefore.revision);
+    expect(input.editor.getSnapshot()!.project).toBe(projectBefore);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(undoBefore);
+    expect(findLayer(snapshotProject(input), layerId).pinWarp!.poses).toHaveLength(2);
+
+    // Net-zero writes at an authored pose time stay no-ops too.
+    input.layers.setPinWarpPin(layerId, 1_000, 1, { x: 0, y: 120 });
+    expect(notifications).toBe(0);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(undoBefore);
+
+    // A real drag on that same interpolated frame commits exactly one update,
+    // one new pose, and one undo entry.
+    input.layers.setPinWarpPin(layerId, 505, 1, {
+      x: evaluatedPin.x + 10,
+      y: evaluatedPin.y,
+    });
+    expect(notifications).toBe(1);
+    expect(input.editor.getSnapshot()!.revision).toBe(snapshotBefore.revision + 1);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(undoBefore + 1);
+    expect(
+      findLayer(snapshotProject(input), layerId).pinWarp!.poses.map((pose) => pose.timeMs),
+    ).toEqual([0, 500, 1_000]);
+    // One undo removes exactly that one drag.
+    expect(input.editor.undo()).toBe(true);
+    expect(
+      findLayer(snapshotProject(input), layerId).pinWarp!.poses.map((pose) => pose.timeMs),
+    ).toEqual([0, 1_000]);
+    unsubscribe();
+  });
+
+  it('still inserts a pose through the explicit “记录当前姿态” action on an interpolated frame (#1471 R5)', () => {
+    const input = harness();
+    const layerId = addBitmapLayer(input);
+    input.layers.bindPinWarp(layerId, 0);
+    input.layers.setPinWarpPin(layerId, 1_000, 1, { x: 0, y: 120 });
+    const before = input.editor.getSnapshot()!;
+    const undoBefore = input.editor.history.getSnapshot().undoCount;
+    const projectBefore = snapshotProject(input);
+    const evaluated = evaluateShotAtTime(projectBefore.shots[0]!, 500, projectBefore)
+      .layers.find((layer) => layer.id === layerId)!;
+    if (evaluated.pinWarp?.status !== 'valid') throw new Error('Expected a valid warp.');
+
+    input.layers.addPinWarpPose(layerId, 500);
+
+    expect(input.editor.getSnapshot()!.revision).toBe(before.revision + 1);
+    expect(input.editor.history.getSnapshot().undoCount).toBe(undoBefore + 1);
+    const pinWarp = findLayer(snapshotProject(input), layerId).pinWarp!;
+    expect(pinWarp.poses.map((pose) => pose.timeMs)).toEqual([0, 500, 1_000]);
+    expect(pinWarp.poses[1]!.pins).toEqual(evaluated.pinWarp.pins);
+  });
+});
+
+describe('pin-warp net-zero pin writes (#1471 R5)', () => {
+  const restPins = seedPinWarpPoints(IMAGE_RECT);
+  const posedPins = restPins.map((pin, index) =>
+    index === 1 ? { x: pin.x + 40, y: pin.y + 80 } : pin,
+  );
+  const pinWarp: PinWarp = {
+    mesh: MESH,
+    restPins,
+    poses: [
+      { timeMs: 0, pins: restPins.map((pin) => ({ ...pin })) },
+      { timeMs: 1_000, pins: posedPins.map((pin) => ({ ...pin })) },
+    ],
+  };
+
+  function evaluatedPinAt(timeMs: number): PinWarpPoint {
+    const evaluated = resolvePinWarpPoseAtTime(pinWarp, timeMs);
+    if (evaluated.status !== 'valid') throw new Error('Expected a valid pose.');
+    expect(evaluated.mode).toBe('between');
+    return evaluated.pins[1]!;
+  }
+
+  it('returns the same pinWarp for a drag back to the interpolated evaluated pin', () => {
+    const evaluatedPin = evaluatedPinAt(500);
+    const noop = setPinWarpPinAtTime({
+      pinWarp,
+      timeMs: 500,
+      pinIndex: 1,
+      point: evaluatedPin,
+    });
+    // Same reference: no auto-key, no new pose, and services can skip the write.
+    expect(noop).toBe(pinWarp);
+    expect(noop.poses).toHaveLength(2);
+    expect(JSON.stringify(noop)).toBe(JSON.stringify(pinWarp));
+    // The no-op tolerance accepts sub-pixel float noise from a real drag.
+    expect(setPinWarpPinAtTime({
+      pinWarp,
+      timeMs: 500,
+      pinIndex: 1,
+      point: { x: evaluatedPin.x + 1e-7, y: evaluatedPin.y - 1e-7 },
+    })).toBe(pinWarp);
+    // A net-zero write on an authored pose time is also a no-op.
+    expect(setPinWarpPinAtTime({
+      pinWarp,
+      timeMs: 1_000,
+      pinIndex: 1,
+      point: posedPins[1]!,
+    })).toBe(pinWarp);
+  });
+
+  it('still auto-keys exactly one pose for an actual interpolated-frame change', () => {
+    const evaluatedPin = evaluatedPinAt(500);
+    const evaluated = resolvePinWarpPoseAtTime(pinWarp, 500);
+    if (evaluated.status !== 'valid') throw new Error('Expected a valid pose.');
+    const changed = setPinWarpPinAtTime({
+      pinWarp,
+      timeMs: 500,
+      pinIndex: 1,
+      point: { x: evaluatedPin.x + 10, y: evaluatedPin.y },
+    });
+    expect(changed).not.toBe(pinWarp);
+    expect(changed.poses.map((pose) => pose.timeMs)).toEqual([0, 500, 1_000]);
+    expect(changed.poses[1]!.pins[1]).toEqual({
+      x: evaluatedPin.x + 10,
+      y: evaluatedPin.y,
+    });
+    // Other pins keep their evaluated interpolation, not the authored endpoints.
+    expect(changed.poses[1]!.pins[0]).toEqual(evaluated.pins[0]);
+    expect(changed.poses[1]!.pins[1]).not.toEqual(restPins[1]);
+    expect(changed.poses[1]!.pins[1]).not.toEqual(posedPins[1]);
+  });
+
+  it('keeps the explicit pose-recording action inserting the evaluated pose', () => {
+    const added = addPinWarpPoseAtTime(pinWarp, 500);
+    expect(added).not.toBe(pinWarp);
+    expect(added.poses.map((pose) => pose.timeMs)).toEqual([0, 500, 1_000]);
+    const evaluated = resolvePinWarpPoseAtTime(pinWarp, 500);
+    if (evaluated.status !== 'valid') throw new Error('Expected a valid pose.');
+    expect(added.poses[1]!.pins).toEqual(evaluated.pins);
+    // An existing exact-time pose still makes the explicit action idempotent.
+    expect(addPinWarpPoseAtTime(added, 500)).toBe(added);
+  });
 });
