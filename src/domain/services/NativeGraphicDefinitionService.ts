@@ -1998,9 +1998,11 @@ function remapDefinitionShapeOverridePaths(
 
 /**
  * Instance data needed to keep transforms identical when a Group disappears:
- * every override below the group must absorb the group's effective matrix, and
- * instances that only transformed the group itself need an explicit child
- * override because the authored child matrix alone loses that transform.
+ * a promoted direct child's instance override must absorb the group's effective
+ * matrix, and instances that only transformed the group itself need an explicit
+ * direct-child override because the authored child matrix alone loses that
+ * transform. Deeper overrides stay relative to their surviving parent, which
+ * already carries the composed matrix.
  */
 interface UngroupTransformComposition {
   readonly frameKey: string;
@@ -2037,8 +2039,9 @@ function affineMatricesEquivalent(left: AffineMatrix2D, right: AffineMatrix2D): 
 
 /**
  * Remaps one instance transform-override frame map. When `composition` is
- * present every override below the ungrouped group is composed with the
- * group's effective matrix so the evaluated matrix never changes.
+ * present, an override for a child promoted to the removed group's position
+ * absorbs the group's effective matrix; deeper overrides are only re-keyed
+ * because their surviving parent keeps carrying the composed matrix.
  */
 function remapInstanceTransformFrameMaps(
   map: Record<string, Record<string, AffineMatrix2D>> | undefined,
@@ -2065,7 +2068,11 @@ function remapInstanceTransformFrameMaps(
       let nextMatrix = matrix;
       if (isComposedFrame && groupEffective) {
         const parsed = parsePathKey(pathKey);
-        if (parsed && parsed[0] === composition!.groupId && parsed.length > 1) {
+        // Only a direct child (`[groupId, childId]`) is promoted to the
+        // removed group's position and must absorb its effective matrix.
+        // Deeper paths keep their surviving parent, so composing the group
+        // matrix again would apply it twice.
+        if (parsed && parsed[0] === composition!.groupId && parsed.length === 2) {
           nextMatrix = composeFiniteMatrix(groupEffective, matrix) ?? matrix;
         }
       }
@@ -2292,9 +2299,11 @@ export interface UngroupNativeGraphicNodeResult {
 
 /**
  * Ungroups one top-level native Group. The group's authored matrix is composed
- * into each child, and every instance override below the group absorbs the
- * group's effective matrix (its instance override, else the authored matrix), so
- * the evaluated matrix before and after ungroup is identical for every instance.
+ * into each promoted child, and only the promoted direct children's instance
+ * overrides absorb the group's effective matrix (its instance override, else the
+ * authored matrix); deeper overrides are re-keyed only, because their surviving
+ * parent already carries the composed matrix. The evaluated matrix before and
+ * after ungroup is therefore identical for every instance.
  */
 export function ungroupNativeGraphicNode(
   project: Project,
