@@ -104,7 +104,12 @@ export function ProjectResourceImportDialog({
   useEffect(() => {
     if (selectedResources.length === 0) {
       setPreview(null);
-      setReuseChoiceByKey({});
+      // Only clear when there is something to clear; a fresh {} would change
+      // the reference, re-trigger this effect through activeReuseDefinitions,
+      // and spin forever on an empty selection.
+      setReuseChoiceByKey((previous) =>
+        Object.keys(previous).length === 0 ? previous : {},
+      );
       return;
     }
     let cancelled = false;
