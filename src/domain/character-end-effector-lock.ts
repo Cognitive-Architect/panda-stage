@@ -9,6 +9,7 @@ import {
   type CharacterBonePoseValues,
   type CharacterBoneTreeSource,
   type EvaluatedCharacterBonePose,
+  type ResolvedCharacterBoneTree,
 } from './character-bone-pose';
 import { solveRigidArm, type ArmJointLimit, type ArmPoint } from './geometry/rigidArmIk';
 import { composeAffineMatrix } from './models/flaGraphicTimeline';
@@ -61,6 +62,12 @@ export interface CharacterEndEffectorLockResult {
   readonly residuals: readonly CharacterEndEffectorResidual[];
   /** Bones whose pose values the solver changed, in deterministic order. */
   readonly solvedBoneIds: readonly string[];
+  /**
+   * Structural reason per active lock that was skipped (`invalid-target`,
+   * `invalid-chain`, `shared-ancestor`); a solved lock has no entry. The
+   * evaluator reuses this to re-measure distances after parent-space changes.
+   */
+  readonly structuralReasons: ReadonlyMap<string, CharacterEndEffectorResidualReason>;
 }
 
 export interface ApplyCharacterEndEffectorLocksInput {
@@ -296,7 +303,6 @@ function currentEndEffectorDistance(input: {
   lock: CharacterEndEffectorLock;
   leafPose: EvaluatedCharacterBonePose;
   localToStage: AffineMatrix2D;
-  stageToLocal: AffineMatrix2D;
 }): number {
   const { lock, leafPose } = input;
   const leafCharacterPoint = { x: leafPose.world.tx, y: leafPose.world.ty };
@@ -305,6 +311,69 @@ function currentEndEffectorDistance(input: {
   }
   const stagePoint = transformPoint(input.localToStage, leafCharacterPoint);
   return Math.hypot(lock.target.x - stagePoint.x, lock.target.y - stagePoint.y);
+}
+
+/** Active locks in solve order: deeper leaves first, then stable id tie-breaks. */
+function orderedActiveLocks(
+  tree: ResolvedCharacterBoneTree,
+  locks: readonly CharacterEndEffectorLock[],
+  timeMs: number | undefined,
+): CharacterEndEffectorLock[] {
+  return [...locks]
+    .filter((lock) => timeMs === undefined || characterEndEffectorLockActiveAt(lock, timeMs))
+    .map((lock) => ({ lock, depth: boneDepth(tree, lock.boneId) }))
+    .sort((left, right) =>
+      right.depth - left.depth ||
+      left.lock.id.localeCompare(right.lock.id) ||
+      left.lock.boneId.localeCompare(right.lock.boneId))
+    .map(({ lock }) => lock);
+}
+
+export interface CharacterEndEffectorResidualsFromPoseInput {
+  readonly character: CharacterBoneTreeSource;
+  /** Final FK pose in Character space; already includes every solved Bone. */
+  readonly poses: ReadonlyMap<string, EvaluatedCharacterBonePose>;
+  readonly locks: readonly CharacterEndEffectorLock[];
+  /** Final Character space -> Stage space matrix for this Layer instance. */
+  readonly localToStage: AffineMatrix2D;
+  readonly timeMs?: number;
+  /** Structural reasons from the solve pass; a solved lock has no entry. */
+  readonly structuralReasons?: ReadonlyMap<string, CharacterEndEffectorResidualReason>;
+}
+
+/**
+ * Measures every active lock against one final FK pose and the final parent
+ * space. The solver and the evaluator's parent-space post-pass both call this
+ * after the last pose/space change, so a returned residual can never describe
+ * an already-superseded position. Structural reasons (invalid target / chain /
+ * shared ancestor) are preserved instead of being mislabelled as position
+ * error; `invalid-target` keeps distance 0 because no target space exists.
+ */
+export function resolveCharacterEndEffectorResidualsFromPose(
+  input: CharacterEndEffectorResidualsFromPoseInput,
+): CharacterEndEffectorResidual[] {
+  const tree = resolveCharacterBoneTree(input.character);
+  if (!tree.ok) return [];
+  const residuals: CharacterEndEffectorResidual[] = [];
+  for (const lock of orderedActiveLocks(tree, input.locks, input.timeMs)) {
+    const structuralReason = input.structuralReasons?.get(lock.id);
+    if (structuralReason === 'invalid-target') {
+      residuals.push({ lockId: lock.id, boneId: lock.boneId, distance: 0, reason: structuralReason });
+      continue;
+    }
+    const leafPose = input.poses.get(lock.boneId);
+    const distance = leafPose && hasFinitePoint(lock.target)
+      ? currentEndEffectorDistance({ lock, leafPose, localToStage: input.localToStage })
+      : 0;
+    if (structuralReason !== undefined) {
+      residuals.push({ lockId: lock.id, boneId: lock.boneId, distance, reason: structuralReason });
+      continue;
+    }
+    if (distance > CHARACTER_END_EFFECTOR_LOCK_TOLERANCE) {
+      residuals.push({ lockId: lock.id, boneId: lock.boneId, distance, reason: 'unreachable' });
+    }
+  }
+  return residuals;
 }
 
 function characterDirectionAngleFromStage(
@@ -358,78 +427,75 @@ function boneDepth(tree: { readonly byId: ReadonlyMap<string, { readonly parentB
 /**
  * Applies every active lock to the base bone pose. Deterministic and side-effect
  * free. Multi-endpoint conflicts use one documented rule: deeper leaves are
- * solved first (then by lock id / bone id), and the first lock owns a shared
- * ancestor chain. A later lock whose nearest two ancestors are already claimed
- * degrades locally and reports a `shared-ancestor` residual instead of moving
- * the whole body.
+ * solved first (then by lock id / bone id), and the first lock owns its solved
+ * segment AND the full ancestor path above it. A later lock that would need a
+ * claimed or frozen ancestor stops there; if fewer than two Bones remain it
+ * degrades locally with a `shared-ancestor` residual instead of moving the whole
+ * body or silently displacing an already-solved endpoint. All residuals are
+ * measured once, from the final FK pose, after the last lock.
  */
 export function applyCharacterEndEffectorLocks(
   input: ApplyCharacterEndEffectorLocksInput,
 ): CharacterEndEffectorLockResult {
   const tree = resolveCharacterBoneTree(input.character);
   if (!tree.ok) {
-    return { values: input.baseBoneValues, residuals: [], solvedBoneIds: [] };
+    return {
+      values: input.baseBoneValues,
+      residuals: [],
+      solvedBoneIds: [],
+      structuralReasons: new Map(),
+    };
   }
   const stageToLocal = input.stageToLocal ?? invertAffineMatrix(input.localToStage);
   const values = new Map(input.baseBoneValues);
-  const residuals: CharacterEndEffectorResidual[] = [];
   const solvedBoneIds: string[] = [];
   const solvedSet = new Set<string>();
   const claimed = new Set<string>();
+  // Ancestors above every solved segment belong to that lock as well. A later
+  // lock that needs one of them must degrade instead of rotating it, otherwise
+  // it silently moves an endpoint that was already solved (and whose residual
+  // was measured against the older pose).
+  const frozenAncestors = new Set<string>();
+  const structuralReasons = new Map<string, CharacterEndEffectorResidualReason>();
   const restWorlds = restWorldMap(input.character);
 
-  const ordered = [...input.locks]
-    .filter((lock) => input.timeMs === undefined || characterEndEffectorLockActiveAt(lock, input.timeMs))
-    .map((lock) => ({ lock, depth: boneDepth(tree, lock.boneId) }))
-    .sort((left, right) =>
-      right.depth - left.depth ||
-      left.lock.id.localeCompare(right.lock.id) ||
-      left.lock.boneId.localeCompare(right.lock.boneId))
-    .map(({ lock }) => lock);
+  const ordered = orderedActiveLocks(tree, input.locks, input.timeMs);
 
   for (const lock of ordered) {
     if (!hasFinitePoint(lock.target)) {
-      residuals.push({ lockId: lock.id, boneId: lock.boneId, distance: 0, reason: 'invalid-target' });
+      structuralReasons.set(lock.id, 'invalid-target');
       continue;
     }
     const resolved = resolveCharacterEndEffectorLockChain(input.character, lock);
     if (!resolved.ok) {
-      const poses = evaluateCharacterBonePoseFromValues(input.character, values);
-      const leafPose = poses.get(lock.boneId);
-      residuals.push({
-        lockId: lock.id,
-        boneId: lock.boneId,
-        distance: leafPose && stageToLocal
-          ? currentEndEffectorDistance({ lock, leafPose, localToStage: input.localToStage, stageToLocal })
-          : 0,
-        reason: resolved.reason,
-      });
+      structuralReasons.set(lock.id, resolved.reason);
       continue;
     }
     const leaf = tree.byId.get(resolved.chain.leafId)!;
     if (leaf.partId !== undefined && input.protectedPartIds?.has(leaf.partId)) {
-      residuals.push({ lockId: lock.id, boneId: lock.boneId, distance: 0, reason: 'invalid-target' });
+      structuralReasons.set(lock.id, 'invalid-target');
       continue;
     }
     if (!stageToLocal) {
-      residuals.push({ lockId: lock.id, boneId: lock.boneId, distance: 0, reason: 'invalid-target' });
+      structuralReasons.set(lock.id, 'invalid-target');
       continue;
     }
     const basePoses = evaluateCharacterBonePoseFromValues(input.character, values);
     const leafPose = basePoses.get(resolved.chain.leafId);
     if (!leafPose) {
-      residuals.push({ lockId: lock.id, boneId: lock.boneId, distance: 0, reason: 'invalid-chain' });
+      structuralReasons.set(lock.id, 'invalid-chain');
       continue;
     }
-    // A shared ancestor that has already been solved by a higher-priority lock
-    // is fixed: stop the chain there instead of moving another endpoint's owner.
+    // A shared ancestor that has already been solved (or that sits above the
+    // solved segment of a higher-priority lock) is fixed: stop the chain there
+    // instead of moving another endpoint's owner.
     const movableNearestFirst: string[] = [];
     let blockedByClaim = false;
     let cursor = leaf.parentBoneId;
     while (cursor !== null && movableNearestFirst.length < CHARACTER_END_EFFECTOR_LOCK_MAX_SEGMENTS) {
       const bone = tree.byId.get(cursor);
       if (!bone || bone.parentBoneId === null) break;
-      if (claimed.has(cursor)) {
+      if (claimed.has(cursor) || frozenAncestors.has(cursor)) {
         blockedByClaim = true;
         break;
       }
@@ -437,12 +503,7 @@ export function applyCharacterEndEffectorLocks(
       cursor = bone.parentBoneId;
     }
     if (movableNearestFirst.length < CHARACTER_END_EFFECTOR_LOCK_MIN_SEGMENTS) {
-      residuals.push({
-        lockId: lock.id,
-        boneId: lock.boneId,
-        distance: currentEndEffectorDistance({ lock, leafPose, localToStage: input.localToStage, stageToLocal }),
-        reason: blockedByClaim ? 'shared-ancestor' : 'invalid-chain',
-      });
+      structuralReasons.set(lock.id, blockedByClaim ? 'shared-ancestor' : 'invalid-chain');
       continue;
     }
     const movableBoneIds = [...movableNearestFirst].reverse();
@@ -482,12 +543,7 @@ export function applyCharacterEndEffectorLocks(
         clamp(angle * weight, limits[index]!.minDeg, limits[index]!.maxDeg),
       );
     } catch {
-      residuals.push({
-        lockId: lock.id,
-        boneId: lock.boneId,
-        distance: currentEndEffectorDistance({ lock, leafPose, localToStage: input.localToStage, stageToLocal }),
-        reason: 'invalid-chain',
-      });
+      structuralReasons.set(lock.id, 'invalid-chain');
       continue;
     }
     movableBoneIds.forEach((boneId, index) => {
@@ -499,6 +555,16 @@ export function applyCharacterEndEffectorLocks(
         solvedBoneIds.push(boneId);
       }
     });
+    // Freeze the full ancestor path above the topmost solved Bone (the root is
+    // never solved, so it never needs freezing). This is what makes the lock's
+    // ownership match the real dependency, not just the <=3 movable Bones.
+    let ancestorCursor = tree.byId.get(movableBoneIds[0]!)?.parentBoneId ?? null;
+    while (ancestorCursor !== null) {
+      const ancestor = tree.byId.get(ancestorCursor);
+      if (!ancestor || ancestor.parentBoneId === null) break;
+      frozenAncestors.add(ancestorCursor);
+      ancestorCursor = ancestor.parentBoneId;
+    }
     // The optional foot direction lock only turns the leaf; the end-effector
     // pivot is still owned by the solved ancestors above.
     if (lock.footRotationDeg !== undefined) {
@@ -518,23 +584,21 @@ export function applyCharacterEndEffectorLocks(
         solvedBoneIds.push(leaf.id);
       }
     }
-    // #1456: the residual must describe the ACTUAL final FK end position. The
-    // rigid-chain forward rotation is only the solver's internal model; under a
-    // non-uniform ancestor scale the real leaf pivot can differ a lot from the
-    // predicted one, so re-evaluate the pose after writing the solved values
-    // and measure the remaining distance in the lock's own target space.
-    const finalPoses = evaluateCharacterBonePoseFromValues(input.character, values);
-    const finalLeaf = finalPoses.get(resolved.chain.leafId) ?? leafPose;
-    const achieved = { x: finalLeaf.world.tx, y: finalLeaf.world.ty };
-    const achievedStage = transformPoint(input.localToStage, achieved);
-    const distance = lock.space === 'stage'
-      ? Math.hypot(lock.target.x - achievedStage.x, lock.target.y - achievedStage.y)
-      : Math.hypot(lock.target.x - achieved.x, lock.target.y - achieved.y);
-    if (distance > CHARACTER_END_EFFECTOR_LOCK_TOLERANCE) {
-      residuals.push({ lockId: lock.id, boneId: lock.boneId, distance, reason: 'unreachable' });
-    }
   }
-  return { values, residuals, solvedBoneIds };
+  // #1469: every lock's distance is measured once, from the FINAL FK pose and
+  // the final parent space, never inside the loop where a later lock could
+  // still change an earlier endpoint. Structural reasons stay distinct from an
+  // actual position error.
+  const finalPoses = evaluateCharacterBonePoseFromValues(input.character, values);
+  const residuals = resolveCharacterEndEffectorResidualsFromPose({
+    character: input.character,
+    poses: finalPoses,
+    locks: input.locks,
+    localToStage: input.localToStage,
+    timeMs: input.timeMs,
+    structuralReasons,
+  });
+  return { values, residuals, solvedBoneIds, structuralReasons };
 }
 
 function restWorldMap(
@@ -564,6 +628,8 @@ export interface AppliedCharacterEndEffectorLocksToValues {
   readonly residuals: readonly CharacterEndEffectorResidual[];
   readonly solvedBoneIds: readonly string[];
   readonly poseValues: ReadonlyMap<string, CharacterBonePoseValues>;
+  /** Structural reasons from the solve; needed to re-measure after a space change. */
+  readonly structuralReasons: ReadonlyMap<string, CharacterEndEffectorResidualReason>;
 }
 
 /**
@@ -592,6 +658,7 @@ export function applyCharacterEndEffectorLocksToValues(
       residuals: result.residuals,
       solvedBoneIds: [],
       poseValues: baseBoneValues,
+      structuralReasons: result.structuralReasons,
     };
   }
   const solvedSet = new Set(result.solvedBoneIds);
@@ -624,5 +691,6 @@ export function applyCharacterEndEffectorLocksToValues(
     residuals: result.residuals,
     solvedBoneIds: result.solvedBoneIds,
     poseValues: result.values,
+    structuralReasons: result.structuralReasons,
   };
 }
