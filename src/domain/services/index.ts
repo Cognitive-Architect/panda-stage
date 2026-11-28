@@ -26,3 +26,4 @@ export * from './AssetService';
 export * from './mouthPoses';
 export * from './ProjectResourceImportPlanner';
 export * from './NativeGraphicDefinitionService';
+export * from './CharacterEndEffectorLockService';

@@ -38,10 +38,17 @@ import {
   type EvaluatedCharacterNodePose,
 } from './character-node-animation';
 import {
+  characterBoneProtectedPartIds,
   evaluateCharacterBonePose,
   evaluatedCharacterBonePoseList,
   type EvaluatedCharacterBonePose,
 } from './character-bone-pose';
+import {
+  applyCharacterEndEffectorLocksToValues,
+  characterEndEffectorLayerStageMatrix,
+  characterEndEffectorLockActiveAt,
+  type CharacterEndEffectorResidual,
+} from './character-end-effector-lock';
 import {
   composeAnimatedLayerTransform,
   evaluateLayerRelativeMotionValues,
@@ -84,6 +91,12 @@ export interface EvaluatedLayer {
    * Export derive the same Part matrices from this evaluation seam.
    */
   characterBonePose?: EvaluatedCharacterBonePose[];
+  /**
+   * Transient per-Layer end-effector lock feedback (#1456). Present only when
+   * an authored lock is active at this time and either could not be reached or
+   * was skipped because a higher-priority lock owns a shared ancestor.
+   */
+  endEffectorResiduals?: CharacterEndEffectorResidual[];
   id: string;
   assetId: string;
   /** The formal Expression state before any transient Mouth projection. */
@@ -1027,7 +1040,7 @@ export function evaluateShotAtTime(
       };
     });
 
-  return {
+  const evaluatedShot: EvaluatedShot = {
     shotId: shot.id,
     timeMs,
     backgroundLayerId: shot.backgroundLayerId,
@@ -1036,4 +1049,118 @@ export function evaluateShotAtTime(
       coverageMaskResolution,
     ),
   };
+  if (!shot.layers.some((layer) => (layer.endEffectorLocks?.length ?? 0) > 0)) {
+    // No authored locks: keep the byte-identical pre-#1456 evaluation path.
+    return evaluatedShot;
+  }
+  return {
+    ...evaluatedShot,
+    layers: applyEndEffectorLocks(project, shot, layers, evaluatedShot.layers, timeMs),
+  };
+}
+
+interface ActiveEndEffectorLockCandidate {
+  readonly character: Extract<Project['characters'][number], { mode: 'adaptive-parts' }>;
+  readonly locks: readonly NonNullable<Layer['endEffectorLocks']>[number][];
+  readonly fixedCharacterCenter: { readonly x: number; readonly y: number };
+}
+
+/**
+ * #1456 end-effector lock post-pass. It runs inside the formal evaluation path
+ * after the Layer world/parent space is known, then reparents at most twice so
+ * an attachment target that follows a solved Bone sees the final Part matrix.
+ * Only Layers with an active lock are touched, so a project without locks is
+ * evaluated byte-identically through the early return above.
+ */
+function applyEndEffectorLocks(
+  project: Project,
+  shot: Shot,
+  baseLayers: EvaluatedLayer[],
+  parentedLayers: EvaluatedLayer[],
+  timeMs: number,
+): EvaluatedLayer[] {
+  const candidates = new Map<string, ActiveEndEffectorLockCandidate>();
+  for (const layer of shot.layers) {
+    const locks = layer.endEffectorLocks;
+    if (!locks?.length) continue;
+    const activeLocks = locks.filter((lock) => characterEndEffectorLockActiveAt(lock, timeMs));
+    if (activeLocks.length === 0) continue;
+    const source = layer.source;
+    if (source.kind !== 'character') continue;
+    if (layer.animationClip?.version !== 1) continue;
+    const character = project.characters.find(({ id }) => id === source.characterId);
+    if (character?.mode !== 'adaptive-parts' || !character.bones?.length) continue;
+    candidates.set(layer.id, {
+      character,
+      locks: activeLocks,
+      fixedCharacterCenter: layer.animationClip.fixedCharacterCenter,
+    });
+  }
+  if (candidates.size === 0) return parentedLayers;
+
+  let currentLayers = baseLayers;
+  let parented = parentedLayers;
+  let solvedAny = false;
+  for (let pass = 0; pass < 2; pass += 1) {
+    const spacesById = new Map(parented.map((layer) => [layer.id, layer.parentSpace]));
+    let solvedThisPass = false;
+    currentLayers = currentLayers.map((layer): EvaluatedLayer => {
+      const candidate = candidates.get(layer.id);
+      if (!candidate || !layer.animationValues) return layer;
+      const localToStage = characterEndEffectorLayerStageMatrix(
+        { ...layer, parentSpace: spacesById.get(layer.id) },
+        candidate.fixedCharacterCenter,
+      );
+      const applied = applyCharacterEndEffectorLocksToValues({
+        character: candidate.character,
+        values: layer.animationValues,
+        layerId: layer.id,
+        locks: candidate.locks,
+        localToStage,
+        protectedPartIds: characterBoneProtectedPartIds(candidate.character),
+        timeMs,
+      });
+      const residuals = applied.residuals.length > 0 ? applied.residuals : undefined;
+      if (applied.solvedBoneIds.length === 0) {
+        return residuals ? { ...layer, endEffectorResiduals: [...residuals] } : layer;
+      }
+      solvedThisPass = true;
+      const poses = evaluateCharacterBonePose({
+        character: candidate.character,
+        values: applied.values,
+        layerId: layer.id,
+      });
+      return {
+        ...layer,
+        animationValues: applied.values,
+        characterBonePose: evaluatedCharacterBonePoseList(poses),
+        ...(residuals ? { endEffectorResiduals: [...residuals] } : {}),
+      };
+    });
+    if (!solvedThisPass) break;
+    solvedAny = true;
+    const nextParented = applyLayerParenting(project, shot, currentLayers, timeMs);
+    const nextSpaces = new Map(nextParented.map((layer) => [layer.id, layer.parentSpace]));
+    let spacesStable = true;
+    for (const [layerId, space] of spacesById) {
+      if (JSON.stringify(space ?? null) !== JSON.stringify(nextSpaces.get(layerId) ?? null)) {
+        spacesStable = false;
+        break;
+      }
+    }
+    parented = nextParented;
+    if (spacesStable) break;
+  }
+  if (solvedAny) return parented;
+  // Nothing solvable: keep the authored pose and only surface honest diagnostics.
+  const residualByLayerId = new Map(
+    currentLayers.flatMap((layer) =>
+      layer.endEffectorResiduals ? [[layer.id, layer.endEffectorResiduals] as const] : []),
+  );
+  return residualByLayerId.size === 0
+    ? parented
+    : parented.map((layer) => {
+        const residuals = residualByLayerId.get(layer.id);
+        return residuals ? { ...layer, endEffectorResiduals: [...residuals] } : layer;
+      });
 }
