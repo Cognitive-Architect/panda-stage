@@ -807,6 +807,19 @@ export class LayerStore {
     return next;
   }
 
+  /** Sets or clears an author-level coverage mask (#1454); one undo step. */
+  setMaskTargets(layerId: string, targetLayerIds: readonly string[] | null): Project {
+    const { project, shotId } = this.context();
+    const next = this.service.setMaskTargets(project, shotId, layerId, targetLayerIds);
+    if (next !== project) {
+      this.editorStore.updateProject(
+        next,
+        targetLayerIds === null ? '解除图层遮罩' : '设置图层遮罩',
+      );
+    }
+    return next;
+  }
+
   setParent(childId: string, parentId: string | null, timeMs: number, target?: LayerAttachmentTarget): Project {
     const { project, shotId } = this.context();
     const next = this.service.setParent(project, shotId, childId, parentId, timeMs, target);

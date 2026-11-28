@@ -1,6 +1,7 @@
 export * from './projectDuration';
 export * from './projectTime';
 export * from './canvasLayers';
+export * from './coverageMaskGeometry';
 export * from './stageRenderModel';
 export * from './temporalRender';
 export * from './visualParts';

@@ -25,6 +25,11 @@ import {
   type StageRenderResource,
   type StageRenderLayer,
 } from '../../shared/stage/render-model';
+import {
+  buildCoverageMaskClips,
+  isDrawableStageLayer,
+} from '../../domain/selectors/coverageMaskGeometry';
+import { CoverageMaskClipGroup } from './coverageMaskClip';
 import { renderFlaGraphicCanvas } from '../features/canvas/flaGraphicCanvasRenderer';
 import {
   layoutSubtitleText,
@@ -630,6 +635,34 @@ export function StageRenderer({
   const displayCaption = displayFrame?.caption ?? caption;
   const displayCaptionStyle = displayFrame?.captionStyle ?? captionStyle;
   const displayCamera = displayFrame ? displayFrame.camera : camera;
+  const imageSizes = useMemo(() => {
+    const sizes = new Map<string, { width: number; height: number }>();
+    for (const asset of project.assets) {
+      if (asset.kind === 'image' && asset.width && asset.height) {
+        sizes.set(asset.id, { width: asset.width, height: asset.height });
+      }
+    }
+    return sizes;
+  }, [project.assets]);
+  const coverageMaskClips = useMemo(
+    () =>
+      displayModel
+        ? buildCoverageMaskClips(
+            {
+              width: displayModel.width,
+              height: displayModel.height,
+              layers: displayModel.layers.map((layer) => ({
+                evaluated: layer,
+                visual: layer.visual,
+                render: layer.render,
+              })),
+            },
+            displayCamera,
+            imageSizes,
+          )
+        : { clips: new Map(), unresolvedMaskLayerIds: new Set<string>() },
+    [displayCamera, displayModel, imageSizes],
+  );
 
   useEffect(() => {
     if (modelResult.error) {
@@ -767,6 +800,18 @@ export function StageRenderer({
             )
           : undefined
       }
+      data-coverage-mask-layer-ids={JSON.stringify(
+        displayModel!.layers.filter((layer) => !isDrawableStageLayer(layer)).map((layer) => layer.id),
+      )}
+      data-coverage-mask-target-json={JSON.stringify(
+        [...coverageMaskClips.clips].map(([targetLayerId, clip]) => ({
+          targetLayerId,
+          maskLayerId: clip.maskLayerId,
+        })),
+      )}
+      data-coverage-mask-unresolved-layer-ids={JSON.stringify([
+        ...coverageMaskClips.unresolvedMaskLayerIds,
+      ])}
       data-render-contract="shared-stage-layer-v1"
       data-stage-error={String(Boolean(error))}
       data-stage-display-ready={String(displayReady)}
@@ -793,17 +838,22 @@ export function StageRenderer({
           >
           {displayModel!.layers.map((layer) => {
             const render = layer.render;
+            // Author-level mask Layers are authoring-only; their coverage is
+            // applied by `CoverageMaskClipGroup` on each target Layer.
+            if (!isDrawableStageLayer(layer)) return null;
             const projection = resolveLayerCameraTransform(layer, displayCamera, displayModel!.width, displayModel!.height);
             if (!projection) return null;
             const primaryPart = layer.parts[0];
             if (!primaryPart || !render.visible) {
               return null;
             }
+            const clip = coverageMaskClips.clips.get(layer.id) ?? null;
             const image = imageState.images.get(primaryPart.id);
             if (!image && !layer.visual) return null;
             if ((render.isBackground && layer.visual?.kind !== 'fla-graphic') || !layer.visual) {
               if (!image) return null;
               return (
+                <CoverageMaskClipGroup clip={clip} key={layer.id}>
                 <StageLayerSpace key={layer.id} space={layer.parentSpace} projection={projection}>
                 <KonvaImage
                   height={render.height}
@@ -820,9 +870,11 @@ export function StageRenderer({
                   y={render.y}
                 />
                 </StageLayerSpace>
+                </CoverageMaskClipGroup>
               );
             }
             return (
+              <CoverageMaskClipGroup clip={clip} key={layer.id}>
               <StageLayerSpace key={layer.id} space={layer.parentSpace} projection={projection}>
               <Group
                 listening={render.listening}
@@ -851,6 +903,7 @@ export function StageRenderer({
                 />
               </Group>
               </StageLayerSpace>
+              </CoverageMaskClipGroup>
             );
           })}
           </Group>

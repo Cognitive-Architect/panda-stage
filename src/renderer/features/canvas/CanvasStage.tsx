@@ -64,7 +64,9 @@ import {
   resolveCharacterArmChains,
   resolveTimelineFrameTime,
   resolveCharacterActionRootPatch,
+  buildCoverageMaskClips,
   type CharacterArmChainEntry,
+  type CoverageMaskClipMap,
   type ImageAsset,
   type Shot,
   type ViewportTransform,
@@ -104,6 +106,7 @@ import {
 import { ParentLayerTransformer } from './ParentLayerTransformer';
 import { SelectableLayer } from './SelectableLayer';
 import { StageLayerSpace } from '../../stage/StageLayerSpace';
+import { CoverageMaskClipGroup } from '../../stage/coverageMaskClip';
 import { SubtitleRenderer } from '../subtitles/SubtitleRenderer';
 import {
   timelineUiStore,
@@ -1038,6 +1041,20 @@ export function CanvasStage({
     );
   }, [continuityMode, temporalCanvasModel, temporalContextKey]);
   const stageModel = temporalCanvasModel?.stageModel ?? null;
+  // Author-level coverage masks are resolved once per frame; the same geometry
+  // clips every target Layer and mirrors Preview/Export (#1454).
+  const coverageMaskClips = useMemo<CoverageMaskClipMap>(() => {
+    if (!stageModel) {
+      return { clips: new Map(), unresolvedMaskLayerIds: new Set<string>() };
+    }
+    const imageSizes = new Map<string, { width: number; height: number }>();
+    for (const [assetId, asset] of projectImageDimensions) {
+      if (typeof asset.width === 'number' && typeof asset.height === 'number') {
+        imageSizes.set(assetId, { width: asset.width, height: asset.height });
+      }
+    }
+    return buildCoverageMaskClips(stageModel, displayCamera, imageSizes);
+  }, [displayCamera, projectImageDimensions, stageModel]);
   const armVisualStatus = armAssembly && temporalCanvasModel?.visualStatusByLayer.get(armAssembly.target.layerId);
   // Continuity may display the previous pose while this frame's art loads.
   const waitingForArmVisual = armVisualStatus === 'previous-complete' || armVisualStatus === 'pending';
@@ -1687,6 +1704,20 @@ export function CanvasStage({
               data-scene-preview-active={String(Boolean(activeScenePreview))}
               data-scene-preview-shot-id={activeScenePreview?.previewShotId ?? ''}
               data-layer-json={JSON.stringify(shot?.layers ?? [])}
+              data-coverage-mask-layer-ids={JSON.stringify(
+                (stageModel?.layers ?? [])
+                  .filter((stageLayer) => stageLayer.evaluated.coverageMask?.role === 'mask-layer')
+                  .map((stageLayer) => stageLayer.layer.id),
+              )}
+              data-coverage-mask-target-json={JSON.stringify(
+                [...coverageMaskClips.clips].map(([targetLayerId, clip]) => ({
+                  targetLayerId,
+                  maskLayerId: clip.maskLayerId,
+                })),
+              )}
+              data-coverage-mask-unresolved-layer-ids={JSON.stringify([
+                ...coverageMaskClips.unresolvedMaskLayerIds,
+              ])}
               data-evaluated-layer-json={JSON.stringify(
                 temporalCanvasModel?.evaluatedShot.layers ?? [],
               )}
@@ -1757,6 +1788,9 @@ export function CanvasStage({
                         const { layer, render, visual } = stageLayer;
                         const projection = resolveLayerCameraTransform(stageLayer.evaluated, displayCamera, PROJECT_WIDTH, PROJECT_HEIGHT);
                         if (!projection) return null;
+                        const coverageClip = coverageMaskClips.clips.get(layer.id) ?? null;
+                        const maskLayerEditing =
+                          stageLayer.evaluated.coverageMask?.role === 'mask-layer';
                         const characterView = snapshot && !positionAuthoringSession && !render.isBackground
                           ? resolveCharacterView(snapshot.project, layer, visual)
                           : null;
@@ -1803,7 +1837,7 @@ export function CanvasStage({
                                 onError: setInteractionStatus,
                               }
                             : undefined;
-                        return (
+                        const content = (
                           <StageLayerSpace key={render.id} space={stageLayer.evaluated.parentSpace} projection={displayCamera ? projection : undefined}>
                           <SelectableLayer
                             characterMotion={displayCamera || cameraTool || pickingParent ? undefined : motionCanvasForLayer(layer, characterView)}
@@ -2064,6 +2098,20 @@ export function CanvasStage({
                             visual={visual}
                           />
                           </StageLayerSpace>
+                        );
+                        if (maskLayerEditing) {
+                          // The mask Layer is authoring-only output, but stays
+                          // selectable/editable on the Canvas as a dimmed aid.
+                          return (
+                            <Group key={render.id} opacity={0.35}>
+                              {content}
+                            </Group>
+                          );
+                        }
+                        return (
+                          <CoverageMaskClipGroup clip={coverageClip} key={render.id}>
+                            {content}
+                          </CoverageMaskClipGroup>
                         );
                       })
                     : null}

@@ -8,6 +8,7 @@ export * from './flaGraphicTimeline';
 export * from './flaShapeTween';
 export * from './flaGraphicInstanceOverrides';
 export * from './layer';
+export * from './layerCoverageMask';
 export * from './project';
 export * from './shot';
 export * from './shotCamera';

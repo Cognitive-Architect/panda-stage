@@ -46,6 +46,7 @@ import { ExpressionAtTimeControl } from '../features/properties/ExpressionAtTime
 import { CharacterActionAtTimeControl } from '../features/properties/CharacterActionAtTimeControl';
 import { BatchLayerControls } from '../features/properties/BatchLayerControls';
 import { LayerEffectsPreviewControl } from '../features/properties/LayerEffectsPreviewControl';
+import { LayerCoverageMaskControl } from '../features/properties/LayerCoverageMaskControl';
 import { CharacterMotionTemplateControl } from '../features/properties/CharacterMotionTemplateControl';
 import { CharacterBodyPoseControl } from '../features/properties/CharacterBodyPoseControl';
 import { CharacterArmChainControl } from '../features/properties/CharacterArmChainControl';
@@ -803,6 +804,13 @@ export function RightInspector({
       {snapshot && currentShot && selection.layer && selection.layer.id !== currentShot.backgroundLayerId ?
         <LayerEffectsPreviewControl key={String(editorProjectStore.getProjectInstanceId()) + currentShot.id + selection.layer.id}
           snapshot={snapshot} shotId={currentShot.id} layer={selection.layer} /> : null}
+      {currentShot && selection.layer ? (
+        <LayerCoverageMaskControl
+          key={`mask:${currentShot.id}:${selection.layer.id}`}
+          layer={selection.layer}
+          shot={currentShot}
+        />
+      ) : null}
       {landscapeEmptyState ? null : (
         showMotionInspector && motionNode && motionPanelInput && motionTargetKey && currentShot && selection.layer && snapshot ? (
           <details className="right-inspector-section right-inspector-transform-section" data-testid="right-inspector-transform-section" open>
